@@ -146,4 +146,18 @@ export {
   clearHover,
 } from './hover.ts';
 
+export type {
+  OperationBudget,
+  BudgetCheckResult,
+  BudgetConfig,
+} from './operation-budgets.ts';
+
+export {
+  BudgetEngine,
+  checkBudget,
+  estimateRuntime,
+  estimateMemory,
+  shouldOffloadToWorker,
+} from './operation-budgets.ts';
+
 export type { LockedOperationError } from './placement.ts';
