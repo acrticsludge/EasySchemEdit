@@ -2,7 +2,7 @@
 // Autosave snapshot + recovery snapshot on browser reload.
 // Quota exhaustion: visible error, previous save never silently dropped.
 
-import { openDb, STORE_AUTOSAVE, STORE_RECOVERY } from './idb-store.ts';
+import { openDB, STORE_AUTOSAVE_JOURNAL, STORE_RECOVERY } from './idb-store.ts';
 
 export interface AutosaveEntry {
   projectId: string;
@@ -21,10 +21,10 @@ export interface RecoveryEntry {
 
 // Save an autosave snapshot (overwrites previous autosave for projectId).
 export async function saveAutosave(entry: AutosaveEntry): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_AUTOSAVE, 'readwrite');
-    const store = tx.objectStore(STORE_AUTOSAVE);
+    const tx = db.transaction(STORE_AUTOSAVE_JOURNAL, 'readwrite');
+    const store = tx.objectStore(STORE_AUTOSAVE_JOURNAL);
     const req = store.put(entry);
     req.onsuccess = () => resolve();
     req.onerror = () => {
@@ -39,10 +39,10 @@ export async function saveAutosave(entry: AutosaveEntry): Promise<void> {
 
 // Get the latest autosave for a project.
 export async function getAutosave(projectId: string): Promise<AutosaveEntry | null> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_AUTOSAVE, 'readonly');
-    const store = tx.objectStore(STORE_AUTOSAVE);
+    const tx = db.transaction(STORE_AUTOSAVE_JOURNAL, 'readonly');
+    const store = tx.objectStore(STORE_AUTOSAVE_JOURNAL);
     const req = store.get(projectId);
     req.onsuccess = () => resolve(req.result ?? null);
     req.onerror = () => reject(new Error(`AUTOSAVE_READ_FAILED: ${req.error?.message ?? 'Unknown error'}`));
@@ -51,7 +51,7 @@ export async function getAutosave(projectId: string): Promise<AutosaveEntry | nu
 
 // Save a recovery snapshot (before destructive operations).
 export async function saveRecovery(entry: RecoveryEntry): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_RECOVERY, 'readwrite');
     const store = tx.objectStore(STORE_RECOVERY);
@@ -69,7 +69,7 @@ export async function saveRecovery(entry: RecoveryEntry): Promise<void> {
 
 // Get the latest recovery snapshot for a project.
 export async function getRecovery(projectId: string): Promise<RecoveryEntry | null> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_RECOVERY, 'readonly');
     const store = tx.objectStore(STORE_RECOVERY);
@@ -81,7 +81,7 @@ export async function getRecovery(projectId: string): Promise<RecoveryEntry | nu
 
 // Clear recovery snapshot after successful commit.
 export async function clearRecovery(projectId: string): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_RECOVERY, 'readwrite');
     const store = tx.objectStore(STORE_RECOVERY);

@@ -1,7 +1,7 @@
 // packages/persistence/src/chunk-store.ts
 // Save/get chunk binary blobs by chunk key.
 
-import { openDb, STORE_CHUNKS } from './idb-store.ts';
+import { openDB, STORE_CHUNKS } from './idb-store.ts';
 
 export interface ChunkBlob {
   chunkKey: string;      // e.g. "2_-1_0"
@@ -12,7 +12,7 @@ export interface ChunkBlob {
 
 // Save a chunk blob.
 export async function saveChunk(chunk: ChunkBlob): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CHUNKS, 'readwrite');
     const store = tx.objectStore(STORE_CHUNKS);
@@ -30,7 +30,7 @@ export async function saveChunk(chunk: ChunkBlob): Promise<void> {
 
 // Get a chunk blob by key.
 export async function getChunk(chunkKey: string, projectId: string): Promise<ChunkBlob | null> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CHUNKS, 'readonly');
     const store = tx.objectStore(STORE_CHUNKS);
@@ -46,7 +46,7 @@ export async function getChunk(chunkKey: string, projectId: string): Promise<Chu
 
 // Delete a chunk blob.
 export async function deleteChunk(chunkKey: string): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CHUNKS, 'readwrite');
     const store = tx.objectStore(STORE_CHUNKS);

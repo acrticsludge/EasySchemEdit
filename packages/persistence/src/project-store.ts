@@ -2,7 +2,7 @@
 // Save/get/delete project archives in IndexedDB.
 // Revision tracking for optimistic concurrency.
 
-import { openDb, STORE_PROJECTS } from './idb-store.ts';
+import { openDB, STORE_PROJECTS } from './idb-store.ts';
 
 export interface ProjectArchive {
   projectId: string;
@@ -23,7 +23,7 @@ export class ProjectStoreError extends Error {
 
 // Save a project archive (overwrites existing same projectId).
 export async function saveProject(archive: ProjectArchive): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_PROJECTS, 'readwrite');
     const store = tx.objectStore(STORE_PROJECTS);
@@ -41,7 +41,7 @@ export async function saveProject(archive: ProjectArchive): Promise<void> {
 
 // Get a project archive by projectId.
 export async function getProject(projectId: string): Promise<ProjectArchive | null> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_PROJECTS, 'readonly');
     const store = tx.objectStore(STORE_PROJECTS);
@@ -53,7 +53,7 @@ export async function getProject(projectId: string): Promise<ProjectArchive | nu
 
 // Delete a project archive.
 export async function deleteProject(projectId: string): Promise<void> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_PROJECTS, 'readwrite');
     const store = tx.objectStore(STORE_PROJECTS);
@@ -65,7 +65,7 @@ export async function deleteProject(projectId: string): Promise<void> {
 
 // List all project IDs.
 export async function listProjects(): Promise<string[]> {
-  const db = await openDb();
+  const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_PROJECTS, 'readonly');
     const store = tx.objectStore(STORE_PROJECTS);

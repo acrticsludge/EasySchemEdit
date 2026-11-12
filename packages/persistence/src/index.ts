@@ -2,10 +2,10 @@
 // Public API for the persistence package.
 
 export {
-  openDb,
+  openDB,
   STORE_PROJECTS,
   STORE_CHUNKS,
-  STORE_AUTOSAVE,
+  STORE_AUTOSAVE_JOURNAL,
   STORE_RECOVERY,
 } from './idb-store.ts';
 
