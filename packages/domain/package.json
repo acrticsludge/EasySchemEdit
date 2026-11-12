@@ -1,0 +1,18 @@
+{
+  "name": "@easyschemedit/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure TypeScript domain model for EasySchemEdit — zero framework/browser/Node/Three.js/MCP imports",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types __tests__/slice-0-types.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
