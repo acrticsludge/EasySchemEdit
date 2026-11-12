@@ -1,81 +1,60 @@
-# Subspec B — Slice b-10: Export Semantics
+# Subspec B — Slice b-10: Legacy ID Table
 
-**Goal:** Implement export semantics per SUBSPEC-B §8: trimOuterAir configurable, oversized axis auto-split, strict vs permissive export, hidden placements excluded by default.
+**Goal:** Legacy ID table keyed by `(id, data)` with AddBlocks support → `BlockStateId` with properties. Prefer MIT-licensed source (e.g. PrismarineJS minecraft-data). Don't use CC BY-SA content. Remove unrelated .nbt palette note.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/export-semantics.ts` | Export semantics implementation |
+| `packages/formats/legacy-id-table.ts` | Legacy ID → block state mapping |
+| `packages/formats/legacy-id-table.source.md` | Source attribution + license |
 
-## Functions to Define
+## Legacy ID Table
 
 ```ts
-export type ExportSemanticsResult = {
-  trimmedAirBlocks: number;
-  originalDimensions: Vec3i;
-  trimmedDimensions: Vec3i;
-  splitAxes: 'x' | 'y' | 'z'[];   // axes that required auto-split
-  lossyOperations: string[];       // descriptions of what was lost
+export type LegacyIdEntry = {
+  id: number;
+  data: number;
+  blockState: BlockStateId;  // {Name, Properties}
+  version: string;           // MC version this mapping applies to
 };
 
-export function computeExportSemantics(
-  snapshot: ProjectSnapshot,
-  target: ExportTarget,
-  options: ExportOptions,
-): ExportSemanticsResult;
+export const LEGACY_ID_TABLE: Map<string, LegacyIdEntry>;  // key: "${id}:${data}"
+
+// AddBlocks support: additional mappings loaded at runtime
+export function addLegacyIdMappings(entries: LegacyIdEntry[]): void;
 ```
 
-## Rules
+## Source Selection
 
-### Outer-air trimming (configurable)
-- `trimOuterAir` defaults to `true`; `false` is allowed (not an error)
-- When `false`, outer air is preserved and Offset/origin metadata adjusted so world-space positions remain unchanged
+Preferred: PrismarineJS `minecraft-data` (MIT license).
+Do NOT use: CC BY-SA content (e.g. Minecraft Wiki without compatible license).
 
-### Oversized axis auto-split
-- If any remaining dimension exceeds 65,535 after air trim, attempt automatic spatial splitting along that axis
-- Each split region must be under the 65,535 limit
-- If splitting cannot preserve fidelity, refuse export with `EXPORT_DIMENSION_LIMIT` showing which axis and split result
+## License Check
 
-### Strict vs permissive export
-- **Strict (default):** refuse to export if a known fidelity-breaking condition exists, unless user explicitly acknowledges via `confirmLossy`
-- **Permissive:** allow export but include visible report of exactly which data was not preserved
-
-### Export semantics
-- **Placement:** bakes transform into output blocks
-- **Import group:** preserves or flattens per eligibility checker (slice b-6)
-- **Composite:** bakes transforms and applies overlap policy (top-wins/bottom-wins)
-- **Hidden placements:** excluded by default, includable via option
+Document chosen source and license in `legacy-id-table.source.md`. Verify MIT or compatible before committing.
 
 ## Acceptance Criteria
 
-- [ ] `trimOuterAir` defaults to `true`; `false` allowed
-- [ ] `trimOuterAir: false` adjusts Offset/origin metadata so world-space positions unchanged
-- [ ] Oversized axis auto-split attempted when dimension > 65,535 after trim
-- [ ] Split cannot preserve fidelity → `EXPORT_DIMENSION_LIMIT` with axis and split result
-- [ ] Strict mode refuses fidelity-breaking export unless `confirmLossy` acknowledged
-- [ ] Permissive mode proceeds with visible report of data not preserved
-- [ ] Placement export bakes transform
-- [ ] Import group preserves or flattens per eligibility
-- [ ] Composite export bakes transforms and applies overlap policy
-- [ ] Hidden placements excluded by default, includable via option
+- [ ] Legacy ID table keyed by `(id, data)` → `BlockStateId` with properties
+- [ ] AddBlocks support for runtime mapping additions
+- [ ] MIT-licensed source preferred (e.g. PrismarineJS minecraft-data)
+- [ ] No CC BY-SA content
+- [ ] License documented in `legacy-id-table.source.md`
+- [ ] Unrelated .nbt palette note removed
 
 ## Tests
 
-**File:** `packages/formats/__tests__/slice-b-10-export-semantics.test.ts`
+**File:** `packages/formats/__tests__/slice-b-10-legacy-id.test.ts`
 
-1. trimOuterAir defaults to true
-2. trimOuterAir: false preserves air and adjusts Offset/origin
-3. Oversized axis → auto-split attempted
-4. Split cannot preserve fidelity → `EXPORT_DIMENSION_LIMIT`
-5. Strict mode refuses unless confirmLossy
-6. Permissive mode proceeds with report
-7. Placement export bakes transform
-8. Hidden placements excluded by default
+1. Legacy ID table maps common (id, data) pairs to BlockStateId
+2. Key format is `${id}:${data}`
+3. `addLegacyIdMappings` adds entries at runtime
+4. Source is MIT-licensed (documented)
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (export semantics)
+- [ ] Change does one thing completely (legacy-ID block table + license check)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

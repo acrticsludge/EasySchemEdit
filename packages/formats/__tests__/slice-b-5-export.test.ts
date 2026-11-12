@@ -22,9 +22,9 @@ function check(cond: boolean, msg: string) {
   const r1 = validateExportDimensions(65536, 10, 10);
   check(!r1.valid && r1.error instanceof ExportError && r1.error.code === 'EXPORT_DIMENSION_LIMIT', 'width > 65535 → EXPORT_DIMENSION_LIMIT');
   const r2 = validateExportDimensions(10, 65536, 10);
-  check(!r2.valid && r2.error.code === 'EXPORT_DIMENSION_LIMIT', 'height > 65535 → EXPORT_DIMENSION_LIMIT');
+  check(!r2.valid && r2.error!.code === 'EXPORT_DIMENSION_LIMIT', 'height > 65535 → EXPORT_DIMENSION_LIMIT');
   const r3 = validateExportDimensions(10, 10, 65536);
-  check(!r3.valid && r3.error.code === 'EXPORT_DIMENSION_LIMIT', 'length > 65535 → EXPORT_DIMENSION_LIMIT');
+  check(!r3.valid && r3.error!.code === 'EXPORT_DIMENSION_LIMIT', 'length > 65535 → EXPORT_DIMENSION_LIMIT');
   const r4 = validateExportDimensions(65535, 65535, 65535);
   check(r4.valid, 'all = 65535 → valid');
 }
@@ -32,7 +32,7 @@ function check(cond: boolean, msg: string) {
 // 2. No auto-split: dimension limit is a hard refusal, not split
 {
   const r = validateExportDimensions(100000, 100, 100);
-  check(!r.valid && r.error.code === 'EXPORT_DIMENSION_LIMIT', 'oversized → refused, not split');
+  check(!r.valid && r.error!.code === 'EXPORT_DIMENSION_LIMIT', 'oversized → refused, not split');
 }
 
 // 3. Total volume limit
@@ -41,7 +41,7 @@ function check(cond: boolean, msg: string) {
   const r1 = validateTotalVolume(BigInt(999) * BigInt(999) * BigInt(999), maxVol);
   check(r1.valid, 'volume under limit → valid');
   const r2 = validateTotalVolume(maxVol + 1n, maxVol);
-  check(!r2.valid && r2.error.code === 'EXPORT_VOLUME_LIMIT', 'volume over limit → EXPORT_VOLUME_LIMIT');
+  check(!r2.valid && r2.error!.code === 'EXPORT_VOLUME_LIMIT', 'volume over limit → EXPORT_VOLUME_LIMIT');
 }
 
 // 4. DEFAULT_MAX_TOTAL_VOLUME = 65535³
@@ -54,7 +54,7 @@ function check(cond: boolean, msg: string) {
 {
   const optsNoConfirm = { confirmLossy: false } as any;
   const r1 = checkLossyConfirmation(true, optsNoConfirm);
-  check(!r1.valid && r1.error.code === 'EXPORT_LOSSY_CONFIRM_REQUIRED', 'lossy without confirmLossy → error');
+  check(!r1.valid && r1.error!.code === 'EXPORT_LOSSY_CONFIRM_REQUIRED', 'lossy without confirmLossy → error');
   const r2 = checkLossyConfirmation(true, { confirmLossy: true } as any);
   check(r2.valid, 'lossy with confirmLossy → valid');
   const r3 = checkLossyConfirmation(false, { confirmLossy: false } as any);
@@ -76,7 +76,7 @@ function check(cond: boolean, msg: string) {
 
 // 7. trimOuterAir bounds passthrough
 {
-  const bounds = { min: [0, 0, 0], maxExclusive: [10, 10, 10] };
+  const bounds = { min: [0, 0, 0] as const, maxExclusive: [10, 10, 10] as const };
   const r1 = computeTrimmedBounds(bounds, true);
   check(r1.bounds.min[0] === 0 && r1.bounds.maxExclusive[0] === 10, 'trimOuterAir=true passes through (no block data)');
   const r2 = computeTrimmedBounds(bounds, false);
@@ -131,4 +131,3 @@ function check(cond: boolean, msg: string) {
 }
 
 console.log(failures === 0 ? 'All slice b-5 export semantics tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

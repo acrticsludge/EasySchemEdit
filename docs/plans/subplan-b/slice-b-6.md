@@ -1,67 +1,68 @@
-# Subspec B — Slice b-6: Multi-region Export Eligibility Checker
+# Subspec B — Slice b-6: Multi-Region Export Eligibility
 
-**Goal:** Implement deterministic multi-region export eligibility checker per SUBSPEC-B §5.5. Preserves grouping only when relative transforms intact, shared rotation/mirror, no baking; otherwise single region + `EXPORT_REGION_GROUPING_LOST`.
+**Goal:** Restore multi-region export eligibility checker. `RegionGroupMetadata` with rules: same import group, not baked, relative positions intact, common rotation/mirror, litematic sources. Else single region + `EXPORT_REGION_GROUPING_LOST`. Don't replace with `ExportEligibility`.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/region-eligibility.ts` | Export eligibility checker |
+| `packages/formats/region-eligibility.ts` | Multi-region export eligibility checker |
 
-## Functions to Define
+## RegionGroupMetadata
 
 ```ts
 export type RegionGroupMetadata = {
   importGroupId: string;
-  sourceFilename: string;
-  regionNames: string[];
-  regionPositions: Vec3i[];
-  commonGroupTransform?: Transform;
   baked: boolean;
+  relativePositions: Vec3i[];       // relative to group origin
+  rotation: Transform;
+  mirror: 'none' | 'x' | 'z' | 'xz';
+  sourceFormat: 'litematic' | 'schem-v3' | 'schem-v2' | 'schematic-legacy' | 'vanilla-nbt';
+  regions: string[];                 // region names in group
 };
-
-export function checkMultiRegionExportEligibility(
-  snapshot: ProjectSnapshot,
-  importGroupId: string,
-): { eligible: boolean; reason?: string; regions: RegionGroupMetadata[] };
 ```
 
 ## Eligibility Rules
 
-1. All placements must belong to this import group.
-2. No placement may have been baked (flattened).
-3. Relative positions must remain intact — compare current placement translations against original relative offsets.
-4. Common group transform — if all placements share same rotationY and mirror, grouping can be preserved with shared group transform. If any placement has independent rotation/mirror, grouping cannot be preserved.
-5. All placements must have compatible source format (litematic).
+A multi-region export is eligible only when ALL of:
+1. Same import group
+2. Not baked
+3. Relative positions intact
+4. Common rotation/mirror across all regions
+5. All sources are litematic
 
-## Export Behavior
+If any rule fails → single region export + `EXPORT_REGION_GROUPING_LOST`.
 
-- If `eligible`: export as multi-region `.litematic` with original region names, positions, and shared group transform.
-- If not eligible: export as single-region `.litematic` (flattened composite) + warning `EXPORT_REGION_GROUPING_LOST` listing which placements were merged and why.
+## Functions to Define
+
+```ts
+export function checkRegionEligibility(groups: RegionGroupMetadata[]): {
+  eligible: boolean;
+  reason?: string;
+  lostGrouping: boolean;
+};
+```
 
 ## Acceptance Criteria
 
-- [ ] Deterministic eligibility checker
-- [ ] Preserves grouping only when relative transforms intact
-- [ ] Preserves grouping only when shared rotation/mirror
-- [ ] Preserves grouping only when no baking
-- [ ] Otherwise single region + `EXPORT_REGION_GROUPING_LOST`
-- [ ] All placements must have compatible source format (litematic)
+- [ ] `RegionGroupMetadata` type defined with all fields
+- [ ] Eligibility: same import group, not baked, relative positions intact, common rotation/mirror, litematic sources
+- [ ] Failure → single region + `EXPORT_REGION_GROUPING_LOST`
+- [ ] Not replaced by `ExportEligibility` type
 
 ## Tests
 
 **File:** `packages/formats/__tests__/slice-b-6-region-eligibility.test.ts`
 
-1. All placements in same import group → eligible
-2. Baked placement → not eligible (`placementBaked`)
-3. Relative positions changed → not eligible (`relativePositionsChanged`)
-4. Independent transforms → not eligible (`independentTransforms`)
-5. Non-litematic source format → not eligible (`unsupportedSourceFormat`)
-6. Eligible → multi-region export with shared group transform
+1. All rules pass → eligible multi-region export
+2. Different import groups → `EXPORT_REGION_GROUPING_LOST`
+3. Baked regions → `EXPORT_REGION_GROUPING_LOST`
+4. Mixed rotation/mirror → `EXPORT_REGION_GROUPING_LOST`
+5. Non-litematic source → `EXPORT_REGION_GROUPING_LOST`
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (region eligibility checker)
+- [ ] Change does one thing completely (multi-region eligibility)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

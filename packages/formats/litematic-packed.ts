@@ -103,7 +103,7 @@ export function decodePackedBlockStates(
     if (entry >= P) {
       throw new Error(`IMPORT_NBT_INVALID: palette index ${entry} >= palette length ${P}`);
     }
-    indices[i] = useUint32 ? (entry as unknown as number) : (entry as unknown as number);
+    indices[i] = entry;
   }
 
   return { indices, palette };

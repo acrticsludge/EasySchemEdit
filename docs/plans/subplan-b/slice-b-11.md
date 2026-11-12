@@ -1,91 +1,59 @@
-# Subspec B — Slice b-11: Immutable Snapshots + Memory Management
+# Subspec B — Slice b-11: Vanilla .nbt Convert-on-Import
 
-**Goal:** Implement immutable project snapshots for format adapters per SUBSPEC-B §11. Adapters consume immutable snapshots, never live mutable project state.
+**Goal:** Vanilla .nbt convert-on-import gets its own slice. Structure: `size`, `palette`/`palettes` {Name,Properties}, `blocks[].pos/state/nbt`, `entities`, `DataVersion`.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/snapshot.ts` | Snapshot creation + memory management |
+| `packages/formats/vanilla-nbt.ts` | Vanilla .nbt convert-on-import adapter |
 
-## Functions to Define
+## Vanilla .nbt Structure
 
-```ts
-export type FormatSnapshot = {
-  schemaVersion: number;
-  id: string;
-  name: string;
-  placements: ReadonlyArray<{
-    id: string;
-    name: string;
-    transform: Transform;
-    origin: Vec3Half;
-    visible: boolean;
-    locked: boolean;
-    source: { format: string; diagnostics: Diagnostic[] };
-    volumeRef: { bounds: Bounds3i; chunkKeys: string[]; nonAirCount: number };
-  }>;
-  importGroups: ReadonlyArray<ImportGroup>;
-  overlapPolicy: 'top-wins' | 'bottom-wins';
-  revision: number;
-  chunkViews: Map<string, { indices: Uint8Array | Uint16Array | Uint32Array; palette: BlockStateId[] }>;
-};
-
-export function createProjectSnapshot(
-  project: Project,
-  chunkViews: Map<string, { indices: Uint8Array | Uint16Array | Uint32Array; palette: BlockStateId[] }>,
-): FormatSnapshot;
-
-export function validateSnapshotCommit(
-  snapshot: FormatSnapshot,
-  currentRevision: number,
-): { valid: boolean; reason?: string };
+```
+Root compound:
+  size: Int[3]              // [width, height, length]
+  palette: List<Compound { Name: String, Properties: Compound }>
+  palettes?: List<List<Compound>>  // multiple palettes supported
+  blocks: List<Compound { pos: Int[3], state: Int, nbt?: Compound }>
+  entities: List<Compound>
+  DataVersion: Int
 ```
 
-## Snapshot Creation Rules
+## Convert-on-Import
 
-1. Freeze project metadata (placements array, importGroups, overlapPolicy, revision)
-2. For each chunk referenced by export target, transfer ownership of `indices` ArrayBuffer view to worker snapshot
-3. Unreferenced chunks are not included
-4. Snapshot = `{ projectMetadata, chunkViews }`
-
-## Worker Responsibilities
-
-1. Receives snapshot + typed export message
-2. Reads chunk views (no writes to live project)
-3. Produces output bytes as a new ArrayBuffer
-4. Returns result; main thread applies only if `project.revision` still matches `baseRevision`
-
-## Memory Rules
-
-- No multiple giant intermediate buffers: streaming writer emits format bytes incrementally
-- Chunk index arrays are transferred (not copied) where possible; main thread retains its own copy until commit
-- Stale worker results (revision mismatch) discarded; buffers released
-- Cancellation via explicit `{ type: 'cancel', requestId }` message; partial results never committed
+- Map palette indices to BlockStateId
+- Support multiple palettes
+- Blocks have pos/state/nbt
+- Entities preserved
+- DataVersion read
+- Produces `normalizedImport: true` (palette remapping)
 
 ## Acceptance Criteria
 
-- [ ] Format adapters receive immutable `ProjectSnapshot`, never live `Project`
-- [ ] No multiple giant intermediate buffers
-- [ ] Streaming writer used for large exports
-- [ ] Chunk index arrays transferred (not copied) where possible
-- [ ] Stale worker results discarded; buffers released
-- [ ] Cancellation via explicit cancel message
-- [ ] Main thread unchanged until commit
+- [ ] Vanilla .nbt detected via `size`/`palette`/`blocks`/`DataVersion`
+- [ ] Palette entries {Name, Properties} → BlockStateId
+- [ ] Multiple palettes supported
+- [ ] Blocks: pos/state/nbt preserved
+- [ ] Entities preserved
+- [ ] DataVersion read
+- [ ] `normalizedImport: true` (palette remapping)
 
 ## Tests
 
-**File:** `packages/formats/__tests__/slice-b-11-snapshot.test.ts`
+**File:** `packages/formats/__tests__/slice-b-11-vanilla-nbt.test.ts`
 
-1. Snapshot freezes project metadata
-2. Only referenced chunks included in snapshot
-3. Revision mismatch → commit rejected
-4. Chunk views transferred, not copied
-5. Cancellation via explicit cancel message
+1. Vanilla .nbt format detected
+2. Palette entries {Name, Properties} mapped to BlockStateId
+3. Multiple palettes supported
+4. Blocks pos/state/nbt preserved
+5. Entities preserved
+6. DataVersion read
+7. `normalizedImport: true`
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (immutable snapshots + memory management)
+- [ ] Change does one thing completely (vanilla .nbt convert-on-import)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

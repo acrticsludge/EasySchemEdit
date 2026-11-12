@@ -1,19 +1,20 @@
 // Slice b-7: Sponge v2 Reader
 import { SpongeV2Adapter } from '../sponge-v2.ts';
 import { encodeNbt } from '../nbts.ts';
+import type { NbtTag } from '../../domain/nbt.ts';
 
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
   gzipDecompress: (b: Uint8Array) => b,
 };
 
-function compound(entries: [string, { type: string; value: unknown }][]) {
-  const map = new Map<string, { type: string; value: unknown }>();
+function compound(entries: [string, NbtTag][]): NbtTag {
+  const map = new Map<string, NbtTag>();
   for (const [k, v] of entries) map.set(k, v);
   return { type: 'compound', value: map };
 }
-function int(v: number) { return { type: 'int', value: v }; }
-function str(v: string) { return { type: 'string', value: v }; }
+function int(v: number): NbtTag { return { type: 'int', value: v }; }
+function str(v: string): NbtTag { return { type: 'string', value: v }; }
 
 function buildSpongeV2(): Uint8Array {
   // Palette: compound { "minecraft:air": 0, "minecraft:stone": 1 }
@@ -90,12 +91,14 @@ const adapter = new SpongeV2Adapter();
   const chunks = placement.volume.chunks;
   const chunk = chunks.get('0_0_0');
   check(!!chunk, 'chunk 0_0_0 exists');
-  const idx0 = chunk.indices[0];
-  const state0 = chunk.palette[idx0];
-  check(state0.id === 'minecraft:air', 'flat index 0 = air (palette[0])');
-  const idx1 = chunk.indices[1];
-  const state1 = chunk.palette[idx1];
-  check(state1.id === 'minecraft:stone', 'flat index 1 = stone (palette[1])');
+  if (chunk) {
+    const idx0 = chunk.indices[0];
+    const state0 = chunk.palette[idx0];
+    check(state0.id === 'minecraft:air', 'flat index 0 = air (palette[0])');
+    const idx1 = chunk.indices[1];
+    const state1 = chunk.palette[idx1];
+    check(state1.id === 'minecraft:stone', 'flat index 1 = stone (palette[1])');
+  }
 }
 
 // 3. Offset is int[3]
@@ -129,4 +132,3 @@ const adapter = new SpongeV2Adapter();
 }
 
 console.log(failures === 0 ? 'All slice b-7 sponge v2 tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

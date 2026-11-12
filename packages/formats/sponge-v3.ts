@@ -2,7 +2,8 @@
 // Offset is int[3], defined relative to the paste point:
 //   pasteTarget + Offset = min corner of the build (NOT absolute world coordinates)
 // Worked example uses relative coordinates only (to be verified with WorldEdit fixture)
-import type { BlockStateId } from '../domain/types.ts';
+import type { BlockStateId, Vec3i, Vec3Half } from '../domain/types.ts';
+import type { EntityRecord } from '../domain/shared-types.ts';
 import type { Placement } from '../domain/placement.ts';
 import type { Transform } from '../domain/coordinates.ts';
 import type { Diagnostic } from '../domain/shared-types.ts';
@@ -27,10 +28,10 @@ function asList(e: { type: string; value: unknown } | undefined): { value: { typ
   return e?.type === 'list' ? (e as { value: { type: string; value: unknown }[] }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? e.value : undefined;
+  return e?.type === 'int' ? (e.value as number) : undefined;
 }
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
-  return e?.type === 'string' ? e.value : undefined;
+  return e?.type === 'string' ? (e.value as string) : undefined;
 }
 function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
@@ -82,9 +83,9 @@ export class SpongeV3Adapter implements FormatAdapter {
     // Offset is int[3], relative to paste point: pasteTarget + Offset = min corner
     const offsetEntry = entries.get('Offset');
     const offsetCompound = asCompound(offsetEntry);
-    const offset = offsetCompound
-      ? [asInt(getMap(offsetCompound, 'X')) ?? 0, asInt(getMap(offsetCompound, 'Y')) ?? 0, asInt(getMap(offsetCompound, 'Z')) ?? 0]
-      : [0, 0, 0];
+    const offset: Vec3i = offsetCompound
+      ? [asInt(getMap(offsetCompound, 'X')) ?? 0, asInt(getMap(offsetCompound, 'Y')) ?? 0, asInt(getMap(offsetCompound, 'Z')) ?? 0] as Vec3i
+      : [0, 0, 0] as Vec3i;
 
     const blocksEntry = entries.get('Blocks');
     const blocks = asCompound(blocksEntry);
@@ -99,7 +100,7 @@ export class SpongeV3Adapter implements FormatAdapter {
 
     // Data: VarInt array (byte array of VarInt-encoded palette indices)
     const dataEntry = getMap(blocks, 'Data');
-    const dataBytes = dataEntry?.type === 'byteArray' ? dataEntry.value : undefined;
+    const dataBytes = dataEntry?.type === 'byteArray' ? (dataEntry.value as Uint8Array) : undefined;
     if (!dataBytes) {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 missing Blocks.Data byte array');
     }
@@ -147,7 +148,7 @@ export class SpongeV3Adapter implements FormatAdapter {
 
     // Build volume: chunks of CHUNK_SIZE
     const CHUNK_SIZE = 16;
-    const bounds = { min: [0, 0, 0], maxExclusive: [width, height, length] };
+    const bounds = { min: [0, 0, 0] as Vec3i, maxExclusive: [width, height, length] as Vec3i };
     const chunks = new Map<string, any>();
     let nonAirBlockCount = 0;
 
@@ -205,15 +206,16 @@ export class SpongeV3Adapter implements FormatAdapter {
     };
 
     // Offset: pasteTarget + Offset = min corner (relative, not absolute world coords)
-    const transform: Transform = { translation: offset, rotationY: 0, mirror: 'none' };
-    const origin: [number, number, number] = [offset[0] * 2, offset[1] * 2, offset[2] * 2];
+    const transform: Transform = { translation: offset as Vec3i, rotationY: 0, mirror: 'none' };
+    const origin: Vec3Half = [(offset[0] * 2) as number, (offset[1] * 2) as number, (offset[2] * 2) as number] as Vec3Half;
 
     const ancillary = {
       blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),
-      entities: [],
+      entities: [] as EntityRecord[],
       biomes: undefined,
-      pendingTicks: [],
-      tombstones: new Set<string>(),
+      pendingBlockTicks: [],
+      pendingFluidTicks: [],
+      unknownTags: new Map<string, NbtTag>(),
     };
 
     // BlockEntities
@@ -241,8 +243,8 @@ export class SpongeV3Adapter implements FormatAdapter {
         if (!eObj) continue;
         ancillary.entities.push({
           id: asString(getMap(eObj, 'id')) ?? 'unknown',
-          position: [0, 0, 0],
-          rotation: [0, 0, 0],
+          position: [0, 0, 0] as const,
+          rotation: [0, 0, 0] as const,
           nbt: eObj as any,
         });
       }
@@ -262,6 +264,7 @@ export class SpongeV3Adapter implements FormatAdapter {
       origin: origin as any,
       visible: true,
       locked: false,
+      createdAt: new Date().toISOString(),
       source: {
         format: 'schem-v3',
         filename: undefined,

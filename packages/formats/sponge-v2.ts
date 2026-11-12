@@ -4,7 +4,7 @@
 // Offset is int[3]
 // Lossless read: no warning, normalizedImport false
 // Does not redeclare FormatAdapter — uses shared interface from b-0.5
-import type { BlockStateId } from '../domain/types.ts';
+import type { BlockStateId, Vec3i, Vec3Half } from '../domain/types.ts';
 import type { Placement } from '../domain/placement.ts';
 import type { Transform } from '../domain/coordinates.ts';
 import type { Diagnostic } from '../domain/shared-types.ts';
@@ -26,7 +26,7 @@ function asCompound(e: { type: string; value: unknown } | undefined): { value: M
   return e?.type === 'compound' ? (e as { value: Map<string, { type: string; value: unknown }> }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? e.value : undefined;
+  return e?.type === 'int' ? (e.value as number) : undefined;
 }
 function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
@@ -80,16 +80,16 @@ export class SpongeV2Adapter implements FormatAdapter {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v2 missing Palette compound');
     }
 
-    const blockData = blockDataEntry?.type === 'byteArray' ? blockDataEntry.value : undefined;
+    const blockData = blockDataEntry?.type === 'byteArray' ? (blockDataEntry.value as Uint8Array) : undefined;
     if (!blockData) {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v2 missing BlockData byte array');
     }
 
     const offsetCompoundEntry = entries.get('Offset');
     const offsetCompound = asCompound(offsetCompoundEntry);
-    const offset = offsetCompound
-      ? [asInt(getMap(offsetCompound, 'X')) ?? 0, asInt(getMap(offsetCompound, 'Y')) ?? 0, asInt(getMap(offsetCompound, 'Z')) ?? 0]
-      : [0, 0, 0];
+    const offset: Vec3i = offsetCompound
+      ? [asInt(getMap(offsetCompound, 'X')) ?? 0, asInt(getMap(offsetCompound, 'Y')) ?? 0, asInt(getMap(offsetCompound, 'Z')) ?? 0] as Vec3i
+      : [0, 0, 0] as Vec3i;
     const width = asInt(widthEntry) ?? 0;
     const height = asInt(heightEntry) ?? 0;
     const length = asInt(lengthEntry) ?? 0;
@@ -123,8 +123,15 @@ export class SpongeV2Adapter implements FormatAdapter {
 
     // Build palette array: index → BlockStateId
     const paletteArray: BlockStateId[] = [];
-    const maxIndex = Math.max(...decodedIndices, ...Array.from(paletteMap.values()), -1) + 1;
-    for (let i = 0; i <= maxIndex; i++) {
+    let maxIndex = -1;
+    for (const idx of decodedIndices) {
+      if (idx > maxIndex) maxIndex = idx;
+    }
+    for (const idx of paletteMap.values()) {
+      if (idx > maxIndex) maxIndex = idx;
+    }
+    maxIndex += 1;
+    for (let i = 0; i < maxIndex; i++) {
       // Find state name for this index
       let stateName = 'minecraft:air';
       for (const [name, idx] of paletteMap) {
@@ -135,7 +142,7 @@ export class SpongeV2Adapter implements FormatAdapter {
 
     // Build volume: single chunk if small enough, else multiple chunks
     const CHUNK_SIZE = 16;
-    const bounds = { min: [0, 0, 0], maxExclusive: [width, height, length] };
+    const bounds = { min: [0, 0, 0] as Vec3i, maxExclusive: [width, height, length] as Vec3i };
     const chunks = new Map<string, any>();
     let nonAirBlockCount = 0;
 
@@ -192,15 +199,16 @@ export class SpongeV2Adapter implements FormatAdapter {
       paletteCardinality: chunks.size > 0 ? Array.from(chunks.values())[0].palette.length : 1,
     };
 
-    const transform: Transform = { translation: offset, rotationY: 0, mirror: 'none' };
-    const origin: [number, number, number] = [offset[0] * 2, offset[1] * 2, offset[2] * 2];
+    const transform: Transform = { translation: offset as Vec3i, rotationY: 0, mirror: 'none' };
+    const origin: Vec3Half = [(offset[0] * 2) as number, (offset[1] * 2) as number, (offset[2] * 2) as number] as Vec3Half;
 
     const ancillary = {
       blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),
       entities: [],
       biomes: undefined,
-      pendingTicks: [],
-      tombstones: new Set<string>(),
+      pendingBlockTicks: [],
+      pendingFluidTicks: [],
+      unknownTags: new Map<string, NbtTag>(),
     };
 
     const placement = {
@@ -211,6 +219,7 @@ export class SpongeV2Adapter implements FormatAdapter {
       origin: origin as any,
       visible: true,
       locked: false,
+      createdAt: new Date().toISOString(),
       source: {
         format: 'schem-v2',
         filename: undefined,

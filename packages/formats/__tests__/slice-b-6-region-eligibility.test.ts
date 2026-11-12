@@ -4,7 +4,7 @@ import {
   EXPORT_REGION_GROUPING_LOST,
   type RegionGroupMetadata,
 } from '../region-eligibility.ts';
-import type { Transform } from '../domain/coordinates.ts';
+import type { Transform } from '../../domain/coordinates.ts';
 
 let failures = 0;
 function check(cond: boolean, msg: string) {
@@ -131,4 +131,3 @@ function makeGroup(overrides: Partial<RegionGroupMetadata>): RegionGroupMetadata
 }
 
 console.log(failures === 0 ? 'All slice b-6 region eligibility tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

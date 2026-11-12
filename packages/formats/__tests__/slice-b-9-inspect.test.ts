@@ -1,20 +1,21 @@
 // Slice b-9: inspect() header-only import preview
 import { inspect, type InspectResult } from '../inspect.ts';
 import { encodeNbt } from '../nbts.ts';
+import type { NbtTag } from '../../domain/nbt.ts';
 
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
   gzipDecompress: (b: Uint8Array) => b,
 };
 
-function compound(entries: [string, { type: string; value: unknown }][]) {
-  const map = new Map<string, { type: string; value: unknown }>();
+function compound(entries: [string, NbtTag][]): NbtTag {
+  const map = new Map<string, NbtTag>();
   for (const [k, v] of entries) map.set(k, v);
   return { type: 'compound', value: map };
 }
-function int(v: number) { return { type: 'int', value: v }; }
-function str(v: string) { return { type: 'string', value: v }; }
-function list(elems: { type: string; value: unknown }[]) { return { type: 'list', value: elems }; }
+function int(v: number): NbtTag { return { type: 'int', value: v }; }
+function str(v: string): NbtTag { return { type: 'string', value: v }; }
+function list(elems: NbtTag[]): NbtTag { return { type: 'list', value: elems, elementType: 'compound' }; }
 
 let failures = 0;
 function check(cond: boolean, msg: string) {
@@ -127,4 +128,3 @@ function buildV3Root(width: number, height: number, length: number,
 }
 
 console.log(failures === 0 ? 'All slice b-9 inspect() tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

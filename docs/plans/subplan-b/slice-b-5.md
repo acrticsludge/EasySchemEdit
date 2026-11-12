@@ -1,55 +1,88 @@
-# Subspec B — Slice b-5: Legacy .schematic + Vanilla .nbt Convert-on-Import
+# Subspec B — Slice b-5: Export Semantics
 
-**Goal:** Implement convert-on-import for legacy `.schematic` and vanilla `.nbt` structure files. Both are import-only with warning, no export support in v1.
+**Goal:** Implement export semantics: trimOuterAir (default true; false allowed with Offset/origin adjusted), strict vs permissive + confirmLossy, hidden placements excluded by default, bake transform for placement, composite applies overlap policy. Define ExportError. Keep EXPORT_DIMENSION_LIMIT (no auto-split). Remove decompression-ratio check entirely; use absolute caps from maxDecompressedBytes; set realistic maxTotalVolume default.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/convert-on-import.ts` | Legacy .schematic + vanilla .nbt adapters |
+| `packages/formats/export-semantics.ts` | Export validation + dimension limits |
 
-## Legacy .schematic (import only)
+## trimOuterAir
 
-- Read legacy `.schematic` NBT, normalize into canonical domain model
-- Import warning displayed; result marked `normalizedImport: true`
-- No byte-level round-trip guarantee; no lossless claim
-- Block positions and states preserved where mappable to 1.21.11 registry
-- Unmappable states reported in `unsupported.blockStates`
-- Export: not supported in v1; clear message
-- `IMPORT_UNSUPPORTED_FORMAT` reserved for genuinely unknown signatures, NOT for legacy `.schematic`
+- Default: `true`
+- `false` allowed: Offset/origin metadata adjusted to account for untrimmed air
+- Not an error to set `false`
 
-## Vanilla .nbt structure files (import only)
+## Strict vs Permissive
 
-- Parse `size` (int array `[x, y, z]`), `palette` (list of block state names), `blocks` (list of `{ pos: [x, y, z], state: int }` referencing palette indices), `entities` (list of entity NBT compounds)
-- Block positions resolved relative to structure's origin offset
-- Block states mapped to 1.21.11 registry where possible
-- Unmappable states reported in `unsupported.blockStates`
-- Export: not supported in v1; clear message
+- `strict`: all validation errors throw `ExportError`
+- `permissive`: warnings emitted, export proceeds where possible
+- `confirmLossy`: required when data loss is expected (user confirmation)
+
+## Hidden Placements
+
+- Excluded by default from export
+- Includable via `includeHidden: boolean` on selection/composite targets
+
+## Bake Transform
+
+- Placement export: bake transform into block positions
+- Composite export: applies overlap policy (`top-wins` / `bottom-wins`)
+
+## Dimension Limit
+
+- Drop auto-split entirely
+- Any dimension > 65,535 → `EXPORT_DIMENSION_LIMIT`
+- `maxTotalVolume` default: 65,535³ (realistic)
+
+## Safety Limits (no ratio check)
+
+- Remove decompression-ratio check entirely
+- Absolute caps from `maxDecompressedBytes` only
+- `maxTotalVolume` default set realistically
+
+## ExportError
+
+```ts
+export class ExportError extends Error {
+  readonly code: 'EXPORT_DIMENSION_LIMIT' | 'EXPORT_REGION_GROUPING_LOST' | 'EXPORT_LOSSY_CONFIRM_REQUIRED' | string;
+  constructor(code: string, message: string, public readonly context?: Record<string, unknown>) {
+    super(message);
+    this.code = code;
+    this.name = 'ExportError';
+  }
+}
+```
 
 ## Acceptance Criteria
 
-- [ ] Legacy `.schematic` imports with warning and `normalizedImport: true`
-- [ ] Legacy `.schematic` has no export support in v1
-- [ ] Vanilla `.nbt` imports with warning and `normalizedImport: true`
-- [ ] Vanilla `.nbt` has no export support in v1
-- [ ] Unmappable block states reported in `unsupported.blockStates`
-- [ ] `IMPORT_UNSUPPORTED_FORMAT` NOT used for legacy `.schematic` (only genuinely unknown signatures)
-- [ ] Block positions resolved relative to structure origin
+- [ ] `trimOuterAir` defaults true; `false` allowed with Offset/origin adjusted
+- [ ] `strict` vs `permissive` modes; `confirmLossy` for lossy exports
+- [ ] Hidden placements excluded by default; includable via option
+- [ ] Placement export bakes transform
+- [ ] Composite export applies overlap policy
+- [ ] Dimension > 65,535 → `EXPORT_DIMENSION_LIMIT` (no auto-split)
+- [ ] No decompression-ratio check; absolute caps from `maxDecompressedBytes`
+- [ ] `maxTotalVolume` default = 65,535³
+- [ ] `ExportError` class with `code` field
 
 ## Tests
 
-**File:** `packages/formats/__tests__/slice-b-5-convert-on-import.test.ts`
+**File:** `packages/formats/__tests__/slice-b-5-export.test.ts`
 
-1. Legacy `.schematic` import produces warning + `normalizedImport: true`
-2. Legacy `.schematic` import creates valid placement
-3. Vanilla `.nbt` import produces warning + `normalizedImport: true`
-4. Vanilla `.nbt` `size`/`palette`/`blocks` parsed correctly
-5. Unmappable block state reported in `unsupported.blockStates`
-6. No export support for either format in v1
+1. `trimOuterAir` default true; `false` allowed with Offset adjusted
+2. `strict` mode throws on validation errors; `permissive` warns
+3. `confirmLossy` required for lossy exports
+4. Hidden placements excluded by default
+5. Placement export bakes transform
+6. Composite export applies overlap policy
+7. Dimension > 65,535 → `EXPORT_DIMENSION_LIMIT`
+8. No decompression-ratio check; absolute caps only
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (convert-on-import for .schematic + .nbt)
+- [ ] Change does one thing completely (export semantics)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

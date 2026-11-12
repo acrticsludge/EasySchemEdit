@@ -1,93 +1,56 @@
-# Subspec B — Slice b-7: NBT Safety Limits
+# Subspec B — Slice b-7: Sponge v2 Reader
 
-**Goal:** Implement NBT safety limits enforced at parse and encode time per SUBSPEC-B §12: tag count, string/array length, decompression ratio, parse duration, nesting depth, integer overflow, duplicate required fields.
+**Goal:** Implement Sponge schematic v2 reader. Palette is a compound (state string → int). BlockData is VarInt bytes. Offset is int[3]. Don't redeclare `FormatAdapter`. Lossless read: no warning, `normalizedImport` false.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/nbtsafety.ts` | NBT safety limits + typed errors |
+| `packages/formats/sponge-v2.ts` | Sponge v2 adapter |
 
-## Limits to Enforce
+## Sponge v2 Structure
 
-| Limit | Default | Exceeded → |
-|-------|---------|------------|
-| Total NBT tags | 1,000,000 | `NBT_TAG_COUNT_EXCEEDED` |
-| String length (UTF-8 bytes) | 1 MiB | `NBT_STRING_TOO_LONG` |
-| List element count | 1,000,000 | `NBT_TAG_COUNT_EXCEEDED` (counted per element) |
-| Byte/int/long array length | 16 MiB elements | `NBT_ARRAY_TOO_LONG` |
-| Decompression ratio | 100:1 | `NBT_DECOMPRESSION_RATIO_EXCEEDED` |
-| Parsing duration | 30 seconds | `NBT_PARSE_DURATION_EXCEEDED` |
-| NBT nesting depth | 512 | `NBT_NESTING_DEPTH_EXCEEDED` |
-| Integer overflow | per-type range | `NBT_INTEGER_OVERFLOW` |
-| Duplicate required fields | any duplicate | `NBT_DUPLICATE_REQUIRED_FIELD` |
-
-## Functions to Define
-
-```ts
-export type NbtSafetyLimits = {
-  maxTotalTags: number;
-  maxStringLengthBytes: number;
-  maxListElementCount: number;
-  maxArrayLengthElements: number;
-  maxDecompressionRatio: number;
-  maxParseDurationMs: number;
-  maxNestingDepth: number;
-};
-
-export class NbtSafetyError extends Error {
-  code: string;
-  constructor(code: string, message: string) {
-    super(message);
-    this.code = code;
-    this.name = 'NbtSafetyError';
-  }
-}
-
-export function checkNbtSafety(
-  stats: NbtParseStats,
-  limits: NbtSafetyLimits,
-): void;
-
-export type NbtParseStats = {
-  totalTags: number;
-  maxStringLengthBytes: number;
-  totalListElements: number;
-  maxArrayLength: number;
-  compressionRatio: number;
-  parseDurationMs: number;
-  nestingDepth: number;
-  hasDuplicateRequiredField: boolean;
-};
 ```
+Root compound:
+  Palette: Compound { <stateString>: Int }   // state string -> int index
+  BlockData: Byte[]                          // VarInt-encoded block state indices
+  Offset: Int[3]                             // [x, y, z]
+  Width: Int
+  Height: Int
+  Length: Int
+```
+
+## Read Contract
+
+- Palette entries: state string → int index (compound, not list)
+- BlockData: VarInt bytes (each entry is a VarInt palette index)
+- Offset: int[3]
+- Lossless read: no warning, `normalizedImport: false`
+- Block positions from BlockData array indices mapped to x/y/z using Width/Height/Length
 
 ## Acceptance Criteria
 
-- [ ] Tag count limit enforced: > 1,000,000 → `NBT_TAG_COUNT_EXCEEDED`
-- [ ] String length limit: > 1 MiB UTF-8 bytes → `NBT_STRING_TOO_LONG`
-- [ ] List element count limit: > 1,000,000 → `NBT_TAG_COUNT_EXCEEDED`
-- [ ] Array length limit: > 16 MiB elements → `NBT_ARRAY_TOO_LONG`
-- [ ] Decompression ratio limit: > 100:1 → `NBT_DECOMPRESSION_RATIO_EXCEEDED`
-- [ ] Parse duration limit: > 30 seconds → `NBT_PARSE_DURATION_EXCEEDED`
-- [ ] Nesting depth limit: > 512 → `NBT_NESTING_DEPTH_EXCEEDED`
-- [ ] Integer overflow → `NBT_INTEGER_OVERFLOW`
-- [ ] Duplicate required fields → `NBT_DUPLICATE_REQUIRED_FIELD`
-- [ ] Duplicate required field parse fails rather than taking first/last
+- [ ] Sponge v2 detected via root `Palette` compound + `BlockData` VarInt bytes
+- [ ] Palette is compound (state string → int), not list
+- [ ] BlockData is VarInt bytes
+- [ ] Offset is int[3]
+- [ ] Lossless read: no warning, `normalizedImport: false`
+- [ ] Does not redeclare `FormatAdapter` (uses shared interface from b-0.5)
 
 ## Tests
 
-**File:** `packages/formats/__tests__/slice-b-7-nbt-safety.test.ts`
+**File:** `packages/formats/__tests__/slice-b-7-sponge-v2.test.ts`
 
-1. Tag count > 1,000,000 → `NBT_TAG_COUNT_EXCEEDED`
-2. String length > 1 MiB → `NBT_STRING_TOO_LONG`
-3. Decompression ratio > 100:1 → `NBT_DECOMPRESSION_RATIO_EXCEEDED`
-4. Nesting depth > 512 → `NBT_NESTING_DEPTH_EXCEEDED`
-5. Duplicate required field → `NBT_DUPLICATE_REQUIRED_FIELD`
-6. All limits within bounds → no error
+1. Sponge v2 format detected (Palette compound + BlockData VarInt)
+2. Palette entries read as state string → int
+3. BlockData VarInt bytes decoded to palette indices
+4. Offset read as int[3]
+5. Import produces no warning, `normalizedImport: false`
+6. Block positions mapped correctly from Width/Height/Length
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (NBT safety limits)
+- [ ] Change does one thing completely (Sponge v2 reader)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

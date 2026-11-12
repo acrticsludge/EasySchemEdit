@@ -1,90 +1,83 @@
-# Subspec B — Slice b-4: Negative Size Normalization
+# Subspec B — Slice b-4: Litematic Adapter
 
-**Goal:** Implement negative Litematic region Size normalization via signed-axis mapping per SUBSPEC-B §5.3. Keep normalized local indices separate from original region world positions.
+**Goal:** Implement Litematic format adapter with real structure: root Version/SubVersion/MinecraftDataVersion/Metadata/Regions. Each region has Position, Size, BlockStatePalette[{Name,Properties}], BlockStates long[], TileEntities, Entities, PendingBlockTicks, PendingFluidTicks. Uses signed-Size normalization from slice b-2.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
-| `packages/formats/litematic-negative-size.ts` | Negative Size normalization |
+| `packages/formats/litematic.ts` | Litematic format adapter |
 
-## Functions to Define
+## Litematic Root Structure
 
-```ts
-export type RegionBounds = {
-  min: Vec3i;        // local normalized bounds, min inclusive
-  maxExclusive: Vec3i; // local normalized bounds, maxExclusive exclusive
-  size: Vec3i;       // absolute dimensions [ax, ay, az]
-};
-
-export function normalizeRegionSize(
-  position: Vec3i,     // region Position P = [px, py, pz]
-  size: Vec3i,         // signed Size S = [sx, sy, sz]
-): RegionBounds;
-
-export function rawToNormalizedCoord(
-  rawCoord: Vec3i,     // coordinates in raw storage frame
-  size: Vec3i,         // signed Size S
-): Vec3i;              // normalized local coordinate in [0, dimension)
-
-export function normalizedToWorld(
-  normalizedCoord: Vec3i,
-  boundsMin: Vec3i,    // bounds.min = world-space min corner
-): Vec3i;              // world-space position = bounds.min + coord
+```
+Root compound:
+  Version: Int        (Litematic format version)
+  SubVersion: Int
+  MinecraftDataVersion: Int
+  Metadata: Compound {
+    Name: String
+    Author: String
+    Description: String
+    TimeCreated: Long
+    TimeModified: Long
+    EnclosingSize: Int[3]
+    TotalVolume: Long
+    TotalBlocks: Long
+    RegionCount: Int
+  }
+  Regions: Compound {
+    <regionName>: Compound {
+      Position: Int[3]
+      Size: Int[3]                    // may be negative (signed)
+      BlockStatePalette: List<Compound { Name: String, Properties: Compound }>
+      BlockStates: Long[]             // packed, bitsPerEntry from palette size
+      TileEntities: List<Compound>
+      Entities: List<Compound>
+      PendingBlockTicks: List<Compound>
+      PendingFluidTicks: List<Compound>
+    }
+  }
 ```
 
-## Normalization Steps
+## Block States
 
-**Step 1 — Absolute dimensions:**
-`ax = |sx|, ay = |sy|, az = |sz|`. If any axis is 0 → `IMPORT_REGION_INVALID` (zero-volume region).
+Palette entries are `Compound { Name: String, Properties: Compound }` → `BlockStateId`. BlockStates is a packed long array decoded per slice b-3.
 
-**Step 2 — Normalized min corner (signed-axis mapping):**
-For each axis `a`:
-- If `S[a] >= 0`: `min[a] = P[a]`
-- If `S[a] < 0`: `min[a] = P[a] + S[a] + 1` (e.g. P=5, S=-3 → min = 3)
+## Ancillary Data
 
-**Step 3 — Normalized bounds:**
-`bounds.min = [min.x, min.y, min.z]`, `bounds.maxExclusive = [min.x + ax, min.y + ay, min.z + az]`
+- TileEntities → blockEntities (position + NBT)
+- Entities → entities (position, rotation, NBT)
+- PendingBlockTicks → pendingTicks
+- PendingFluidTicks → pendingTicks (fluid variant)
 
-**Step 4 — Raw → normalized local coordinate:**
-`linearIndex = x' + z' * ax + y' * ax * az` (raw storage order).
-For each axis `a`:
-- If `S[a] >= 0`: `coord[a] = raw[a]`
-- If `S[a] < 0`: `coord[a] = ax - 1 - raw[a]` (index reversal)
+## Size Normalization
 
-**Critical:** `coord` is already a local index in `[0, dimension)`. **Do NOT subtract `bounds.min` from `coord`** — `bounds.min` is a world-space position, `coord` is already a local index. Subtracting mixes frames and corrupts local coordinates.
-
-**Step 5 — Block entity/entity/tick transforms:**
-Same axis reversal applied to each component. Block entity position → normalized local position. Entity position (fractional) → normalized local fractional position. Tick position → normalized local position. Do not subtract bounds.min.
-
-**Step 6 — Relative position within Import Group:**
-Placement `transform.translation = bounds.min` (world position of normalized min corner). Relative region positions preserved as world offsets. Placement local volume stays normalized: `volume.bounds.min = [0,0,0]`, `volume.bounds.maxExclusive = [ax, ay, az]`.
+Uses `normalizeRegionSize`, `rawToNormalizedCoord`, `normalizedToWorld` from slice b-2. Reversal is for negative Size only.
 
 ## Acceptance Criteria
 
-- [ ] Zero-size region (any axis 0) → `IMPORT_REGION_INVALID`
-- [ ] Negative size normalized via signed-axis mapping
-- [ ] Axis reversal applied correctly for negative size components
-- [ ] Normalized local indices kept separate from world-space bounds.min
-- [ ] Block entity/entity/tick positions transformed consistently with axis reversal
-- [ ] Placement translation = bounds.min (world position of normalized min corner)
+- [ ] Root structure: Version, SubVersion, MinecraftDataVersion, Metadata, Regions
+- [ ] Metadata: Name, Author, Description, TimeCreated, TimeModified, EnclosingSize, TotalVolume, TotalBlocks, RegionCount
+- [ ] Region: Position, Size (signed), BlockStatePalette[{Name,Properties}], BlockStates long[], TileEntities, Entities, PendingBlockTicks, PendingFluidTicks
+- [ ] Signed-Size normalization from slice b-2 applied
+- [ ] Block entities/entities/ticks consistent with reversal
+- [ ] Palette entries {Name, Properties} → BlockStateId
 
 ## Tests
 
-**File:** `packages/formats/__tests__/slice-b-4-negative-size.test.ts`
+**File:** `packages/formats/__tests__/slice-b-4-litematic.test.ts`
 
-1. Zero-size region → `IMPORT_REGION_INVALID`
-2. Negative sx: P=5, S=-3 → min=3, ax=3, bounds [3,6)
-3. Negative sy: axis reversal applied
-4. Negative sz: axis reversal applied
-5. Raw → normalized coordinate mapping correct for negative axis
-6. Normalized coord NOT subtracted by bounds.min
-7. Block entity position transformed consistently
-8. Placement translation = bounds.min
+1. Litematic root structure parsed correctly
+2. Metadata fields read (Name, Author, Description, timestamps, EnclosingSize, TotalVolume, TotalBlocks, RegionCount)
+3. Region Position/Size read; negative Size normalized via slice b-2
+4. BlockStatePalette {Name, Properties} → BlockStateId mapping
+5. Block entities/entities/ticks preserved with positions
+6. Non-cubic region with hand-computed expected coordinates after reversal
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (negative size normalization)
+- [ ] Change does one thing completely (Litematic adapter with real structure)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message

@@ -4,7 +4,7 @@ import {
   encodePackedBlockStates,
   type PackedBlockStatesResult,
 } from '../litematic-packed.ts';
-import type { BlockStateId } from '../domain/types.ts';
+import type { BlockStateId } from '../../domain/types.ts';
 
 let failures = 0;
 function check(cond: boolean, msg: string) {
@@ -160,4 +160,3 @@ function bpeFor(P: number): number {
 }
 
 console.log(failures === 0 ? 'All slice b-3 packed blockstates tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

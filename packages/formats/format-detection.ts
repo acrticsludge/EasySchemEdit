@@ -3,6 +3,7 @@
 // 1. Gzip magic (1f 8b) → decompressionRequired, decompress with bounded decompressor
 // 2. Inspect NBT structure: v3 "Schematic", v2 Palette+BlockData, legacy Materials/Blocks/Data, vanilla size/palette/blocks/DataVersion
 // 3. Extension cross-check (never trusted alone); mismatch → warning, import proceeds using detected format
+export type { FormatDetectionResult, DetectedFormat } from './types.ts';
 import type {
   FormatDetectionResult,
   DetectedFormat,
@@ -22,7 +23,7 @@ function hasGzipMagic(bytes: Uint8Array): boolean {
 function getInt(entries: ReadonlyMap<string, NbtTagEntry>, key: string): number | undefined {
   const entry = entries.get(key);
   if (!entry || entry.type !== 'int') return undefined;
-  return entry.value;
+  return entry.value as number;
 }
 
 type NbtTagEntry = {
@@ -140,10 +141,8 @@ export function detectFormat(
     format = { kind: 'vanilla-nbt', confidence: 'high' };
   }
   else {
-    format = { kind: 'unknown', reason: 'no recognized NBT structure', confidence: 'low' };
+    format = { kind: 'unknown', reason: 'no recognized structure' };
   }
-
-  // Step 3: extension cross-check (never trusted alone)
   const ext = filenameExtension.toLowerCase();
   let extensionMatches = false;
   switch (format.kind) {

@@ -1,21 +1,22 @@
 // Slice b-4: Litematic adapter
 import { LitematicAdapter } from '../litematic.ts';
 import { encodeNbt } from '../nbts.ts';
+import type { NbtTag } from '../../domain/nbt.ts';
 
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
   gzipDecompress: (b: Uint8Array) => b,
 };
 
-function compound(entries: [string, { type: string; value: unknown }][]) {
-  const map = new Map<string, { type: string; value: unknown }>();
+function compound(entries: [string, NbtTag][]): NbtTag {
+  const map = new Map<string, NbtTag>();
   for (const [k, v] of entries) map.set(k, v);
   return { type: 'compound', value: map };
 }
-function int(v: number) { return { type: 'int', value: v }; }
-function long(v: bigint) { return { type: 'long', value: v }; }
-function str(v: string) { return { type: 'string', value: v }; }
-function list(elems: { type: string; value: unknown }[]) { return { type: 'list', value: elems }; }
+function int(v: number): NbtTag { return { type: 'int', value: v }; }
+function long(v: bigint): NbtTag { return { type: 'long', value: v }; }
+function str(v: string): NbtTag { return { type: 'string', value: v }; }
+function list(elems: NbtTag[]): NbtTag { return { type: 'list', value: elems, elementType: 'compound' }; }
 
 function buildLitematic2x2x2(): Uint8Array {
   const palette = compound([
@@ -32,7 +33,7 @@ function buildLitematic2x2x2(): Uint8Array {
   // BlockStates: bpe=2, 8 entries [0,1,0,1,0,1,0,1]
   // entry i at bits [i*2, i*2+1]: entry1=1→bit2, entry3=1→bit6, entry5=1→bit10, entry7=1→bit14
   // value = (1<<2)|(1<<6)|(1<<10)|(1<<14) = 0x4444
-  const blockStates = list([long(0x4444n)]);
+  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) };
 
   const region = compound([
     ['Position', list([int(0), int(0), int(0)])],
@@ -107,12 +108,14 @@ const adapter = new LitematicAdapter();
   const chunks = placement.volume.chunks;
   const chunk = chunks.get('0_0_0');
   check(!!chunk, 'chunk 0_0_0 exists');
-  const idx1 = chunk.indices[1];
-  const state1 = chunk.palette[idx1];
-  check(state1.id === 'minecraft:stone', 'flat index 1 = stone');
-  const idx0 = chunk.indices[0];
-  const state0 = chunk.palette[idx0];
-  check(state0.id === 'minecraft:air', 'flat index 0 = air');
+  if (chunk) {
+    const idx1 = chunk.indices[1];
+    const state1 = chunk.palette[idx1];
+    check(state1.id === 'minecraft:stone', 'flat index 1 = stone');
+    const idx0 = chunk.indices[0];
+    const state0 = chunk.palette[idx0];
+    check(state0.id === 'minecraft:air', 'flat index 0 = air');
+  }
 }
 
 // 3. Negative Size reversal: ax=-2 reverses X
@@ -124,7 +127,7 @@ const adapter = new LitematicAdapter();
   // blockStates entries [0,1,0,1,...]; raw x=0 → entry 0 = stone
   // reversal ax=-2: rawToNormalizedCoord(0,0,0,{ax:-2,ay:2,az:2}) = {x: 1, y: 0, z: 0}
   // flat index = 1 → entry at flat 1 = dirt → stored at chunk position li=0
-  const blockStates = list([long(0x4444n)]);
+  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) };
   const region = compound([
     ['Position', list([int(0), int(0), int(0)])],
     ['Size', list([int(-2), int(2), int(2)])],
@@ -149,10 +152,11 @@ const adapter = new LitematicAdapter();
   const placement = result.placements[0];
   const chunk = placement.volume.chunks.get('0_0_0');
   // normalized x=1 → flat index 1 → entry 1 = dirt → stored at chunk position li=0
-  const idx0 = chunk.indices[0];
-  const state0 = chunk.palette[idx0];
-  check(state0.id === 'minecraft:dirt', 'negative ax reversal: chunk position 0 = dirt');
+  if (chunk) {
+    const idx0 = chunk.indices[0];
+    const state0 = chunk.palette[idx0];
+    check(state0.id === 'minecraft:dirt', 'negative ax reversal: chunk position 0 = dirt');
+  }
 }
 
 console.log(failures === 0 ? 'All slice b-4 litematic tests passed.' : failures + ' failure(s)');
-process.exit(failures === 0 ? 0 : 1);

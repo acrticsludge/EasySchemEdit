@@ -5,6 +5,7 @@
 //             TileEntities,Entities,PendingBlockTicks,PendingFluidTicks}}
 // Uses signed-Size normalization from slice b-2; packed BlockStates from slice b-3.
 import type { BlockStateId } from '../domain/types.ts';
+import type { EntityRecord } from '../domain/shared-types.ts';
 import type { Placement } from '../domain/placement.ts';
 import type { Transform } from '../domain/coordinates.ts';
 import type { Diagnostic } from '../domain/shared-types.ts';
@@ -37,13 +38,13 @@ function asList(e: { type: string; value: unknown } | undefined): { value: { typ
   return e?.type === 'list' ? (e as { value: { type: string; value: unknown }[] }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? e.value : undefined;
+  return e?.type === 'int' ? (e.value as number) : undefined;
 }
 function asLong(e: { type: string; value: unknown } | undefined): bigint | undefined {
-  return e?.type === 'long' ? e.value : undefined;
+  return e?.type === 'long' ? (e.value as bigint) : undefined;
 }
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
-  return e?.type === 'string' ? e.value : undefined;
+  return e?.type === 'string' ? (e.value as string) : undefined;
 }
 function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
@@ -93,8 +94,8 @@ export class LitematicAdapter implements FormatAdapter {
       const paletteEntry = getMap(region, 'BlockStatePalette');
       const blockStatesEntry = getMap(region, 'BlockStates');
 
-      const pos = asIntArray(getMap(region, 'Position'));
-      const size = asIntArray(getMap(region, 'Size'));
+      const pos = asIntArray(positionEntry);
+      const size = asIntArray(sizeEntry);
       if (!pos || !size || size.length < 3) {
         diagnostics.push({ code: 'IMPORT_NBT_INVALID', severity: 'warning', message: `Region ${regionName}: missing/invalid Position or Size` });
         continue;
@@ -115,7 +116,7 @@ export class LitematicAdapter implements FormatAdapter {
           const propsEntry = getMap(stateObj!, 'Properties');
           const props: Record<string, string> = {};
           if (propsEntry?.type === 'compound') {
-            for (const [pk, pv] of propsEntry.value) {
+            for (const [pk, pv] of (propsEntry.value as Map<string, { type: string; value: unknown }>)) {
               props[pk] = asString(pv) ?? '';
             }
           }
@@ -124,9 +125,8 @@ export class LitematicAdapter implements FormatAdapter {
       }
       totalPaletteSize += palette.length;
 
-      // BlockStates: long[] packed array → Uint8Array → decode
-      const blockStatesList = asList(blockStatesEntry);
-      const packedLongs: bigint[] = blockStatesList ? blockStatesList.value.map((e) => asLong(e) ?? 0n) : [];
+      // BlockStates: long[] packed array (TAG_LONG_ARRAY in real Litematic files)
+      const packedLongs: bigint[] = asLongArray(blockStatesEntry) ?? [];
       const packedBytes = longsToBytes(packedLongs);
       const bpe = palette.length <= 2 ? 2 : Math.ceil(Math.log2(palette.length));
       const totalEntries = width * height * length;
@@ -141,7 +141,7 @@ export class LitematicAdapter implements FormatAdapter {
       }
 
       // Build volume: chunks of CHUNK_SIZE
-      const bounds = { min: [0, 0, 0], maxExclusive: [width, height, length] };
+      const bounds = { min: [0, 0, 0] as const, maxExclusive: [width, height, length] as const };
       const chunks = new Map<string, any>();
       let regionNonAir = 0;
       const chunkPalette: BlockStateId[] = [CANONICAL_AIR];
@@ -179,7 +179,7 @@ export class LitematicAdapter implements FormatAdapter {
             if (stateIdxInChunk === undefined) {
               stateIdxInChunk = chunk.palette.length;
               chunk.palette.push(state);
-              chunkIndexByState.set(state.id, stateIdxInChunk);
+              chunkIndexByState.set(state.id, stateIdxInChunk as number);
             }
             chunk.indices[li] = stateIdxInChunk as number;
           }
@@ -200,10 +200,11 @@ export class LitematicAdapter implements FormatAdapter {
 
       const ancillary = {
         blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),
-        entities: [],
+        entities: [] as EntityRecord[],
         biomes: undefined,
-        pendingTicks: [],
-        tombstones: new Set<string>(),
+        pendingBlockTicks: [],
+        pendingFluidTicks: [],
+        unknownTags: new Map<string, NbtTag>(),
       };
 
       // TileEntities → blockEntities
@@ -229,8 +230,8 @@ export class LitematicAdapter implements FormatAdapter {
           if (!eObj) continue;
           ancillary.entities.push({
             id: asString(getMap(eObj, 'id')) ?? 'unknown',
-            position: [0, 0, 0],
-            rotation: [0, 0, 0],
+            position: [0, 0, 0] as const,
+            rotation: [0, 0, 0] as const,
             nbt: eObj as any,
           });
         }
@@ -244,6 +245,7 @@ export class LitematicAdapter implements FormatAdapter {
         origin: origin as any,
         visible: true,
         locked: false,
+        createdAt: new Date().toISOString(),
         source: {
           format: 'litematic',
           filename: undefined,
@@ -294,6 +296,13 @@ function asIntArray(e: { type: string; value: unknown } | undefined): number[] |
   }
   if (e?.type === 'list') {
     return (e.value as { type: string; value: unknown }[]).map((ee) => asInt(ee) ?? 0);
+  }
+  return undefined;
+}
+
+function asLongArray(e: { type: string; value: unknown } | undefined): bigint[] | undefined {
+  if (e?.type === 'longArray') {
+    return Array.from(e.value as BigInt64Array);
   }
   return undefined;
 }

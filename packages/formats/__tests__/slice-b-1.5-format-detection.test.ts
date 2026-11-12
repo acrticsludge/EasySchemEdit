@@ -13,21 +13,17 @@ const passthrough: NbtServices = {
   gzipDecompress: (b: Uint8Array) => b,
 };
 
-function compound(entries: [string, { type: string; value: unknown }][]): {
-  type: 'compound';
-  value: Map<string, { type: string; value: unknown }>;
-} {
-  const map = new Map<string, { type: string; value: unknown }>();
+import type { NbtTag } from '../../domain/nbt.ts';
+
+function compound(entries: [string, NbtTag][]): NbtTag {
+  const map = new Map<string, NbtTag>();
   for (const [k, v] of entries) map.set(k, v);
-  return { type: 'compound', value: map } as unknown as {
-    type: 'compound';
-    value: Map<string, { type: string; value: unknown }>;
-  };
+  return { type: 'compound', value: map };
 }
 
-function int(v: number) { return { type: 'int', value: v }; }
-function str(v: string) { return { type: 'string', value: v }; }
-function byteArr(v: Uint8Array) { return { type: 'byteArray', value: v }; }
+function int(v: number): NbtTag { return { type: 'int', value: v }; }
+function str(v: string): NbtTag { return { type: 'string', value: v }; }
+function byteArr(v: Uint8Array): NbtTag { return { type: 'byteArray', value: v }; }
 
 function buildV3(): Uint8Array {
   const blockEntities = compound([]);

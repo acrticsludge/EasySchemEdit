@@ -2,14 +2,14 @@
 // async, takes services
 // nonAirBlockCount optional/absent unless cheaply available
 // Reads only enough to determine format and dimensions — no full block data decompression
-import type { FormatDetectionResult } from './types.ts';
+import type { FormatDetectionResult, DetectedFormat } from './types.ts';
 import { decodeNbtFromBytes, type NbtServices } from './nbts.ts';
 
 function asCompound(e: { type: string; value: unknown } | undefined): { value: Map<string, { type: string; value: unknown }> } | undefined {
   return e?.type === 'compound' ? (e as { value: Map<string, { type: string; value: unknown }> }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? e.value : undefined;
+  return e?.type === 'int' ? (e.value as number) : undefined;
 }
 function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
@@ -43,18 +43,18 @@ export async function inspect(
     root = decodeNbtFromBytes(working);
   } catch {
     return {
-      format: { kind: 'unknown', reason: 'invalid NBT', confidence: 'low' },
+      format: { kind: 'unknown', reason: 'invalid NBT', confidence: 'low' } as const,
       fileSizeBytes: bytes.length,
       compressedSizeBytes: bytes.length,
-    };
+    } as InspectResult;
   }
 
   if (root.type !== 'compound') {
     return {
-      format: { kind: 'unknown', reason: 'root is not a compound', confidence: 'low' },
+      format: { kind: 'unknown', reason: 'root is not a compound', confidence: 'low' } as const,
       fileSizeBytes: bytes.length,
       compressedSizeBytes: bytes.length,
-    };
+    } as InspectResult;
   }
 
   const entries = root.value as Map<string, { type: string; value: unknown }>;
@@ -72,7 +72,7 @@ export async function inspect(
   const hasMetadata = entries.get('Metadata');
   const hasMCDataVersion = entries.get('MinecraftDataVersion');
 
-  let format: { kind: string; confidence: 'high' | 'low' };
+  let format: DetectedFormat;
 
   if (version === 3 && width !== undefined && height !== undefined && length !== undefined && hasBlocks && dataVersion !== undefined) {
     format = { kind: 'schem-v3', confidence: 'high' };
@@ -85,7 +85,7 @@ export async function inspect(
   } else if (hasSize && hasPalette && entries.has('blocks') && dataVersion !== undefined) {
     format = { kind: 'vanilla-nbt', confidence: 'high' };
   } else {
-    format = { kind: 'unknown', reason: 'no recognized structure', confidence: 'low' };
+    format = { kind: 'unknown', reason: 'no recognized structure' };
   }
 
   const result: InspectResult = {
@@ -98,7 +98,7 @@ export async function inspect(
   if (width !== undefined && height !== undefined && length !== undefined) {
     result.dimensions = { width, height, length };
   } else if (hasSize) {
-    const sizeEntry = getMap(entries, 'size');
+    const sizeEntry = entries.get('size');
     const sizeCompound = asCompound(sizeEntry);
     if (sizeCompound) {
       const sx = asInt(getMap(sizeCompound, 'x'));
@@ -111,10 +111,16 @@ export async function inspect(
   }
 
   // Palette exists at root (vanilla .nbt) or inside Blocks (Sponge v3)
-  const blocksEntryTop = entries.get('Blocks');
-  const blocksTop = asCompound(blocksEntryTop);
   const hasPaletteRoot = entries.has('Palette');
-  const hasPaletteInBlocks = blocksTop ? blocksTop.value.has('Palette') : false;
+  let hasPaletteInBlocks = false;
+  let blocksTop: { value: Map<string, { type: string; value: unknown }> } | undefined;
+  const blocksEntryTop = entries.get('Blocks');
+  if (blocksEntryTop) {
+    blocksTop = asCompound(blocksEntryTop);
+    if (blocksTop) {
+      hasPaletteInBlocks = blocksTop.value.has('Palette');
+    }
+  }
 
   // Palette size — cheaply available from palette list/compound
   if (hasPaletteRoot || hasPaletteInBlocks) {
@@ -129,7 +135,7 @@ export async function inspect(
     } else {
       const paletteList = paletteEntry;
       if (paletteList?.type === 'list') {
-        result.paletteSize = paletteList.value.length;
+        result.paletteSize = (paletteList.value as unknown[]).length;
       }
     }
   }

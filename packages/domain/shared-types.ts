@@ -32,7 +32,7 @@ export type PendingTickRecord = {
 };
 
 export type PlacementSource = {
-  format: 'schem-v2' | 'schem-v3' | 'litematic' | 'generated';
+  format: 'schem-v2' | 'schem-v3' | 'litematic' | 'vanilla-nbt' | 'generated';
   filename?: string;
   regionName?: string;
   dataVersion?: number;

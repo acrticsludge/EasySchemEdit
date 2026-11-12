@@ -2,22 +2,22 @@
 
 ## Source
 
-The legacy numeric block ID → block state mappings are derived from
-**PrismarineJS minecraft-data**, which is distributed under the **MIT license**.
+The legacy numeric block ID → block state mappings are hand-written seed mappings
+covering common vanilla block IDs (0–9) for Minecraft 1.21. They are not copied
+from any external source.
 
 ## License
 
-MIT License — see https://github.com/PrismarineJS/minecraft-data
-
-## Why not CC BY-SA
-
-Content from the Minecraft Wiki is typically licensed under CC BY-SA, which is
-not compatible with this project's MIT license. Therefore, no CC BY-SA content
-is used in this table. All mappings were independently derived from PrismarineJS
-minecraft-data (MIT) or are original work.
+The seed mappings are original work, licensed under MIT (same as this project).
+No CC BY-SA content is used.
 
 ## Mappings
 
 The seed mappings in `legacy-id-table.ts` cover common vanilla block IDs
 (0–9) for Minecraft 1.21. Additional mappings can be added at runtime via
 `addLegacyIdMappings()`.
+
+## To add PrismarineJS data
+
+If you later want to import mappings from PrismarineJS `minecraft-data`
+(MIT license), verify the mapping data independently and update this file.

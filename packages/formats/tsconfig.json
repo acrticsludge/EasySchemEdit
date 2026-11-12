@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "bundler",
+    "moduleResolution": "node",
     "strict": true,
     "noImplicitAny": true,
     "noFallthroughCasesInSwitch": true,
@@ -12,7 +12,6 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": ".",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
@@ -20,6 +19,6 @@
     "isolatedModules": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["*.ts", "__tests__/*.ts"],
+  "include": ["*.ts", "__tests__/*.ts", "../domain/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

@@ -2,10 +2,10 @@
 // Structure: size, palette/palettes {Name,Properties}, blocks[].pos/state/nbt,
 // entities, DataVersion
 // Produces normalizedImport: true (palette remapping)
-import type { BlockStateId } from '../domain/types.ts';
+import type { BlockStateId, Vec3i, Vec3Half } from '../domain/types.ts';
 import type { Placement } from '../domain/placement.ts';
 import type { Transform } from '../domain/coordinates.ts';
-import type { Diagnostic } from '../domain/shared-types.ts';
+import type { Diagnostic, EntityRecord } from '../domain/shared-types.ts';
 import type { NbtTag } from '../domain/nbt.ts';
 import type {
   FormatAdapter,
@@ -29,10 +29,10 @@ function asList(e: { type: string; value: unknown } | undefined): { value: { typ
   return e?.type === 'list' ? (e as { value: { type: string; value: unknown }[] }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? e.value : undefined;
+  return e?.type === 'int' ? (e.value as number) : undefined;
 }
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
-  return e?.type === 'string' ? e.value : undefined;
+  return e?.type === 'string' ? (e.value as string) : undefined;
 }
 function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
@@ -62,9 +62,9 @@ export class VanillaNbtAdapter implements FormatAdapter {
 
     const sizeEntry = entries.get('size');
     const sizeCompound = asCompound(sizeEntry);
-    const width = asInt(getMap(sizeCompound, 'x')) ?? 0;
-    const height = asInt(getMap(sizeCompound, 'y')) ?? 0;
-    const length = asInt(getMap(sizeCompound, 'z')) ?? 0;
+    const width = sizeCompound ? asInt(getMap(sizeCompound, 'x')) ?? 0 : 0;
+    const height = sizeCompound ? asInt(getMap(sizeCompound, 'y')) ?? 0 : 0;
+    const length = sizeCompound ? asInt(getMap(sizeCompound, 'z')) ?? 0 : 0;
 
     // Palette: List<Compound { Name, Properties }> — support multiple palettes
     const paletteEntry = entries.get('palette');
@@ -73,8 +73,8 @@ export class VanillaNbtAdapter implements FormatAdapter {
 
     if (palettesEntry?.type === 'list') {
       // Multiple palettes
-      for (const palEntry of palettesEntry.value) {
-        const palCompound = asCompound(palEntry);
+      for (const palEntry of palettesEntry.value as unknown[]) {
+        const palCompound = asCompound(palEntry as { type: string; value: unknown });
         if (!palCompound) continue;
         const pal: BlockStateId[] = [];
         for (const [, stateEntry] of palCompound.value) {
@@ -83,7 +83,7 @@ export class VanillaNbtAdapter implements FormatAdapter {
           const propsEntry = getMap(stateObj!, 'Properties');
           const props: Record<string, string> = {};
           if (propsEntry?.type === 'compound') {
-            for (const [pk, pv] of propsEntry.value) {
+            for (const [pk, pv] of (propsEntry.value as Map<string, { type: string; value: unknown }>)) {
               props[pk] = asString(pv) ?? '';
             }
           }
@@ -94,13 +94,13 @@ export class VanillaNbtAdapter implements FormatAdapter {
     } else if (paletteEntry?.type === 'list') {
       // Single palette as List<Compound>
       const pal: BlockStateId[] = [];
-      for (const stateEntry of paletteEntry.value) {
+      for (const stateEntry of (paletteEntry.value as { type: string; value: unknown }[])) {
         const stateObj = asCompound(stateEntry);
         const name = asString(getMap(stateObj!, 'Name'));
         const propsEntry = getMap(stateObj!, 'Properties');
         const props: Record<string, string> = {};
         if (propsEntry?.type === 'compound') {
-          for (const [pk, pv] of propsEntry.value) {
+          for (const [pk, pv] of (propsEntry.value as Map<string, { type: string; value: unknown }>)) {
             props[pk] = asString(pv) ?? '';
           }
         }
@@ -118,7 +118,7 @@ export class VanillaNbtAdapter implements FormatAdapter {
           const propsEntry = getMap(stateObj!, 'Properties');
           const props: Record<string, string> = {};
           if (propsEntry?.type === 'compound') {
-            for (const [pk, pv] of propsEntry.value) {
+            for (const [pk, pv] of (propsEntry.value as Map<string, { type: string; value: unknown }>)) {
               props[pk] = asString(pv) ?? '';
             }
           }
@@ -132,7 +132,7 @@ export class VanillaNbtAdapter implements FormatAdapter {
     const blocksEntry = entries.get('blocks');
     const blocksList = asList(blocksEntry);
 
-    const bounds = { min: [0, 0, 0], maxExclusive: [width, height, length] };
+    const bounds = { min: [0, 0, 0] as Vec3i, maxExclusive: [width, height, length] as Vec3i };
     const chunks = new Map<string, any>();
     let nonAirBlockCount = 0;
 
@@ -189,13 +189,6 @@ export class VanillaNbtAdapter implements FormatAdapter {
           }
         }
         chunk.indices[li] = stateIdxInChunk;
-
-        // Block entity NBT from block's nbt field
-        const nbtEntry = getMap(blockObj, 'nbt');
-        if (nbtEntry && nbtEntry.type === 'compound') {
-          const beAncillary = chunk; // placeholder — block entities go in placement ancillary
-          // Will be handled in placement ancillary below
-        }
       }
     }
 
@@ -208,14 +201,15 @@ export class VanillaNbtAdapter implements FormatAdapter {
     };
 
     const transform: Transform = { translation: [0, 0, 0], rotationY: 0, mirror: 'none' };
-    const origin: [number, number, number] = [0, 0, 0];
+    const origin: Vec3Half = [0, 0, 0] as Vec3Half;
 
     const ancillary = {
       blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),
-      entities: [],
+      entities: [] as EntityRecord[],
       biomes: undefined,
-      pendingTicks: [],
-      tombstones: new Set<string>(),
+      pendingBlockTicks: [],
+      pendingFluidTicks: [],
+      unknownTags: new Map<string, NbtTag>(),
     };
 
     // Entities
@@ -227,8 +221,8 @@ export class VanillaNbtAdapter implements FormatAdapter {
         if (!eObj) continue;
         ancillary.entities.push({
           id: asString(getMap(eObj, 'id')) ?? 'unknown',
-          position: [0, 0, 0],
-          rotation: [0, 0, 0],
+          position: [0, 0, 0] as const,
+          rotation: [0, 0, 0] as const,
           nbt: eObj as any,
         });
       }
@@ -259,6 +253,7 @@ export class VanillaNbtAdapter implements FormatAdapter {
       origin: origin as any,
       visible: true,
       locked: false,
+      createdAt: new Date().toISOString(),
       source: {
         format: 'vanilla-nbt',
         filename: undefined,
