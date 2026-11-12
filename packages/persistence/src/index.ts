@@ -75,3 +75,9 @@ export {
   serializeVxproj,
   deserializeVxproj,
 } from './vxproj.ts';
+
+export {
+  type IdempotencyRecord,
+  type IdempotencyConfig,
+  IdempotencyManager,
+} from './idempotency.ts';
