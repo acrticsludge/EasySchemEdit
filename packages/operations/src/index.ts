@@ -147,6 +147,22 @@ export {
 } from './hover.ts';
 
 export type {
+  GroupTransformOptions,
+  GroupTransformResult,
+  GroupTransformStep,
+} from './group-transforms.ts';
+
+export {
+  GroupTransformEngine,
+  rotateGroup,
+  mirrorGroup,
+  composeTransforms,
+  validateTransformBijectivity,
+  preservesStairChirality,
+  mirrorFlipsChirality,
+} from './group-transforms.ts';
+
+export type {
   OperationBudget,
   BudgetCheckResult,
   BudgetConfig,
