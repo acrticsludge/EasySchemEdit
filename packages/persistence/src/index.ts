@@ -67,3 +67,11 @@ export {
   type StorageBudgetCallbacks,
   StorageBudgetManager,
 } from './storage-budget.ts';
+
+export {
+  type VxprojManifest,
+  type VxprojArchive,
+  type VxprojServices,
+  serializeVxproj,
+  deserializeVxproj,
+} from './vxproj.ts';
