@@ -34,3 +34,14 @@ export {
   type AutosaveEntry,
   type RecoveryEntry,
 } from './autosave.ts';
+
+export {
+  commitProject,
+  type CommitRecord,
+  type CommitPhase,
+} from './commit-protocol.ts';
+
+export type { HistoryEntryType } from './history.ts';
+export type { HistoryEntry } from './history.ts';
+export { HistoryManager } from './history.ts';
+export type { HistoryManagerOptions } from './history.ts';
