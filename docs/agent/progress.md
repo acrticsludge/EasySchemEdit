@@ -7,8 +7,8 @@
 - Phase 1: all 7 known conflicts resolved and documented in `docs/agent/phase1-conflicts.md`
 - Coordinate transform fixes: origin used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 H foundation: COMPLETE — all 7 slices done; subplan-c research gate + index + slice c-0 created
-- Subplan-C..G: subplan-c planned (11 slices, c-0 spec); subplan-d, e, f, g not yet planned
-- All changes committed to `master` (`d770690`) and pushed to `origin/master`
+- Subplan-C..G: subplan-c planned (11 slices, c-0 spec); subplan-d planned (13 slices, d-0 spec); subplan-e, f, g not yet planned
+- All changes committed to `master` (`2e22ffb`) and pushed to `origin/master`
 
 ## Next
 - Phase 2: complete subplan-c slices c-1 through c-10; create subplan-d, e, f, g research gates and slice plans
