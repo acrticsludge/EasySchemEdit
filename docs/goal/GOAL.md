@@ -77,3 +77,10 @@ When everything is implemented or blocked, STOP and give me: grouped numbered qu
 # OUTPUT HABITS
 
 Keep progress.md current (done, next, blockers). Short status updates, no padding. When unsure, add to DOUBTS.md instead of guessing.
+
+# STATUS
+- Phase 0 baseline: complete (baseline.md, skills-inventory.md, repo-state.md, progress.md all written and verified)
+- Subplan-A: complete — 22 slices planned, implemented in packages/domain/, 21 tests pass, tsc clean
+- Subplan-B: complete — 15 slices planned, implemented in packages/formats/, 14 tests pass, tsc clean
+- Subplan-C..H: not yet planned (Phase 2 pending)
+- Git: master @ 32ab14a, pushed to origin/master, working tree clean
