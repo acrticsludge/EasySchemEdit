@@ -13,7 +13,7 @@
 ## Next
 - Phase 3: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red
 - docs/audits/subplan-a-round-1.md through subplan-h-round-1.md: all findings documented
-- Phase 4 implementation — subplan-c COMPLETE (all 10 slices c-0 through c-10); subplan-d slices d-0 through d-12 complete; d-13 pending
+- Phase 4 implementation — subplan-c COMPLETE (all 10 slices c-0 through c-10); subplan-d COMPLETE (all 14 slices d-0 through d-13); subplan-e through g pending
 - Phase 5: questions, then final fix
 
 ## Blocked
