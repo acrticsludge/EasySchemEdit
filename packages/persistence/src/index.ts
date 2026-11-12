@@ -45,3 +45,11 @@ export type { HistoryEntryType } from './history.ts';
 export type { HistoryEntry } from './history.ts';
 export { HistoryManager } from './history.ts';
 export type { HistoryManagerOptions } from './history.ts';
+
+export {
+  type SchemaVersion,
+  type MigrationStep,
+  type MigrationResult,
+  MigrationManager,
+  type MigrationOptions,
+} from './migration.ts';
