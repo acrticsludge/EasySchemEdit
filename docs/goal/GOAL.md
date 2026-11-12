@@ -85,7 +85,8 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Phase 1 conflicts: complete — all 7 known conflicts resolved and documented in docs/agent/phase1-conflicts.md
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 (H foundation): COMPLETE — all 7 slices done (h-0 pnpm workspaces, h-1 Astro shell, h-2 Cloudflare Workers, h-3 MCP companion, h-4 asset pipeline, h-5 IndexedDB persistence, h-6 Web Workers, h-7 CI/CD pipeline)
-- Phase 2 (subplan-c planning): research gate + index.md + slice c-0 created; slices c-1 through c-10 pending implementation
+- Phase 2 (subplan-c planning): research gate + index.md complete; slice c-0 IMPLEMENTED (IndexedDB schema with 10 object stores); slices c-1 through c-10 pending implementation
+- Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c slice c-0 done
 - Subplan-C..G planning: COMPLETE — subplan-c (11 slices), subplan-d (13 slices), subplan-e (15 slices), subplan-f (13 slices), subplan-g (16 slices) all have research gates + index + slice-0 specs
 - Phase 3 audits: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red (docs/audits/subplan-a-round-1.md through subplan-h-round-1.md)
-- Git: master @ 98ab895, pushed to origin/master, working tree clean
+- Git: master @ 10bc5e8, pushed to origin/master, working tree clean
