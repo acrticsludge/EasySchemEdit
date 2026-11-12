@@ -60,3 +60,10 @@ export {
   type RecoveryResult,
   RecoveryManager,
 } from './recovery.ts';
+
+export {
+  type QuotaInfo,
+  type StorageBudgetConfig,
+  type StorageBudgetCallbacks,
+  StorageBudgetManager,
+} from './storage-budget.ts';
