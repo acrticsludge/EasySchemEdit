@@ -88,4 +88,16 @@ export {
   ClipboardManager,
 } from './clipboard.ts';
 
+export type {
+  ConflictCategory,
+  ConflictEntry,
+  ConflictResult,
+  ConflictIndexOptions,
+} from './conflict-index.ts';
+
+export {
+  ConflictIndex,
+  detectConflicts,
+} from './conflict-index.ts';
+
 export type { LockedOperationError } from './placement.ts';
