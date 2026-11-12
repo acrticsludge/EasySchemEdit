@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Type check all packages
+        run: |
+          pnpm --filter @easyschemedit/domain exec tsc --noEmit
+          pnpm --filter @easyschemedit/formats exec tsc --noEmit
+          pnpm --filter @easyschemedit/asset-pipeline exec tsc --noEmit
+          pnpm --filter @easyschemedit/persistence exec tsc --noEmit
+          pnpm --filter @easyschemedit/workers exec tsc --noEmit
+
+      - name: Run all tests
+        run: |
+          pnpm --filter @easyschemedit/domain exec npx tsx __tests__/slice-*.test.ts
+          pnpm --filter @easyschemedit/formats exec npx tsx __tests__/slice-b-*.test.ts
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Astro app
+        run: |
+          pnpm --filter @easyschemedit/web exec astro build
+
+      - name: Install Wrangler
+        run: pnpm --filter @easyschemedit/web exec pnpm add -D wrangler
+
+      - name: Deploy to Cloudflare Workers
+        run: pnpm --filter @easyschemedit/web exec wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

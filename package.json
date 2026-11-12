@@ -12,7 +12,9 @@
     "apps/*"
   ],
   "scripts": {
-    "test": "echo \"Error: no test specified at root; run tests in packages/*\" && exit 1"
+    "test": "pnpm --filter @easyschemedit/domain exec npx tsx __tests__/slice-*.test.ts && pnpm --filter @easyschemedit/formats exec npx tsx __tests__/slice-b-*.test.ts",
+    "test:all": "pnpm --filter @easyschemedit/domain exec npx tsx __tests__/slice-*.test.ts && pnpm --filter @easyschemedit/formats exec npx tsx __tests__/slice-b-*.test.ts",
+    "typecheck": "pnpm --filter @easyschemedit/domain exec tsc --noEmit && pnpm --filter @easyschemedit/formats exec tsc --noEmit && pnpm --filter @easyschemedit/asset-pipeline exec tsc --noEmit && pnpm --filter @easyschemedit/persistence exec tsc --noEmit && pnpm --filter @easyschemedit/workers exec tsc --noEmit"
   },
   "repository": {
     "type": "git",
