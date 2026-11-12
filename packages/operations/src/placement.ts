@@ -39,7 +39,7 @@ export type PlacementReorderOperation = {
 // ============================================================================
 
 export function lockPlacement(placement: Placement, reason: 'user' | 'import' | 'system' = 'user'): Placement {
-  return { ...placement, locked: true };
+  return { ...placement, locked: true, lockReason: reason };
 }
 
 export function unlockPlacement(placement: Placement): Placement {

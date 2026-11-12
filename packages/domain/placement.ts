@@ -42,6 +42,7 @@ export type Placement = {
   ancillary: PlacementAncillaryData;
   visible: boolean;
   locked: boolean;
+  lockReason?: 'user' | 'import' | 'system';
   color?: string;
   createdAt: string;
   source: PlacementSource;
