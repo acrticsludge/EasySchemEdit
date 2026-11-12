@@ -1,0 +1,22 @@
+{
+  "name": "@easyschemedit/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Astro static app shell with React editor island for EasySchemEdit",
+  "scripts": {
+    "build": "astro build",
+    "dev": "astro dev",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@astrojs/react": "^4.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}

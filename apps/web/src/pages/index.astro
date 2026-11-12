@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import EditorIsland from '../islands/EditorIsland.tsx';
+
+const title = 'EasySchemEdit';
+---
+
+<BaseLayout title={title}>
+  <main class="shell">
+    <EditorIsland client:load />
+  </main>
+</BaseLayout>
+
+<style>
+  .shell {
+    min-height: 100vh;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+</style>

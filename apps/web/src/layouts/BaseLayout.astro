@@ -1,0 +1,24 @@
+---
+import EditorIsland from '@/islands/EditorIsland.tsx';
+
+const { title } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+  </head>
+  <body>
+    <slot />
+    <script>
+      // Service worker registration placeholder (offline support, h-5+)
+      if ('serviceWorker' in navigator) {
+        // eslint-disable-next-line no-console
+        console.log('Service worker registration deferred to h-5+');
+      }
+    </script>
+  </body>
+</html>
