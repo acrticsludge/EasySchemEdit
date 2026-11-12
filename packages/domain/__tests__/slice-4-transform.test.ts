@@ -4,6 +4,7 @@ import {
   mapCellToWorld,
   isLatticeSafe,
   rotateAboutPoint,
+  worldPointToLocal,
 } from '../coordinates.ts';
 
 let passed = 0;
@@ -122,10 +123,21 @@ for (const t of transforms) {
 }
 
 // Test 12: rotateAboutPoint produces valid transform
-const placement = { transform: makeTransform([10, 0, 10] as Vec3i, 0, 'none') };
+const placement = { transform: makeTransform([10, 0, 10] as Vec3i, 0, 'none'), origin: [0, 0, 0] as Vec3Half };
 const rotated = rotateAboutPoint(placement, [0, 0, 0] as Vec3Half, 90, 'none');
 assert(rotated.rotationY === 90, 'rotateAboutPoint sets rotationY');
 assert(typeof rotated.translation[0] === 'number', 'rotateAboutPoint returns valid translation');
+
+// Test 13: rotateAboutPoint keeps pivot fixed — rotate 90° about pivot at block center [10.5,0.5,10.5]
+// Local block [0,0,0] maps to world cell [10,0,10] under old transform (translation [10,0,10]).
+// The pivot [21,1,21] in half-block units = center of world cell [10,0,10].
+// After rotateAboutPoint about this pivot with rot=90, local block [0,0,0] must still map to world [10,0,10].
+const pivotCenter = [21, 1, 21] as Vec3Half; // [10.5, 0.5, 10.5] in half-block units
+const pivotFixed = rotateAboutPoint(placement, pivotCenter, 90, 'none');
+const oldMap = mapCellToWorld([10, 0, 10] as Vec3i, [0, 0, 0] as Vec3Half, 0, 'none', [0, 0, 0] as Vec3i);
+assert(oldMap.valid && oldMap.worldBlock![0] === 10 && oldMap.worldBlock![1] === 0 && oldMap.worldBlock![2] === 10, 'old: local [0,0,0] → world [10,0,10]');
+const newMap = mapCellToWorld(pivotFixed.translation, [0, 0, 0] as Vec3Half, pivotFixed.rotationY, pivotFixed.mirror, [0, 0, 0] as Vec3i);
+assert(newMap.valid && newMap.worldBlock![0] === 10 && newMap.worldBlock![1] === 0 && newMap.worldBlock![2] === 10, 'new: local [0,0,0] → world [10,0,10] (pivot fixed)');
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 if (failed > 0) {

@@ -2,7 +2,6 @@
 import { LitematicAdapter } from '../litematic.ts';
 import { encodeNbt } from '../nbts.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
-
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
   gzipDecompress: (b: Uint8Array) => b,
@@ -33,7 +32,7 @@ function buildLitematic2x2x2(): Uint8Array {
   // BlockStates: bpe=2, 8 entries [0,1,0,1,0,1,0,1]
   // entry i at bits [i*2, i*2+1]: entry1=1→bit2, entry3=1→bit6, entry5=1→bit10, entry7=1→bit14
   // value = (1<<2)|(1<<6)|(1<<10)|(1<<14) = 0x4444
-  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) };
+  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) } as NbtTag;
 
   const region = compound([
     ['Position', list([int(0), int(0), int(0)])],
@@ -127,7 +126,7 @@ const adapter = new LitematicAdapter();
   // blockStates entries [0,1,0,1,...]; raw x=0 → entry 0 = stone
   // reversal ax=-2: rawToNormalizedCoord(0,0,0,{ax:-2,ay:2,az:2}) = {x: 1, y: 0, z: 0}
   // flat index = 1 → entry at flat 1 = dirt → stored at chunk position li=0
-  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) };
+  const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) } as NbtTag;
   const region = compound([
     ['Position', list([int(0), int(0), int(0)])],
     ['Size', list([int(-2), int(2), int(2)])],

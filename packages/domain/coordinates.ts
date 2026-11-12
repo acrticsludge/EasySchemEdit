@@ -117,12 +117,12 @@ export function isLatticeSafe(_translation: Vec3i, origin: Vec3Half): boolean {
 }
 
 export function localBlockToWorld(
-  placement: { transform: Transform },
+  placement: { transform: Transform; origin: Vec3Half },
   localBlock: Vec3i,
 ): Vec3i {
   const result = mapCellToWorld(
     placement.transform.translation,
-    [0, 0, 0] as Vec3Half,
+    placement.origin,
     placement.transform.rotationY,
     placement.transform.mirror,
     localBlock,
@@ -134,9 +134,9 @@ export function localBlockToWorld(
 }
 
 export function placementWorldBounds(
-  placement: { transform: Transform; volume: { bounds: Bounds3i } },
+  placement: { transform: Transform; origin: Vec3Half; volume: { bounds: Bounds3i } },
 ): Bounds3i {
-  const { transform, volume } = placement;
+  const { transform, volume, origin } = placement;
   const { min, maxExclusive } = volume.bounds;
 
   let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -147,7 +147,7 @@ export function placementWorldBounds(
       for (let x = min[0]; x < maxExclusive[0]; x++) {
         const result = mapCellToWorld(
           transform.translation,
-          [0, 0, 0] as Vec3Half,
+          origin,
           transform.rotationY,
           transform.mirror,
           [x, y, z],
@@ -172,36 +172,54 @@ export function placementWorldBounds(
 }
 
 export function rotateAboutPoint(
-  placement: { transform: Transform },
+  placement: { transform: Transform; origin: Vec3Half },
   pivot: Vec3Half,
   rotationY: 0 | 90 | 180 | 270,
   mirror: 'none' | 'x' | 'z',
 ): Transform {
-  const { transform } = placement;
-  const [px, py, pz] = pivot;
+  const { transform, origin } = placement;
 
-  const [mx, my, mz] = applyMirror(px, py, pz, mirror);
-  const [rx, ry, rz] = applyRotation(mx, my, mz, rotationY);
+  // Work in doubled half-block units.
+  // pivot (Vec3Half) and origin (Vec3Half) are already stored as doubled units.
+  // translation (Vec3i) must be doubled: T2 = translation * 2.
+  const [p2x, p2y, p2z] = pivot;
+  const [t2x, t2y, t2z] = [transform.translation[0] * 2, transform.translation[1] * 2, transform.translation[2] * 2];
+  const [o2x, o2y, o2z] = origin;
+
+  // Step 1: Local coordinate of the world pivot under the current transform.
+  // L2 = O + M_cur(R_cur⁻¹(P2 - T2))
+  const [dx, dy, dz] = [p2x - t2x, p2y - t2y, p2z - t2z];
+  const [irx, iry, irz] = applyRotationInverse(dx, dy, dz, transform.rotationY);
+  const [umx, umy, umz] = applyMirror(irx, iry, irz, transform.mirror);
+  const l2x = o2x + umx;
+  const l2y = o2y + umy;
+  const l2z = o2z + umz;
+
+  // Step 2: New translation so that L2 maps to P2 under the new transform.
+  // P2 = T2_new + R_new(M_new(L2 - O2))  →  T2_new = P2 - R_new(M_new(L2 - O2))
+  const [d2x, d2y, d2z] = [l2x - o2x, l2y - o2y, l2z - o2z];
+  const [mx2, my2, mz2] = applyMirror(d2x, d2y, d2z, mirror);
+  const [nr2x, nr2y, nr2z] = applyRotation(mx2, my2, mz2, rotationY);
+
+  const t2newx = p2x - nr2x;
+  const t2newy = p2y - nr2y;
+  const t2newz = p2z - nr2z;
 
   return {
-    translation: [
-      transform.translation[0] + Math.round(px - rx),
-      transform.translation[1] + Math.round(py - ry),
-      transform.translation[2] + Math.round(pz - rz),
-    ] as Vec3i,
+    translation: [Math.round(t2newx / 2), Math.round(t2newy / 2), Math.round(t2newz / 2)] as Vec3i,
     rotationY,
     mirror,
   };
 }
 
 export function localPointToWorld(
-  placement: { transform: Transform },
+  placement: { transform: Transform; origin: Vec3Half },
   localPoint: Vec3d,
 ): Vec3d {
   const cell = [Math.floor(localPoint[0]), Math.floor(localPoint[1]), Math.floor(localPoint[2])] as Vec3i;
   const result = mapCellToWorld(
     placement.transform.translation,
-    [0, 0, 0] as Vec3Half,
+    placement.origin,
     placement.transform.rotationY,
     placement.transform.mirror,
     cell,
@@ -213,9 +231,40 @@ export function localPointToWorld(
 }
 
 export function worldPointToLocal(
-  _placement: { transform: Transform },
+  placement: { transform: Transform; origin: Vec3Half },
   worldPoint: Vec3d,
 ): Vec3d {
+  const { transform, origin } = placement;
   const worldCell = [Math.floor(worldPoint[0]), Math.floor(worldPoint[1]), Math.floor(worldPoint[2])] as Vec3i;
-  return [worldCell[0] + 0.5, worldCell[1] + 0.5, worldCell[2] + 0.5] as Vec3d;
+  const worldCenter = [worldCell[0] + 0.5, worldCell[1] + 0.5, worldCell[2] + 0.5];
+
+  // d = worldCenter - translation (offset from translation in world space)
+  const dx = worldCenter[0] - transform.translation[0];
+  const dy = worldCenter[1] - transform.translation[1];
+  const dz = worldCenter[2] - transform.translation[2];
+
+  // Inverse rotation: R⁻¹
+  let [rx, ry, rz] = applyRotationInverse(dx, dy, dz, transform.rotationY);
+  // Inverse mirror: M is self-inverse
+  const [mx, my, mz] = applyMirror(rx, ry, rz, transform.mirror);
+
+  // localCenter = origin + d_unmirrored
+  const localCenterX = origin[0] + mx;
+  const localCenterY = origin[1] + my;
+  const localCenterZ = origin[2] + mz;
+
+  // Convert center back to block coordinate: subtract [0.5, 0.5, 0.5]
+  return [localCenterX - 0.5, localCenterY - 0.5, localCenterZ - 0.5] as Vec3d;
+}
+
+// Inverse rotation: R₀⁻¹=R₀, R₉₀⁻¹=R₂₇₀, R₁₈₀⁻¹=R₁₈₀, R₂₇₀⁻¹=R₉₀
+function applyRotationInverse(
+  x: number, y: number, z: number, rotationY: 0 | 90 | 180 | 270,
+): [number, number, number] {
+  switch (rotationY) {
+    case 0:  return [x, y, z];
+    case 90: return applyRotation(x, y, z, 270);  // R₉₀⁻¹ = R₂₇₀
+    case 180: return applyRotation(x, y, z, 180); // R₁₈₀⁻¹ = R₁₈₀
+    case 270: return applyRotation(x, y, z, 90);  // R₂₇₀⁻¹ = R₉₀
+  }
 }
