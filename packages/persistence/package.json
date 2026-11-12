@@ -1,0 +1,18 @@
+{
+  "name": "@easyschemedit/persistence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "IndexedDB persistence layer for EasySchemEdit — project storage, chunk binaries, autosave, recovery",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"No tests yet — IndexedDB requires browser environment\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
