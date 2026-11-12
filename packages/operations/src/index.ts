@@ -100,4 +100,14 @@ export {
   detectConflicts,
 } from './conflict-index.ts';
 
+export type {
+  BakeOptions,
+  BakeResult,
+} from './bake.ts';
+
+export {
+  BakeEngine,
+  bakeProject,
+} from './bake.ts';
+
 export type { LockedOperationError } from './placement.ts';
