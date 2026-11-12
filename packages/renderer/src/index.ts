@@ -69,3 +69,11 @@ export type {
   CameraControlState,
   CameraControls,
 } from './camera.ts';
+
+export type {
+  HoverTarget,
+  HoverOverlay,
+  HoverInfoHUD,
+  SameTypeHighlight,
+  HoverEngine,
+} from './hover.ts';
