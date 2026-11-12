@@ -14,9 +14,9 @@
 
 ```ts
 export type FormatSignature = {
-  magic: Uint8Array;      // first N bytes used for detection
-  mask?: Uint8Array;      // bitmask applied before comparison
-  offset: number;         // byte offset where magic starts
+  magic: Uint8Array;
+  mask?: Uint8Array;
+  offset: number;
 };
 
 export type DetectedFormat =
@@ -24,21 +24,22 @@ export type DetectedFormat =
   | { kind: 'schem-v2'; confidence: 'high' | 'low' }
   | { kind: 'litematic'; confidence: 'high' | 'low' }
   | { kind: 'schematic-legacy'; confidence: 'high' | 'low' }
+  | { kind: 'vanilla-nbt'; confidence: 'high' | 'low' }
   | { kind: 'unknown'; reason: string };
 
 export type FormatDetectionResult = {
   format: DetectedFormat;
-  filenameExtension: string;   // for cross-check, never trusted alone
-  extensionMatches: boolean;   // true if extension agrees with signature
-  decompressionRequired: boolean; // true if gzip/zlib wrapper detected before NBT
+  filenameExtension: string;
+  extensionMatches: boolean;
+  decompressionRequired: boolean;
 };
 ```
 
 ## Acceptance Criteria
 
 - [ ] `FormatSignature` has `magic`, optional `mask`, `offset`
-- [ ] `DetectedFormat` union covers schem-v3, schem-v2, litematic, schematic-legacy, unknown
-- [ ] `FormatDetectionResult` includes confidence, extension match flag, decompression flag
+- [ ] `DetectedFormat` union covers schem-v3, schem-v2, litematic, schematic-legacy, vanilla-nbt, unknown
+- [ ] `FormatDetectionResult` includes extension match flag, decompression flag
 - [ ] `packages/formats` has zero imports of Three.js/React/DOM/UI
 
 ## Tests
@@ -46,7 +47,7 @@ export type FormatDetectionResult = {
 **File:** `packages/formats/__tests__/slice-b-0-types.test.ts`
 
 1. `FormatSignature` type is exported and usable
-2. `DetectedFormat` discriminates on `kind` field
+2. `DetectedFormat` discriminates on `kind` field including `vanilla-nbt`
 3. `FormatDetectionResult` has `filenameExtension`, `extensionMatches`, `decompressionRequired`
 
 ## Verification Checklist

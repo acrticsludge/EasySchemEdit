@@ -1,8 +1,8 @@
-# Subspec B — Slice b-3: Litematica packed BlockStates
+# Subspec B — Slice b-3: Packed BlockStates
 
-**Goal:** Implement the exact Litematica packed BlockStates decode/encode algorithm per SUBSPEC-B §5.2: minimum palette width, continuous LSB-first packing, entries crossing 64-bit boundaries, exact packed-array length, correct BigInt/64-bit extraction and encoding.
+**Goal:** Implement packed BlockStates decode/encode. Palette input is `BlockStateId[]` ({Name, Properties}), not `string[]`. Remove BigInt steps from encode — use 32-bit halves both ways. `bitsPerEntry = max(2, ceil(log2(P)))`. Do NOT require air at palette index 0 on import; remap.
 
-## Files to Create/Modify
+## Files to Create
 
 | File | Purpose |
 |------|---------|
@@ -10,59 +10,71 @@
 
 ## Algorithm
 
+### bitsPerEntry
+`P <= 2 → 2` (minimum 2 bits); else `ceil(log2(P))`.
+Test widths: P=1→2, P=2→2, P=3→2, P=4→2, P=5→3, P=12→4, P=20→5, P=300→9.
+
+### Decode
+1. `totalEntries = |regionWidth| * |regionHeight| * |regionLength|`
+2. `totalBits = totalEntries * bitsPerEntry`
+3. `wordsNeeded = ceil(totalBits / 64)`
+4. If `packed.length < wordsNeeded` → `IMPORT_TRUNCATED_DATA`
+5. Entry at linear index `i`: `bitStart = i * bitsPerEntry`; `wordStart = floor(bitStart / 64)`; `bitOff = bitStart % 64`
+   - If `bitOff + bitsPerEntry <= 64`: entry inside one word
+   - Else: crosses 64-bit boundary; combine low bits from `wordStart` and high bits from `wordStart + 1`
+6. `entry = palette[entry]`; `entry >= palette.length` → `IMPORT_NBT_INVALID` (air remapped, index 0 not required)
+
+### Encode (32-bit halves both ways, no BigInt steps)
+1. `wordsNeeded = ceil(totalEntries * bitsPerEntry / 64)`; allocate `packed = new Uint32Array(wordsNeeded * 2)` (low/high 32-bit halves)
+2. For each linear index `i`: compute bitStart, wordStart, bitOff
+3. If fits in one word: set bits in the appropriate 32-bit half
+4. Else: split across word boundary using 32-bit shifts
+5. Pack halves into Uint8Array output (little-endian 64-bit words)
+
+## Return Types
+
 ```ts
 export function decodePackedBlockStates(
-  palette: BlockStateId[],
-  packed: bigint[],       // unsigned 64-bit values from NBT longs
+  palette: BlockStateId[],        // {Name, Properties}, not string[]
+  packed: Uint8Array,
   bitsPerEntry: number,
-  totalEntries: bigint,
-): BlockStateId[];
+  totalEntries: number,
+): { indices: Uint16Array | Uint32Array; palette: BlockStateId[] };
 
 export function encodePackedBlockStates(
   palette: BlockStateId[],
-  entries: number[],       // palette indices per linear index
+  indices: Uint16Array | Uint32Array,
   bitsPerEntry: number,
-): bigint[];
+): Uint8Array;  // 32-bit halves both ways, no BigInt
 ```
 
-### Decode steps
-
-1. **bitsPerEntry:** `P <= 1 → 0`; else `ceil(log2(P))`. Test widths: P=1→0, P=5→3, P=12→4, P=20→5, P=300→9.
-2. **totalEntries:** `|regionWidth| * |regionHeight| * |regionLength|` (BigInt).
-3. **wordsNeeded:** `bitsPerEntry == 0 → 0`; else `ceil(totalBits / 64)` where `totalBits = totalEntries * bitsPerEntry`.
-4. **Entry at index i:** `bitStart = i * bitsPerEntry`; `wordStart = floor(bitStart / 64)`; `bitOff = bitStart % 64`. If `bitOff + bitsPerEntry <= 64`: entry inside one word. Else: entry crosses 64-bit boundary, combine low bits from `wordStart` and high bits from `wordStart + 1`.
-5. **Palette lookup:** `palette[entry]`; `entry >= palette.length` → `IMPORT_NBT_INVALID`.
-
-### Encode steps (reverse)
-
-1. `wordsNeeded = ceil(totalEntries * bitsPerEntry / 64)`; allocate `packed = [0n, ...]` (wordsNeeded unsigned 64-bit BigInts).
-2. For each linear index `i`: `bitStart = i * bitsPerEntry`; `wordStart = floor(bitStart / 64)`; `bitOff = bitStart % 64`.
-3. If `bitOff + bitsPerEntry <= 64`: `packed[wordStart] |= (entry & MASK(bitsPerEntry)) << bitOff`.
-4. Else: `lowBits = 64 - bitOff`; `highBits = bitsPerEntry - lowBits`; `packed[wordStart] |= (entry & MASK(lowBits)) << bitOff`; `packed[wordStart + 1] |= (entry >> BigInt(lowBits)) & MASK(highBits)`.
-5. Mask each word to 64 bits: `packed[w] &= ((1n << 64n) - 1n)`.
-6. Write packed as signed 64-bit longs (two's complement).
+- Indices returned as `Uint16Array` (palette <= 65536) or `Uint32Array` (larger)
+- Air remapped on import; palette index 0 NOT required
 
 ## Acceptance Criteria
 
-- [ ] bits per entry by palette size: P=1→0, P=5→3, P=12→4, P=20→5, P=300→9
+- [ ] Palette input is `BlockStateId[]` ({Name, Properties}), not `string[]`
+- [ ] `bitsPerEntry = max(2, ceil(log2(P)))`: P=1→2, P=2→2, P=3→2, P=4→2, P=5→3, P=12→4, P=20→5, P=300→9
 - [ ] Entries crossing 64-bit boundaries decoded/encoded correctly
-- [ ] Exact packed-array length: `ceil(totalBits / 64)` words
-- [ ] BigInt/64-bit extraction and encoding correct (unsigned shift, no sign extension)
-- [ ] Palette validation: index 0 = air, duplicates rejected, index >= palette.length → `IMPORT_NBT_INVALID`
+- [ ] Encode uses 32-bit halves both ways (no BigInt steps)
+- [ ] Returns `Uint16Array`/`Uint32Array` indices (not `BlockStateId[]`)
+- [ ] Air remapped on import; palette index 0 NOT required
+- [ ] `entry >= palette.length` → `IMPORT_NBT_INVALID`
 
 ## Tests
 
 **File:** `packages/formats/__tests__/slice-b-3-packed-blockstates.test.ts`
 
-1. bitsPerEntry for P=1, 5, 12, 20, 300
-2. Decode entry crossing 64-bit word boundary (e.g. P=5, BPE=3, entry i=21)
+1. bitsPerEntry for P=1, 2, 3, 4, 5, 12, 20, 300
+2. Decode entry crossing 64-bit word boundary
 3. Encode/decode round-trip preserves all entries
-4. Palette index >= palette.length → `IMPORT_NBT_INVALID`
-5. Exact packed-array length matches `ceil(totalBits / 64)`
+4. Returns `Uint16Array` for small palettes, `Uint32Array` for large
+5. Encode uses 32-bit halves (no BigInt)
+6. Palette index >= palette.length → `IMPORT_NBT_INVALID`
 
 ## Verification Checklist
 
-- [ ] Change does one thing completely (packed BlockStates algorithm)
+- [ ] Change does one thing completely (packed BlockStates)
 - [ ] TypeScript compiles without errors
 - [ ] All new tests pass
 - [ ] Change committed with descriptive message
