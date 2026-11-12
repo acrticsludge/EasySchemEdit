@@ -10,13 +10,14 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@astrojs/react": "^4.0.0",
     "astro": "^5.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "@astrojs/react": "^4.0.0"
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "wrangler": "^4.161.0"
   },
   "license": "MIT"
 }
