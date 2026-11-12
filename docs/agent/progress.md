@@ -13,7 +13,7 @@
 ## Next
 - Phase 3: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red
 - docs/audits/subplan-a-round-1.md through subplan-h-round-1.md: all findings documented
-- Phase 4 implementation — subplan-c COMPLETE (10/10), subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15); subplan-f slice f-0 complete; f-1 through f-12 pending
+- Phase 4 implementation — subplan-c COMPLETE (10/10), subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15); subplan-f slices f-0 (companion config), f-1 (mutation envelope), f-2 (pairing token + security) complete; f-3 through f-12 pending
 - Phase 5: questions, then final fix
 
 ## Blocked
