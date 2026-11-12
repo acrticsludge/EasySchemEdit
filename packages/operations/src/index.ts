@@ -8,6 +8,16 @@ export type {
   PlacementReorderOperation,
 } from './placement.ts';
 
+export type {
+  SelectionType,
+  CuboidBounds,
+  SelectionAnchor,
+  PlacementSelection,
+  CuboidSelection,
+  Selection,
+  SelectionState,
+} from './selection.ts';
+
 export {
   lockPlacement,
   unlockPlacement,
@@ -28,5 +38,23 @@ export {
   validateLockedOperations,
   validateVisibilityAllowed,
 } from './placement.ts';
+
+export {
+  createPlacementSelection,
+  createCuboidSelection,
+  createSelectionState,
+  getSelectionVolume,
+  isEmptySelection,
+  getSelectedPlacementIds,
+  switchToPlacementSelection,
+  switchToCuboidSelection,
+  updateAnchor,
+  updateSelectionBounds,
+  repairAfterDelete,
+  boundsContainsPoint,
+  boundsUnion,
+  boundsIntersect,
+  boundsVolume,
+} from './selection.ts';
 
 export type { LockedOperationError } from './placement.ts';
