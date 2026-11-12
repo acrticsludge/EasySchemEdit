@@ -18,6 +18,19 @@ export type {
   SelectionState,
 } from './selection.ts';
 
+export type {
+  BlockStateMatcher,
+  FillOperation,
+  ReplaceOperation,
+  DeleteOperation,
+  HollowOperation,
+  WallsOperation,
+  RegionOperation,
+  RegionOperationOptions,
+  RegionOperationResult,
+  PerPlacementChange,
+} from './region-ops.ts';
+
 export {
   lockPlacement,
   unlockPlacement,
@@ -56,5 +69,10 @@ export {
   boundsIntersect,
   boundsVolume,
 } from './selection.ts';
+
+export {
+  RegionOperationEngine,
+  applyRegionOperation,
+} from './region-ops.ts';
 
 export type { LockedOperationError } from './placement.ts';
