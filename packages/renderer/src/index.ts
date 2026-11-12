@@ -77,3 +77,11 @@ export type {
   SameTypeHighlight,
   HoverEngine,
 } from './hover.ts';
+
+export type {
+  OverlayConfig,
+  OverlayLineBuffer,
+  ChunkBorderOverlay,
+  BlockBorderOverlay,
+  ViewportOverlayState,
+} from './viewport-overlays.ts';
