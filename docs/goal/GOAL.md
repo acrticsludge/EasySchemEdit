@@ -84,6 +84,5 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Subplan-B: complete — 15 slices planned, implemented in packages/formats/, 14 tests pass, tsc clean
 - Phase 1 conflicts: complete — all 7 known conflicts resolved and documented in docs/agent/phase1-conflicts.md
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
-- Phase 2 (H foundation): slice h-0 complete — pnpm workspaces monorepo, pnpm install OK, all 35 tests pass
-- Slices h-1 through h-7: not yet implemented (Astro shell, CF Workers, MCP companion, asset pipeline, IndexedDB, Web Workers, CI)
-- Git: master @ 4836e92, pushed to origin/master, working tree clean
+- Phase 2 (H foundation): slice h-0 complete (pnpm workspaces), slice h-1 complete (Astro shell + React island, `astro build` produces dist/); slices h-2 through h-7 pending (Cloudflare Workers, MCP companion, asset pipeline, IndexedDB, Web Workers, CI)
+- Git: master @ e71a212, pushed to origin/master, working tree clean
