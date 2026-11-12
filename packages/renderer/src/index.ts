@@ -99,3 +99,18 @@ export type {
   PackDiagnostics,
   PackAction,
 } from './pack-manager.ts';
+
+export type {
+  ValidationRule,
+  ValidationResult,
+  ValidationError,
+  ValidationSeverity,
+  ResourcePackValidation,
+  ModelValidation,
+  TextureValidation,
+  DPRValidation,
+  FaceCullingValidation,
+  MirrorValidation,
+  AtlasValidation,
+  ValidationManager,
+} from './validation.ts';
