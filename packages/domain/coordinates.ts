@@ -37,7 +37,7 @@ export type Transform = {
 // | 0       1   0     |
 // | -sin θ  0   cos θ |
 // For θ=90°: (x, y, z) → (z, y, -x). Facing north (0,0,-1) → west (-1,0,0).
-function applyRotation(
+export function applyRotation(
   x: number, y: number, z: number, rotationY: 0 | 90 | 180 | 270,
 ): [number, number, number] {
   switch (rotationY) {
@@ -49,7 +49,7 @@ function applyRotation(
 }
 
 // Mirror applied in local space before rotation
-function applyMirror(
+export function applyMirror(
   x: number, y: number, z: number, mirror: 'none' | 'x' | 'z',
 ): [number, number, number] {
   switch (mirror) {
