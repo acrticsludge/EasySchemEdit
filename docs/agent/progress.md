@@ -13,7 +13,7 @@
 ## Next
 - Phase 3: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red
 - docs/audits/subplan-a-round-1.md through subplan-h-round-1.md: all findings documented
-- Phase 4 implementation started — subplan-c slice c-0 (IndexedDB schema) complete; slice c-1 (crash-safe commit protocol) complete; slices c-2 through c-10 pending
+- Phase 4 implementation — subplan-c slices c-0 (IndexedDB schema), c-1 (crash-safe commit protocol), c-2 (project lifecycle) complete; slices c-3 through c-10 pending
 - Phase 5: questions, then final fix
 
 ## Blocked
