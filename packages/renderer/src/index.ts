@@ -91,3 +91,11 @@ export type {
   OriginMarkerOverlay,
   ConflictOverlay,
 } from './overlays.ts';
+
+export type {
+  PackManagerState,
+  PackEntry,
+  PackCompatibility,
+  PackDiagnostics,
+  PackAction,
+} from './pack-manager.ts';
