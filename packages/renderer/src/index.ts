@@ -24,3 +24,11 @@ export type {
 } from './resource-pack-types.ts';
 
 export type { MissingModelFallback } from './missing-model.ts';
+
+export type {
+  AssetLoadState,
+  AssetLoadOptions,
+  AssetLoadResult,
+  AssetLoadingState,
+  AnimationFrame,
+} from './asset-loading.ts';
