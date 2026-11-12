@@ -135,4 +135,15 @@ export {
   generateMaterialReport,
 } from './verify-material.ts';
 
+export type {
+  HoverState,
+  HoverInfo,
+} from './hover.ts';
+
+export {
+  HoverEngine,
+  hoverOver,
+  clearHover,
+} from './hover.ts';
+
 export type { LockedOperationError } from './placement.ts';
