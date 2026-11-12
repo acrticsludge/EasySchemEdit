@@ -82,5 +82,7 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Phase 0 baseline: complete (baseline.md, skills-inventory.md, repo-state.md, progress.md all written and verified)
 - Subplan-A: complete — 22 slices planned, implemented in packages/domain/, 21 tests pass, tsc clean
 - Subplan-B: complete — 15 slices planned, implemented in packages/formats/, 14 tests pass, tsc clean
+- Phase 1 conflicts: complete — all 7 known conflicts resolved and documented in docs/agent/phase1-conflicts.md
+- Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Subplan-C..H: not yet planned (Phase 2 pending)
-- Git: master @ 32ab14a, pushed to origin/master, working tree clean
+- Git: master @ cfcef1b, pushed to origin/master, working tree clean
