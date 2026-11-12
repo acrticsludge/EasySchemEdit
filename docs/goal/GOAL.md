@@ -89,4 +89,4 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c slice c-0 (IndexedDB schema) complete; slice c-1 (crash-safe commit protocol) complete; slices c-2 through c-10 pending
 - Subplan-C..G planning: COMPLETE — subplan-c (11 slices), subplan-d (13 slices), subplan-e (15 slices), subplan-f (13 slices), subplan-g (16 slices) all have research gates + index + slice-0 specs
 - Phase 3 audits: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red (docs/audits/subplan-a-round-1.md through subplan-h-round-1.md)
-- Git: master @ 8833cd0, pushed to origin/master, working tree clean
+- Git: master @ 3ebd81b, pushed to origin/master, working tree clean
