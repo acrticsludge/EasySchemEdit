@@ -19,10 +19,10 @@ Build in thin vertical slices per the incremental-implementation skill:
 | `slice-c-2.md` | Project lifecycle: create/open/duplicate/rename/delete | `packages/persistence/src/project-store.ts` | CRUD operations, revision tracking |
 | `slice-c-3.md` | Autosave with race resolution | `packages/persistence/src/autosave.ts` | Debounce, command threshold, saveInProgress flag, newerEditArrived |
 | `slice-c-4.md` | History: undo/redo, delta records, pruning | `packages/persistence/src/history.ts` | Undo/redo, 200 entries / 256 MiB pruning, cursor management |
-| `slice-c-5.md` | Migration system: type-safe, deterministic | `packages/project-schema/src/migration.ts` | Pure transform, input/output validation, rollback |
+| `slice-c-5.md` | Migration system: type-safe, deterministic | `packages/persistence/src/migration.ts` | Pure transform, input/output validation, rollback |
 | `slice-c-6.md` | Recovery snapshots: 3 versions, 7-day retention | `packages/persistence/src/recovery.ts` | Snapshot creation, restoration, expiration cleanup |
 | `slice-c-7.md` | Storage budget: quota estimation, warning/reject thresholds | `packages/persistence/src/storage-budget.ts` | 512 MiB/70% warning, 1.5 GiB/85% hard reject, headroom |
-| `slice-c-8.md` | .vxproj archive: ZIP64, DEFLATE level 6, manifest.checksums | `packages/formats/src/vxproj.ts` (or new package) | Archive round-trip, checksum verification, path traversal rejection |
+| `slice-c-8.md` | .vxproj archive: ZIP64, DEFLATE level 6, manifest.checksums | `packages/formats/src/vxproj.ts` | Archive round-trip, checksum verification, path traversal rejection |
 | `slice-c-9.md` | Idempotency records: same DB, atomic commit | `packages/persistence/src/idempotency.ts` | requestId caching, args mismatch, 15-minute expiry |
 | `slice-c-10.md` | Acceptance criteria verification | `packages/persistence/__tests__/` | All 20 SUBSPEC-C acceptance items |
 

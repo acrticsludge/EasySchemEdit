@@ -38,11 +38,11 @@ Build in thin vertical slices per the incremental-implementation skill:
 | 9 | Worker entry point `apps/web/src/worker.ts`, serves static build + SPA fallback | h-2 | (worker.ts) |
 | 10 | Version pinning in lockfile; no runtime unpinned `latest` CDN assets | h-0 | (lockfile audit) |
 | 11 | No Three.js/React/DOM/UI imports in `packages/domain` | h-0 | (dependency lint) |
-| 12 | Release acceptance item 1: imports `.schem` v3 and `.litematic` fixtures | h-4 | (asset pipeline) |
+| 12 | Release acceptance item 1: imports `.schem` v3 and `.litematic` fixtures | b-4, b-8 | slice-b-4-litematic.test.ts, slice-b-8-sponge-v3.test.ts |
 | 13 | Release acceptance item 3: default asset profile pinned to Minecraft 1.21.11 | h-4 | (version manifest) |
 | 14 | Release acceptance item 11: vanilla 1.21.11 assets available through default asset pipeline | h-4 | (asset pipeline) |
 | 15 | Release acceptance item 12: custom resource packs can override vanilla assets | h-4 | (asset pipeline) |
-| 16 | Phase 0 asset gate: browser CORS/download feasibility for official Mojang endpoints | h-4 | `slice-h-4-asset-pipeline.test.ts` |
+| 16 | Phase 0 asset gate: browser CORS/download feasibility | b-13 | slice-b-13-asset-pipeline.test.ts |
 
 ## Research gate → docs/research/subplan-h.md
 
@@ -58,7 +58,7 @@ This `index.md` is documentation, not an implementation slice.
 
 ## Verification checklist
 
-- [ ] One consistent slice list (7 slices, no duplicates)
+- [ ] One consistent slice list (8 slices, no duplicates)
 - [ ] Traceability table maps H foundation acceptance items
 - [ ] No claims of verification without running tests
 - [ ] Change committed with descriptive message

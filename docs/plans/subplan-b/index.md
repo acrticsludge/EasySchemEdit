@@ -35,7 +35,7 @@ Slice order (one consistent list):
 | 9 | `ImportReport.volume` is `bigint`; `normalizedImport` field present; `ExportValidationResult` defined; `sameStateOverlaps` and `stateConflicts` counted separately | b-0.5 | `slice-b-0.5-adapter.test.ts` |
 | 10 | Outer-air trimming configurable; defaults `true`; `false` allowed with Offset/origin metadata adjusted; no auto-split — refuse dimension >65,535 with `EXPORT_DIMENSION_LIMIT`; strict vs permissive export unambiguous | b-5 | `slice-b-5-export.test.ts` |
 | 11 | Diagnostics for unsupported entities, biomes, and ticks in export reports | b-4, b-5, b-8 | `slice-b-4-litematic.test.ts`, `slice-b-8-sponge-v3.test.ts` |
-| 12 | Asset extraction pipeline: client JAR from official metadata, extracts blockstates/models/textures in worker, caches in IndexedDB, identical pipeline for manual JAR import (logic in packages/assets; IO in packages/assets) | b-13 | `slice-b-13-asset-pipeline.test.ts` |
+| 12 | Asset pipeline package: client JAR from official metadata | b-13 | slice-b-13-asset-pipeline.test.ts |
 | 13 | Phase 0 verifies browser CORS/download feasibility for official Mojang asset endpoints; manual JAR fallback works end-to-end | b-13 | `slice-b-13-asset-pipeline.test.ts` |
 | 14 | Export semantics: placement bakes transform; import group preserves or flattens per eligibility; composite bakes transforms and applies overlap policy; hidden placements excluded by default, includable via option | b-5 | `slice-b-5-export.test.ts` |
 | 15 | Format adapters receive immutable `ProjectSnapshot`; no multiple giant intermediate buffers; streaming writer for large exports; chunkViews keyed by placementId+chunkKey; copy-then-transfer | b-0.5, b-12 | `slice-b-0.5-adapter.test.ts`, `slice-b-12-snapshot.test.ts` |

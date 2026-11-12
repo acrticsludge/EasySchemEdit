@@ -77,7 +77,7 @@ All 33 SUBSPEC-D §9.2 acceptance items mapped to slices and test files above. U
 
 ## Verification checklist
 
-- [ ] One consistent slice list (13 slices, no duplicates)
+- [ ] One consistent slice list (14 slices, no duplicates)
 - [ ] Traceability table maps all 33 SUBSPEC-D §9.2 items
 - [ ] No claims of verification without running tests
 - [ ] Change committed with descriptive message

@@ -68,7 +68,7 @@ All 21 SUBSPEC-G §8.2 acceptance items mapped to slices and test files above. U
 
 ## Verification checklist
 
-- [ ] One consistent slice list (16 slices, no duplicates)
+- [ ] One consistent slice list (17 slices, no duplicates)
 - [ ] Traceability table maps all 21 SUBSPEC-G §8.2 items
 - [ ] No claims of verification without running tests
 - [ ] Change committed with descriptive message
