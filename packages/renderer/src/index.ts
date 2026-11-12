@@ -47,3 +47,11 @@ export type {
   FaceCullResult,
   RenderChunkGeometry,
 } from './chunk-mesh.ts';
+
+export type {
+  TextureAtlas,
+  AtlasPage,
+  AtlasEntry,
+  AtlasConfig,
+  AtlasResult,
+} from './texture-atlas.ts';
