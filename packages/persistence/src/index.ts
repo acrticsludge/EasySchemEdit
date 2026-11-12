@@ -53,3 +53,10 @@ export {
   MigrationManager,
   type MigrationOptions,
 } from './migration.ts';
+
+export {
+  type CommitPhaseForRecovery,
+  type UncommittedCommit,
+  type RecoveryResult,
+  RecoveryManager,
+} from './recovery.ts';
