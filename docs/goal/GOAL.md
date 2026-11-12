@@ -86,5 +86,5 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 (H foundation): COMPLETE — all 7 slices done (h-0 pnpm workspaces, h-1 Astro shell, h-2 Cloudflare Workers, h-3 MCP companion, h-4 asset pipeline, h-5 IndexedDB persistence, h-6 Web Workers, h-7 CI/CD pipeline)
 - Phase 2 (subplan-c planning): research gate + index.md + slice c-0 created; slices c-1 through c-10 pending implementation
-- Subplan-C..G planning: subplan-c planned (11 slices, c-0 spec); subplan-d planned (13 slices, d-0 spec); subplan-e, f, g not yet planned
-- Git: master @ 2e22ffb, pushed to origin/master, working tree clean
+- Subplan-C..G planning: COMPLETE — subplan-c (11 slices), subplan-d (13 slices), subplan-e (15 slices), subplan-f (13 slices), subplan-g (16 slices) all have research gates + index + slice-0 specs
+- Git: master @ 49087e7, pushed to origin/master, working tree clean
