@@ -22,3 +22,5 @@ export type {
   MultipartEntry,
   ModelDisplay,
 } from './resource-pack-types.ts';
+
+export type { MissingModelFallback } from './missing-model.ts';
