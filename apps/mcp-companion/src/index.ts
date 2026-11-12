@@ -18,12 +18,12 @@ export type {
 } from './mutation-envelope.ts';
 
 export type {
-  DESTRUCTIVE_OPERATIONS,
-  DEFAULT_CONFIRMATION_TOKEN_TTL_MS,
-  DEFAULT_MAX_BLOCKS_PER_CALL,
-  DEFAULT_CONFIGURABLE_LIMIT,
-  DEFAULT_ABSOLUTE_SAFETY_LIMIT,
-} from './mutation-envelope.ts';
+  PackManagerState,
+  PackEntry,
+  PackCompatibility,
+  PackDiagnostics,
+  PackAction,
+} from './pack-manager.ts';
 
 export type {
   PairingToken,
@@ -39,3 +39,20 @@ export type {
   DEFAULT_BLOCK_DURATION_MS,
   LOOPBACK_ADDRESSES,
 } from './pairing-token.ts';
+
+export type {
+  ClipboardTool,
+  ClipboardToolResult,
+  ClipboardToolError,
+  ClipboardTools,
+} from './clipboard.ts';
+
+export type {
+  CopyResult,
+  CutResult,
+  PasteResult,
+} from './clipboard.ts';
+
+export type {
+  ClipboardToolResultMap,
+} from './clipboard.ts';
