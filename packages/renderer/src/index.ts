@@ -40,3 +40,10 @@ export type {
   WeightedModelSelection,
   PackMergeStrategy,
 } from './pack-resolution.ts';
+
+export type {
+  MeshPass,
+  ChunkMesh,
+  FaceCullResult,
+  RenderChunkGeometry,
+} from './chunk-mesh.ts';
