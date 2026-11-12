@@ -42,6 +42,8 @@
 - `@easyschemedit/domain` — `packages/domain/`
 - `@easyschemedit/formats` — `packages/formats/`
 - `@easyschemedit/assets` — planned, `packages/assets/` (not yet created)
+- Package manager: pnpm workspaces (`pnpm-workspace.yaml`, root `package.json` workspaces field)
+- Monorepo layout: `packages/*` + `apps/*` (per SUBSPEC-H §2.1)
 
 ## Constraints
 - Zero Three.js/React/DOM/UI imports in `packages/domain` and `packages/formats`

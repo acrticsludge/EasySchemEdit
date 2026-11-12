@@ -6,10 +6,10 @@
 - Subplan-B: all 15 slices planned (`docs/plans/subplan-b/`), fully implemented in `packages/formats/`, 14 tests pass, tsc clean
 - Phase 1: all 7 known conflicts resolved and documented in `docs/agent/phase1-conflicts.md`
 - Coordinate transform fixes: origin used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
-- All changes committed to `master` (`cfcef1b`) and pushed to `origin/master`
+- All changes committed to `master` (`4836e92`) and pushed to `origin/master`
 
 ## Next
-- Phase 2: plan SUBSPEC-C..H slice plans (order: H foundation first, then C, D, E, F, G)
+- Phase 2 H foundation: slices h-1 (Astro shell + React island), h-2 (Cloudflare Workers), h-3 (MCP companion), h-4 (asset pipeline), h-5 (IndexedDB), h-6 (Web Workers), h-7 (CI)
 - Phase 3: audit all plans (A-H)
 - Phase 4: implement incrementally (H foundation, then A..G, then H release/deployment)
 - Phase 5: questions, then final fix
