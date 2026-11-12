@@ -63,3 +63,9 @@ export type {
   ChunkRenderEntry,
   RenderPassStats,
 } from './render-pipeline.ts';
+
+export type {
+  CameraPreset,
+  CameraControlState,
+  CameraControls,
+} from './camera.ts';
