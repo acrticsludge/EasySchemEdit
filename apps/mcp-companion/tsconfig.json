@@ -7,7 +7,6 @@
     "skipLibCheck": true,
     "noEmit": false,
     "outDir": "./dist",
-    "rootDir": "./src",
     "isolatedModules": true
   },
   "include": ["src/**/*.ts"],
