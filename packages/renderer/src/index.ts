@@ -55,3 +55,11 @@ export type {
   AtlasConfig,
   AtlasResult,
 } from './texture-atlas.ts';
+
+export type {
+  RenderPass,
+  RenderPipelineConfig,
+  RenderPipelineResult,
+  ChunkRenderEntry,
+  RenderPassStats,
+} from './render-pipeline.ts';
