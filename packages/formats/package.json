@@ -16,6 +16,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@easyschemedit/domain": "0.1.0"
+    "@easyschemedit/domain": "workspace:*"
   }
 }
