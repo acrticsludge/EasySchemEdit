@@ -75,4 +75,17 @@ export {
   applyRegionOperation,
 } from './region-ops.ts';
 
+export type {
+  ClipboardEntry,
+  ClipboardData,
+  ClipboardBlockData,
+  CutOptions,
+  PasteOptions,
+  PasteResult,
+} from './clipboard.ts';
+
+export {
+  ClipboardManager,
+} from './clipboard.ts';
+
 export type { LockedOperationError } from './placement.ts';
