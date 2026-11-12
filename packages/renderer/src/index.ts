@@ -85,3 +85,9 @@ export type {
   BlockBorderOverlay,
   ViewportOverlayState,
 } from './viewport-overlays.ts';
+
+export type {
+  PlacementBorderOverlay,
+  OriginMarkerOverlay,
+  ConflictOverlay,
+} from './overlays.ts';
