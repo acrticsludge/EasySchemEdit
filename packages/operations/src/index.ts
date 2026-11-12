@@ -121,4 +121,18 @@ export {
   ImportPlaceEngine,
 } from './import-place.ts';
 
+export type {
+  VerifyComparison,
+  VerifyResult,
+  PerPlacementVerify,
+  MaterialTypeCount,
+  MaterialReport,
+} from './verify-material.ts';
+
+export {
+  VerifyMaterialEngine,
+  verifyPlacement,
+  generateMaterialReport,
+} from './verify-material.ts';
+
 export type { LockedOperationError } from './placement.ts';
