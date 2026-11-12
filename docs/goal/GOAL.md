@@ -84,5 +84,5 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Subplan-B: complete — 15 slices planned, implemented in packages/formats/, 14 tests pass, tsc clean
 - Phase 1 conflicts: complete — all 7 known conflicts resolved and documented in docs/agent/phase1-conflicts.md
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
-- Phase 2 (H foundation): slice h-0 through h-5 complete (pnpm workspaces, Astro shell, Cloudflare Workers, MCP companion, asset pipeline, IndexedDB persistence); slices h-6 through h-7 pending (Web Workers, CI)
-- Git: master @ f9cf4b5, pushed to origin/master, working tree clean
+- Phase 2 (H foundation): slice h-0 through h-6 complete (pnpm workspaces, Astro shell, Cloudflare Workers, MCP companion, asset pipeline, IndexedDB persistence, Web Workers); slice h-7 pending (CI)
+- Git: master @ 9e3a3e5, pushed to origin/master, working tree clean
