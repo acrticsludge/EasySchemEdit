@@ -110,4 +110,15 @@ export {
   bakeProject,
 } from './bake.ts';
 
+export type {
+  PendingPlacement,
+  GhostBlock,
+  GhostPreview,
+  GroundSnapResult,
+} from './import-place.ts';
+
+export {
+  ImportPlaceEngine,
+} from './import-place.ts';
+
 export type { LockedOperationError } from './placement.ts';
