@@ -1,0 +1,18 @@
+{
+  "name": "@easyschemedit/operations",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pure TypeScript operations engine for EasySchemEdit — zero framework/browser/Node/Three.js/MCP imports",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "node --experimental-strip-types __tests__/slice-d-0-placement.test.ts"
+  },
+  "devDependencies": {
+    "@easyschemedit/domain": "*",
+    "typescript": "^5.6.0"
+  },
+  "license": "MIT"
+}
