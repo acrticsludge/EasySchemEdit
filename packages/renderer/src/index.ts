@@ -32,3 +32,11 @@ export type {
   AssetLoadingState,
   AnimationFrame,
 } from './asset-loading.ts';
+
+export type {
+  PackLayer,
+  PackResolutionResult,
+  TextureVariable,
+  WeightedModelSelection,
+  PackMergeStrategy,
+} from './pack-resolution.ts';
