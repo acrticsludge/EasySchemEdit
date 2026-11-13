@@ -49,6 +49,16 @@ export type {
 } from './inspector.ts';
 
 export {
+  createShortcutHandler,
+} from './shortcuts.ts';
+
+export type {
+  ShortcutContext,
+  ShortcutHandler,
+  ShortcutHandlerOptions,
+} from './shortcuts.ts';
+
+export {
   createConflictNavigator,
 } from './conflict-nav.ts';
 
