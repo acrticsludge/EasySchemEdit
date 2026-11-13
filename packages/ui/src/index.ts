@@ -49,6 +49,19 @@ export type {
 } from './inspector.ts';
 
 export {
+  createStatusBar,
+} from './statusbar.ts';
+
+export type {
+  Notification,
+  PerfSnapshot,
+  SaveStatus,
+  StatusBar,
+  StatusBarOptions,
+  StatusBarState,
+} from './statusbar.ts';
+
+export {
   createOutliner,
 } from './outliner.ts';
 
