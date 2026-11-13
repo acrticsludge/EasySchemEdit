@@ -506,7 +506,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           const panScale = cameraCtrl.getDistance() * 0.0015;
           cameraCtrl.pan(-dx * panScale, dy * panScale);
         } else {
-          cameraCtrl.orbit(-dx * 0.006, -dy * 0.006);
+          cameraCtrl.orbit(-dx * 0.006, dy * 0.006);
         }
       } else {
         // Fly look
@@ -535,7 +535,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (!cameraCtrl) return;
 
     if (cameraCtrl.getMode() === 'orbit') {
-      cameraCtrl.zoom(e.deltaY);
+      cameraCtrl.zoom(-e.deltaY);
     } else {
       // Adjust fly speed
       cameraCtrl.adjustFlySpeed(e.deltaY > 0 ? -2 : 2);
