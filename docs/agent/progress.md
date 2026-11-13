@@ -7,14 +7,12 @@
 - Phase 1: all 7 known conflicts resolved and documented in `docs/agent/phase1-conflicts.md`
 - Coordinate transform fixes: origin used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 H foundation: COMPLETE — all 7 slices done; subplan-c research gate + index + slices c-0, c-1 implemented
-- Subplan-C..G: COMPLETE — subplan-c (11 slices, c-0 spec); subplan-d (13 slices, d-0 spec); subplan-e (15 slices, e-0 spec); subplan-f (13 slices, f-0 spec); subplan-g (16 slices, g-0 spec)
-- All changes committed to `master` (@ 6020bc3) and pushed to `origin/master`
+- Subplan-C..G: COMPLETE — subplan-c (11 slices, c-0 spec); subplan-d (13 slices, d-0 spec); subplan-e (15 slices, e-0 spec); subplan-f (13 slices, f-0..f-7 implemented); subplan-g (16 slices, g-0 spec)
+- Phase 4 re-baseline (2026-11-13): domain 20/20 test files PASS, formats 14/14 PASS, packages operations/persistence/renderer acceptance tests PASS, `tsc --noEmit` clean for domain, formats and apps/mcp-companion
+- Slice f-7 (destructive protocol): implemented as executable logic — 89 assertions PASS, tsc clean. Research decisions F-6.1..F-6.5 recorded in `docs/research/subplan-f.md`; open points D-1..D-3 in `docs/agent/DOUBTS.md`
 
 ## Next
-- Phase 3: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red
-- docs/audits/subplan-a-round-1.md through subplan-h-round-1.md: all findings documented
-- Phase 4 implementation — subplan-c COMPLETE (10/10), subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15); subplan-f slices f-0 (companion config), f-1 (mutation envelope), f-2 (pairing token + security), f-3 (MCP read tools) complete; f-4 through f-12 pending
-- Phase 5: questions, then final fix
+- Phase 4 implementation — continue subplan-f: f-8 (export through MCP), f-9 (agent log + sanitization), f-10 (health endpoints), f-11 (failure handling), f-12 (acceptance verification). Then subplan-g slices.
 
 ## Blocked
 - None

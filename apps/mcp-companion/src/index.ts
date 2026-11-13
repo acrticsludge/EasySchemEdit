@@ -65,3 +65,29 @@ export type {
 export type {
   HistoryToolResultMap,
 } from './tools/history.ts';
+
+export {
+  createDestructiveProtocol,
+  normalizeArgs,
+  classificationSummary,
+  CONFIRMATION_REQUIRED_TOOLS,
+  IMMEDIATE_TOOLS,
+  CONDITIONAL_CONFIRMATION_TOOLS,
+  READ_TOOLS,
+  MCP_LIMITS,
+  DEFAULT_CONFIRMATION_TOKEN_TTL_MS,
+  DEFAULT_IDEMPOTENCY_RETENTION_MS,
+} from './destructive-protocol';
+
+export type {
+  DestructiveProtocol,
+  DestructiveProtocolOptions,
+  DestructiveProtocolServices,
+  ExecutionResult,
+  DryRunOptions,
+  ApplyOptions,
+  DryRunConfirmResult,
+  PreviewResult,
+  ApplyResult,
+  ProtocolError,
+} from './destructive-protocol';

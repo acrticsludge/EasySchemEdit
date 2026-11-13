@@ -9,7 +9,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "tsx src/server.ts"
+    "dev": "tsx src/server.ts",
+    "test": "node --experimental-strip-types --test-reporter=spec __tests__/slice-f-7-destructive-protocol.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

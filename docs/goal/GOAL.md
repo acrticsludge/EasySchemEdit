@@ -85,8 +85,8 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Phase 1 conflicts: complete — all 7 known conflicts resolved and documented in docs/agent/phase1-conflicts.md
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 (H foundation): COMPLETE — all 7 slices done (h-0 pnpm workspaces, h-1 Astro shell, h-2 Cloudflare Workers, h-3 MCP companion, h-4 asset pipeline, h-5 IndexedDB persistence, h-6 Web Workers, h-7 CI/CD pipeline)
-- Phase 2 (subplan-c planning): research gate + index.md complete; slice c-0 IMPLEMENTED (IndexedDB schema with 10 object stores); slices c-1 through c-10 pending implementation
-- Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c slice c-0 (IndexedDB schema) complete; slice c-1 (crash-safe commit protocol) complete; slices c-2 through c-10 pending
+- Phase 2 (subplan-c planning): research gate + index.md complete; slices c-0 through c-10 COMPLETE (packages/persistence, 10/10 slices, acceptance tests pass)
+- Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c COMPLETE, subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15), subplan-f f-0..f-7 complete (f-7 destructive protocol: 89 assertions PASS, tsc clean); subplan-f f-8..f-12 pending
 - Subplan-C..G planning: COMPLETE — subplan-c (11 slices), subplan-d (13 slices), subplan-e (15 slices), subplan-f (13 slices), subplan-g (16 slices) all have research gates + index + slice-0 specs
 - Phase 3 audits: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red (docs/audits/subplan-a-round-1.md through subplan-h-round-1.md)
-- Git: master @ d5c2a5d, pushed to origin/master, working tree clean
+- Git: master @ 6b75123, pushed to origin/master, working tree clean on entry (uncommitted f-7 draft files: `apps/mcp-companion/src/destructive-protocol.ts` stub, `docs/plans/subplan-f/slice-f-7.md`)

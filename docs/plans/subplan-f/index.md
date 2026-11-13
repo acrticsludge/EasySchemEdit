@@ -1,7 +1,7 @@
 # Subspec F — MCP Adapter: Slice Plan
 
 **Source:** `docs/specs/subs/SUBSPEC-F_MCP_ADAPTER.md` (locked decisions F1–F15)
-**Constraint:** Pure TypeScript, zero framework/browser/Node/Three.js/MCP imports in `@easyschemedit/mcp-companion`. Type definitions only; MCP SDK imported in implementation.
+**Constraint:** Pure TypeScript; the package treats MCP SDK/Zod as implementation-only dependencies. Existing slices are type definitions; slice f-7 also delivers executable logic.
 
 ## Method
 
@@ -21,7 +21,7 @@ Build in thin vertical slices per the incremental-implementation skill:
 | `slice-f-4.md` | MCP tool surface: placement tools | `apps/mcp-companion/src/tools/placement.ts` | load_schematic, transform_placement, transform_placements, set_placement_visibility, set_placement_lock, rename_placement, delete_placement, duplicate_placement, set_origin, bake_placements |
 | `slice-f-5.md` | MCP tool surface: selection + region tools | `apps/mcp-companion/src/tools/region.ts` | create_selection, clear_selection, select_placements, fill_selection, replace_selection, delete_selection, copy_selection, cut_selection, paste_clipboard, hollow_selection, walls_selection, move_selection |
 | `slice-f-6.md` | MCP tool surface: history/export tools | `apps/mcp-companion/src/tools/history.ts` | undo, redo, export_schematic, get_operation_diff, set_color_mode |
-| `slice-f-7.md` | Destructive operation protocol: dry-run + apply | `apps/mcp-companion/src/destructive-protocol.ts` | Two-phase dry-run/apply, confirmation token validation |
+| `slice-f-7.md` | Destructive operation protocol: dry-run + apply | `apps/mcp-companion/src/destructive-protocol.ts` | Two-phase dry-run/apply, confirmation token validation — 89 assertions, PASS |
 | `slice-f-8.md` | Export through MCP: write to approved workspace, artifact handle | `apps/mcp-companion/src/mcp-export.ts` | Approved workspace, safe relative path, bounded resource |
 | `slice-f-9.md` | Agent log entry + sanitization | `apps/mcp-companion/src/agent-log.ts` | Sanitize tokens, paths, usernames, secrets, raw NBT, raw file contents |
 | `slice-f-10.md` | Health endpoint: /healthz, /readyz, /metrics | `apps/mcp-companion/src/health.ts` | Health status, bridge status, uptime |
