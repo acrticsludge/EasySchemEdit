@@ -184,6 +184,16 @@ importers:
         version: 5.9.3
 
   packages/workers:
+    dependencies:
+      '@easyschemedit/domain':
+        specifier: workspace:*
+        version: link:../domain
+      '@easyschemedit/formats':
+        specifier: workspace:*
+        version: link:../formats
+      '@easyschemedit/renderer':
+        specifier: workspace:*
+        version: link:../renderer
     devDependencies:
       '@types/node':
         specifier: ^26.6.6
