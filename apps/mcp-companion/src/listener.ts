@@ -29,6 +29,7 @@ import type { DestructiveProtocolServices, PreviewResult } from './destructive-p
 import { createAgentLog } from './agent-log.ts';
 import { createHealthReporter } from './health-report.ts';
 import { createMcpExporter } from './mcp-export.ts';
+import { createCommandBus } from './command-bus.ts';
 
 const HOST = '127.0.0.1';
 const PORT = BRIDGE_PORT;
@@ -64,50 +65,29 @@ function canonicalRoot(raw: string): string {
 const APPROVED_DIRECTORIES = APPROVED_DIRECTORIES_RAW.map(canonicalRoot);
 
 // ── Live document state ────────────────────────────────────────────────────
-// The H-foundation has no command bus yet (audit PF-2), so the listener owns a revision counter and
-// records every mutation. The protocol/commands layer replaces this in the wiring slice that lands
-// the shared bus; nothing here claims to be the document authority.
+// The shared command bus (audit PF-2) is now the single authority for document
+// mutations. It tracks revisions, provides preview/execute, and supports
+// idempotency. The host adapter (this file) wires it to the persistence layer
+// and to the browser-live document authority via the bridge.
 
-let documentRevision = 0;
-let documentProjectId = 'default';
+const commandBus = createCommandBus({ projectId: 'default' });
 
 const protocolServices: DestructiveProtocolServices = {
-  getRevision: () => documentRevision,
+  getRevision: () => commandBus.state().revision,
   preview: (projectId, operation, args): PreviewResult => {
-    const candidateCells = 64 * 64; // provisional estimate until the operations package is wired
-    return {
-      operation,
-      affectedPlacementIds: [],
-      affectedBounds: [],
-      candidateCells,
-      changedCells: 0,
-      resultingNonAirCount: 0,
-      conflictImpact: { sameStateOverlapsResolved: 0, stateConflictsResolved: 0 },
-      estimatedUndoBytes: 0,
-      warnings: [
-        {
-          code: 'PREVIEW_STUB',
-          severity: 'warning',
-          message: `preview for ${projectId}/${operation} is provisional: the operations package is not yet wired to this listener`,
-          details: { args, limits: MCP_LIMITS },
-        },
-      ],
-    };
+    commandBus.setProjectId(projectId);
+    return commandBus.preview(operation, args);
   },
-  execute: (_projectId, _operation, _args) => {
-    documentRevision += 1;
+  execute: (projectId, operation, args) => {
+    commandBus.setProjectId(projectId);
+    const result = commandBus.execute(operation, args);
     return {
-      success: true,
-      revision: documentRevision,
-      changedCells: 0,
-      changedPlacements: [],
-      warnings: [
-        {
-          code: 'EXECUTE_STUB',
-          severity: 'warning',
-          message: 'mutation recorded a revision bump only; the command bus is not wired yet',
-        },
-      ],
+      success: result.success,
+      revision: result.revision,
+      changedCells: result.changedCells,
+      changedPlacements: result.changedPlacements,
+      warnings: result.warnings,
+      errorMessage: result.errorMessage,
     };
   },
 };
@@ -195,7 +175,7 @@ const router = createBridgeRouter({
   port: PORT,
   allowedOrigins: ALLOWED_ORIGINS,
   hostAllowlist: ALLOWED_HOSTNAMES,
-  getRevision: () => documentRevision,
+  getRevision: () => commandBus.state().revision,
   now: () => Date.now(),
 });
 
@@ -266,7 +246,7 @@ const httpServer = createServer((request, response) => {
     health.setState({
       bridgeStatus: pairing.activeSessions() > 0 ? 'connected' : 'disconnected',
       activeSessions: pairing.activeSessions(),
-      documentRevision,
+      documentRevision: commandBus.state().revision,
       logEntries: log.size().count,
       logBytes: log.size().bytes,
       outstandingConfirmationTokens: protocol.outstandingTokenCount(),
@@ -296,7 +276,7 @@ wss.on('connection', (socket, upgradeRequest) => {
     return;
   }
   health.setState({ bridgeStatus: 'connected' });
-  socket.send(JSON.stringify({ type: 'hello', version: '0.1.0', revision: documentRevision }));
+  socket.send(JSON.stringify({ type: 'hello', version: '0.1.0', revision: commandBus.state().revision }));
 
   socket.on('message', (raw) => {
     // The token is sent in the first message, never in the URL (§2.6).
@@ -319,7 +299,7 @@ wss.on('connection', (socket, upgradeRequest) => {
       );
       return;
     }
-    socket.send(JSON.stringify({ type: 'ack', revision: documentRevision }));
+    socket.send(JSON.stringify({ type: 'ack', revision: commandBus.state().revision }));
   });
 
   socket.on('close', () => {
@@ -332,7 +312,7 @@ wss.on('connection', (socket, upgradeRequest) => {
 httpServer.listen(PORT, HOST, () => {
   // A pairing token is printed once at startup so the operator can paste it into the editor.
   // Plaintext is displayed and then dropped: only its SHA-256 digest is retained (SPEC-F F12).
-  const { token } = pairing.generate(documentProjectId);
+  const { token } = pairing.generate(commandBus.state().projectId);
   // eslint-disable-next-line no-console
   console.log(`[mcp-companion] listening on http://${HOST}:${PORT}`);
   // eslint-disable-next-line no-console
