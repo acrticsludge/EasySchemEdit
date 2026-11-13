@@ -41,6 +41,7 @@ export interface GroupTransformResult {
   rotationY: 0 | 90 | 180 | 270;
   mirror: 'none' | 'x' | 'z';
   warnings: string[];
+  placements: PlacementType[];
 }
 
 export interface GroupTransformStep {
@@ -120,9 +121,12 @@ export class GroupTransformEngine {
         rotationY: options.rotationY,
         mirror: options.mirror,
         warnings,
+        placements: project.placements,
       };
     }
 
+    // Prepare updated placements atomically
+    const newPlacements = [...project.placements];
     for (const placement of placements) {
       const oldTransform = { ...placement.transform };
 
@@ -141,16 +145,15 @@ export class GroupTransformEngine {
       };
 
       // Replace in project placements array
-      const placementIndex = project.placements.findIndex((p: PlacementType) => p.id === placement.id);
+      const placementIndex = newPlacements.findIndex((p: PlacementType) => p.id === placement.id);
       if (placementIndex >= 0) {
-        const newPlacements = [...project.placements];
         newPlacements[placementIndex] = updatedPlacement;
-
-        // Note: We return a new project with updated placements
-        // The caller is responsible for committing the revision increment
         changedPlacements.push(placement.id);
       }
     }
+
+    // Atomically commit updated placements to project
+    project.placements = newPlacements;
 
     return {
       success: true,
@@ -159,6 +162,7 @@ export class GroupTransformEngine {
       rotationY: options.rotationY,
       mirror: options.mirror,
       warnings,
+      placements: project.placements,
     };
   }
 }

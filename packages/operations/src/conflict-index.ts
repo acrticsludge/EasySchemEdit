@@ -119,12 +119,12 @@ export class ConflictIndex {
     }
   }
 
-  // Detect conflicts for a proposed operation over bounds.
+  // Detect conflicts for a proposed operation or scene-wide multi-placement overlaps.
   // Returns category breakdown: clean, same-state, state-conflict.
   detectConflicts(
     project: Project,
-    bounds: Bounds3i,
-    proposedState: BlockStateId,
+    bounds?: Bounds3i,
+    proposedState?: BlockStateId,
   ): ConflictResult {
     const entries: ConflictEntry[] = [];
     const cleanPositions: Vec3i[] = [];
@@ -134,56 +134,127 @@ export class ConflictIndex {
     let hasStateConflict = false;
     let hasSameState = false;
 
-    for (let y = bounds.min[1]; y < bounds.maxExclusive[1]; y++) {
-      for (let z = bounds.min[2]; z < bounds.maxExclusive[2]; z++) {
-        for (let x = bounds.min[0]; x < bounds.maxExclusive[0]; x++) {
-          const position: Vec3i = [x, y, z];
-          const key = `${x},${y},${z}`;
-          const record = this.positions.get(key);
+    // 1. Proposed state mode: compare cells in bounds against proposedState
+    if (proposedState !== undefined && bounds !== undefined) {
+      for (let y = bounds.min[1]; y < bounds.maxExclusive[1]; y++) {
+        for (let z = bounds.min[2]; z < bounds.maxExclusive[2]; z++) {
+          for (let x = bounds.min[0]; x < bounds.maxExclusive[0]; x++) {
+            const position: Vec3i = [x, y, z];
+            const key = `${x},${y},${z}`;
+            const record = this.positions.get(key);
 
-          if (!record) {
-            // No existing block at this position → clean
+            if (!record) {
+              // No existing block at this position → clean
+              const entry: ConflictEntry = {
+                position,
+                category: 'clean',
+                owners: [],
+                winningOwner: null,
+                currentState: null,
+                proposedState,
+              };
+              entries.push(entry);
+              cleanPositions.push(position);
+              continue;
+            }
+
+            // Resolve winning owner based on overlap policy
+            const winningOwner = this.resolveWinningOwner(record);
+            const currentState = record.states.get(winningOwner ?? '') ?? null;
+
+            let category: ConflictCategory;
+            if (currentState === null) {
+              category = 'clean';
+              cleanPositions.push(position);
+            } else if (
+              currentState.id === proposedState.id &&
+              JSON.stringify(currentState.props) === JSON.stringify(proposedState.props)
+            ) {
+              category = 'same-state';
+              sameStatePositions.push(position);
+              hasSameState = true;
+            } else {
+              category = 'state-conflict';
+              stateConflictPositions.push(position);
+              hasStateConflict = true;
+            }
+
             const entry: ConflictEntry = {
               position,
-              category: 'clean',
-              owners: [],
-              winningOwner: null,
-              currentState: null,
+              category,
+              owners: [...record.owners],
+              winningOwner,
+              currentState,
               proposedState,
             };
             entries.push(entry);
-            cleanPositions.push(position);
-            continue;
+          }
+        }
+      }
+    } else {
+      // 2. Scene-wide mode: scan indexed records across visible placements for overlaps (owners >= 2)
+      const inBounds = (pos: Vec3i): boolean => {
+        if (!bounds) return true;
+        return (
+          pos[0] >= bounds.min[0] &&
+          pos[0] < bounds.maxExclusive[0] &&
+          pos[1] >= bounds.min[1] &&
+          pos[1] < bounds.maxExclusive[1] &&
+          pos[2] >= bounds.min[2] &&
+          pos[2] < bounds.maxExclusive[2]
+        );
+      };
+
+      for (const record of this.positions.values()) {
+        if (!inBounds(record.position)) continue;
+
+        const pos = [...record.position] as Vec3i;
+        const winningOwner = this.resolveWinningOwner(record);
+        const currentState = record.states.get(winningOwner ?? '') ?? null;
+
+        if (record.owners.length >= 2) {
+          // Overlap: compare states across all owners
+          const firstOwner = record.owners[0];
+          const firstState = record.states.get(firstOwner)!;
+          let allSame = true;
+          for (let i = 1; i < record.owners.length; i++) {
+            const st = record.states.get(record.owners[i])!;
+            if (
+              st.id !== firstState.id ||
+              JSON.stringify(st.props) !== JSON.stringify(firstState.props)
+            ) {
+              allSame = false;
+              break;
+            }
           }
 
-          // Resolve winning owner based on overlap policy
-          const winningOwner = this.resolveWinningOwner(record);
-          const currentState = record.states.get(winningOwner ?? '') ?? null;
-
-          let category: ConflictCategory;
-          if (currentState === null) {
-            category = 'clean';
-            cleanPositions.push(position);
-          } else if (currentState.id === proposedState.id &&
-            JSON.stringify(currentState.props) === JSON.stringify(proposedState.props)) {
-            category = 'same-state';
-            sameStatePositions.push(position);
+          const category: ConflictCategory = allSame ? 'same-state' : 'state-conflict';
+          if (category === 'same-state') {
+            sameStatePositions.push(pos);
             hasSameState = true;
           } else {
-            category = 'state-conflict';
-            stateConflictPositions.push(position);
+            stateConflictPositions.push(pos);
             hasStateConflict = true;
           }
 
-          const entry: ConflictEntry = {
-            position,
+          entries.push({
+            position: pos,
             category,
             owners: [...record.owners],
             winningOwner,
             currentState,
-            proposedState,
-          };
-          entries.push(entry);
+            proposedState: null,
+          });
+        } else {
+          cleanPositions.push(pos);
+          entries.push({
+            position: pos,
+            category: 'clean',
+            owners: [...record.owners],
+            winningOwner,
+            currentState,
+            proposedState: null,
+          });
         }
       }
     }
@@ -261,15 +332,15 @@ export class ConflictIndex {
 
 export function detectConflicts(
   project: Project,
-  bounds: Bounds3i,
-  proposedState: BlockStateId,
+  bounds?: Bounds3i,
+  proposedState?: BlockStateId,
   overlapPolicy: 'top-wins' | 'bottom-wins' = 'top-wins',
 ): ConflictResult {
   const index = new ConflictIndex({ overlapPolicy });
 
-  // Register all visible, unlocked placements
+  // Register all visible placements
   for (const placement of project.placements) {
-    if (!placement.locked && placement.visible) {
+    if (placement.visible) {
       index.registerPlacement(placement);
     }
   }

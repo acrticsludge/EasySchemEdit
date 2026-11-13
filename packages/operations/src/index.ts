@@ -42,6 +42,7 @@ export {
   duplicatePlacement,
   deletePlacement,
   movePlacement,
+  setPlacementOrigin,
   rotatePlacement,
   mirrorPlacement,
   getPlacementOrder,
@@ -177,3 +178,54 @@ export {
 } from './operation-budgets.ts';
 
 export type { LockedOperationError } from './placement.ts';
+
+export type {
+  Command,
+  PlacementAddCommand,
+  PlacementRemoveCommand,
+  PlacementDuplicateCommand,
+  PlacementRenameCommand,
+  PlacementMoveCommand,
+  PlacementRotateCommand,
+  PlacementMirrorCommand,
+  PlacementSetOriginCommand,
+  PlacementSetHiddenCommand,
+  PlacementSetLockedCommand,
+  GroupTransformCommand,
+  SelectionSetCommand,
+  SelectionClearCommand,
+  SelectionEditCommand,
+  RegionFillCommand,
+  RegionReplaceCommand,
+  RegionDeleteCommand,
+  RegionHollowCommand,
+  RegionWallsCommand,
+  RegionMoveCommand,
+  ClipboardCopyCommand,
+  ClipboardCutCommand,
+  ClipboardPasteCommand,
+  BakeCommand,
+  Query,
+  GetProjectQuery,
+  ListPlacementsQuery,
+  GetPlacementQuery,
+  GetBlockQuery,
+  GetSelectionQuery,
+  MaterialListQuery,
+  DetectConflictsQuery,
+  GetHistoryQuery,
+  HistoryQueryResult,
+  CommandExecutionOptions,
+  CommandChangedInfo,
+  SessionError,
+  SuccessResult,
+  FailureResult,
+  Result,
+  SessionChangeEvent,
+  SessionListener,
+} from './session-types.ts';
+
+export {
+  EditorSession,
+} from './session.ts';
+

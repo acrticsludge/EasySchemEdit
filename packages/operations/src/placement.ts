@@ -11,6 +11,7 @@ import type {
 } from '../../domain/coordinates.ts';
 import type {
   Vec3Half,
+  Vec3i,
 } from '../../domain/types.ts';
 
 export type PlacementLockState = {
@@ -159,7 +160,12 @@ export function deletePlacement(project: Project, placementId: string): Project 
 // Move (edit origin) / transform
 // ============================================================================
 
-export function movePlacement(project: Project, placementId: string, newOrigin: Vec3Half): Project {
+export function movePlacement(
+  project: Project,
+  placementId: string,
+  newTranslation: Vec3i | Vec3Half,
+  isHalfBlock: boolean = false,
+): Project {
   const index = project.placements.findIndex((p) => p.id === placementId);
   if (index === -1) {
     throw new Error(`Move: placement ${placementId} not found`);
@@ -170,14 +176,61 @@ export function movePlacement(project: Project, placementId: string, newOrigin: 
     throw new Error(`Move: placement ${placementId} is locked`);
   }
 
-  // Origin must be integral (even half-block components)
-  if (newOrigin[0] % 2 !== 0 || newOrigin[1] % 2 !== 0 || newOrigin[2] % 2 !== 0) {
-    throw new Error(`Move: origin ${newOrigin} is not integral`);
+  let translation: Vec3i;
+  if (isHalfBlock) {
+    if (newTranslation[0] % 2 !== 0 || newTranslation[1] % 2 !== 0 || newTranslation[2] % 2 !== 0) {
+      throw new Error(`Move: half-block translation ${newTranslation} is not integral`);
+    }
+    translation = [newTranslation[0] / 2, newTranslation[1] / 2, newTranslation[2] / 2];
+  } else {
+    translation = [
+      Math.round(newTranslation[0]),
+      Math.round(newTranslation[1]),
+      Math.round(newTranslation[2]),
+    ];
   }
 
   const updated: Placement = {
     ...placement,
-    origin: newOrigin,
+    transform: {
+      ...placement.transform,
+      translation,
+    },
+  };
+
+  const placements = [...project.placements];
+  placements[index] = updated;
+
+  return {
+    ...project,
+    placements,
+    revision: project.revision + 1,
+  };
+}
+
+export function setPlacementOrigin(
+  project: Project,
+  placementId: string,
+  newOrigin: Vec3Half,
+): Project {
+  const index = project.placements.findIndex((p) => p.id === placementId);
+  if (index === -1) {
+    throw new Error(`SetOrigin: placement ${placementId} not found`);
+  }
+
+  const placement = project.placements[index];
+  if (placement.locked) {
+    throw new Error(`SetOrigin: placement ${placementId} is locked`);
+  }
+
+  // Origin must be integral (even half-block components)
+  if (newOrigin[0] % 2 !== 0 || newOrigin[1] % 2 !== 0 || newOrigin[2] % 2 !== 0) {
+    throw new Error(`SetOrigin: origin ${newOrigin} is not integral`);
+  }
+
+  const updated: Placement = {
+    ...placement,
+    origin: [...newOrigin] as Vec3Half,
   };
 
   const placements = [...project.placements];

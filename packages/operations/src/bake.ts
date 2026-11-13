@@ -21,6 +21,7 @@ import {
   isAirLike,
   VANILLA_AIR_LIKE,
 } from '../../domain/block-state.ts';
+import { resolveBlockAt } from '../../domain/effective-block.ts';
 
 export interface BakeOptions {
   overlapPolicy: 'top-wins' | 'bottom-wins';
@@ -95,20 +96,100 @@ export class BakeEngine {
       const newPlacementId = `baked-${Date.now()}`;
       const newPlacementName = this.options.newPlacementName || 'Baked Result';
 
-      // Note: Creating a full placement requires volume construction which is
-      // handled at a higher level. Here we record the effective composite
-      // data for the caller to construct the placement.
-      warnings.push(
-        `Bake into new placement '${newPlacementName}' (${effectiveComposite.size} cells). ` +
-        'Placement construction handled by caller.',
-      );
+      const newPlacement: PlacementType = {
+        id: newPlacementId,
+        name: newPlacementName,
+        volume: {
+          bounds: {
+            min: [...unionBounds.min] as Vec3i,
+            maxExclusive: [...unionBounds.maxExclusive] as Vec3i,
+          },
+          chunkSize: 16,
+          chunks: new Map(),
+          nonAirCount: 0,
+          paletteCardinality: 1,
+        },
+        transform: { translation: [0, 0, 0], rotationY: 0, mirror: 'none' },
+        origin: [0, 0, 0],
+        ancillary: {
+          blockEntities: new Map(),
+          entities: [],
+          pendingBlockTicks: [],
+          pendingFluidTicks: [],
+          unknownTags: new Map(),
+        },
+        visible: true,
+        locked: false,
+        createdAt: new Date().toISOString(),
+        source: { format: 'generated', filename: `${newPlacementId}.schem`, diagnostics: [] },
+        eraseTombstones: new Set(),
+      };
+
+      let bakedCells = 0;
+      for (let y = unionBounds.min[1]; y < unionBounds.maxExclusive[1]; y++) {
+        for (let z = unionBounds.min[2]; z < unionBounds.maxExclusive[2]; z++) {
+          for (let x = unionBounds.min[0]; x < unionBounds.maxExclusive[0]; x++) {
+            const pos: Vec3i = [x, y, z];
+            const effective = resolveBlockAt(
+              { ...project, placements: affectedPlacements },
+              pos,
+              this.options.overlapPolicy,
+            );
+            if (!isAirLike(effective.state.id, VANILLA_AIR_LIKE)) {
+              setBlock(newPlacement.volume, pos, effective.state);
+              bakedCells++;
+
+              // Ancillary reconciliation: block entity from winning placement
+              if (effective.owningPlacementId) {
+                const winningPlacement = affectedPlacements.find((p) => p.id === effective.owningPlacementId);
+                if (winningPlacement) {
+                  const localBlock = worldToLocalBlock(winningPlacement, pos);
+                  if (localBlock) {
+                    const beKey = `${localBlock[0]},${localBlock[1]},${localBlock[2]}`;
+                    const be = winningPlacement.ancillary.blockEntities.get(beKey);
+                    if (be) {
+                      const newKey = `${pos[0]},${pos[1]},${pos[2]}`;
+                      newPlacement.ancillary.blockEntities.set(newKey, {
+                        ...be,
+                        position: [...pos],
+                      });
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Reconcile entities inside unionBounds from winning/affected placements
+      for (const p of affectedPlacements) {
+        for (const ent of p.ancillary.entities) {
+          const [ex, ey, ez] = ent.position;
+          if (
+            ex >= unionBounds.min[0] &&
+            ex < unionBounds.maxExclusive[0] &&
+            ey >= unionBounds.min[1] &&
+            ey < unionBounds.maxExclusive[1] &&
+            ez >= unionBounds.min[2] &&
+            ez < unionBounds.maxExclusive[2]
+          ) {
+            newPlacement.ancillary.entities.push({
+              ...ent,
+              position: [...ent.position],
+            });
+          }
+        }
+      }
+
+      project.placements.push(newPlacement);
 
       return {
         success: true,
         unionBounds,
-        changedPlacements: [],
+        changedPlacements: [newPlacementId],
         newPlacementId,
-        changedCells: effectiveComposite.size,
+        changedCells: bakedCells,
         warnings,
         atomic: true,
       };
