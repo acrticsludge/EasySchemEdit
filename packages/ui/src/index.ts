@@ -32,6 +32,19 @@ export type {
   LayoutControllerOptions,
 } from './layout.ts';
 
+export {
+  createOutliner,
+} from './outliner.ts';
+
+export type {
+  ConflictIndicator,
+  ImportGroup,
+  Outliner,
+  OutlinerOptions,
+  OutlinerState,
+  PlacementRow,
+} from './outliner.ts';
+
 export type {
   LayoutValidation,
   PanelConfig,
