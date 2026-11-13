@@ -153,3 +153,24 @@ export type {
   ReadyStatus,
   MetricsReport,
 } from './health-report';
+
+export {
+  classifyFailure,
+  checkBudgets,
+  estimateUndoBytes,
+  makeMcpError,
+  budgetInputFromPreview,
+  MCP_ERROR_CODES,
+  LIMITS,
+  BYTES_PER_CHANGED_CELL,
+} from './failure-handling';
+
+export type {
+  McpError,
+  McpErrorCode,
+  FailureCondition,
+  FailureContext,
+  BudgetInput,
+  BudgetDecision,
+  ExceededBudget,
+} from './failure-handling';
