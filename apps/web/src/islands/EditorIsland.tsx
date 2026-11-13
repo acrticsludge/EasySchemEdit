@@ -7,8 +7,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 export default function EditorIsland() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const selectedRef = useRef<Set<THREE.Mesh>>(new Set());
   const [status, setStatus] = useState('Drop a .schem or .litematic file here');
   const [fileName, setFileName] = useState<string | null>(null);
+  const [selectedCount, setSelectedCount] = useState(0);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -20,11 +24,13 @@ export default function EditorIsland() {
 
     const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 10000);
     camera.position.set(50, 50, 50);
+    cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
@@ -53,8 +59,45 @@ export default function EditorIsland() {
     };
     window.addEventListener('resize', onResize);
 
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    const onClick = (event: MouseEvent) => {
+      if (!container || !cameraRef.current || !sceneRef.current) return;
+      const rect = container.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, cameraRef.current);
+
+      const blockGroup = sceneRef.current.getObjectByName('blocks');
+      if (!blockGroup) return;
+
+      const intersects = raycaster.intersectObjects(blockGroup.children, false);
+      if (intersects.length > 0) {
+        const hit = intersects[0].object as THREE.Mesh;
+        const mat = hit.material as THREE.MeshLambertMaterial;
+        if (selectedRef.current.has(hit)) {
+          selectedRef.current.delete(hit);
+          mat.emissive.setHex(0x000000);
+        } else {
+          selectedRef.current.add(hit);
+          mat.emissive.setHex(0x444400);
+        }
+        setSelectedCount(selectedRef.current.size);
+      } else {
+        // Deselect all
+        selectedRef.current.forEach((m) => {
+          (m.material as THREE.MeshLambertMaterial).emissive.setHex(0x000000);
+        });
+        selectedRef.current.clear();
+        setSelectedCount(0);
+      }
+    };
+    container.addEventListener('click', onClick);
+
     return () => {
       window.removeEventListener('resize', onResize);
+      container.removeEventListener('click', onClick);
       cancelAnimationFrame(animId);
       renderer.dispose();
       container.removeChild(renderer.domElement);
@@ -268,6 +311,7 @@ export default function EditorIsland() {
         </label>
         <span style={{ fontSize: '13px', opacity: 0.7 }}>{status}</span>
         {fileName && <span style={{ fontSize: '12px', opacity: 0.5 }}>{fileName}</span>}
+        {selectedCount > 0 && <span style={{ fontSize: '12px', color: '#ffcc00' }}>Selected: {selectedCount}</span>}
       </div>
       <div ref={containerRef} style={{ flex: 1 }} />
     </div>
