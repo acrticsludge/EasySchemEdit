@@ -110,6 +110,13 @@ console.log('--- Test 1: Initialization & Snapshot ---');
   assertEqual(snap.placements.length, 2, 'Snapshot contains 2 placements');
   assertEqual(snap.placements[0]?.id, 'p1', 'Snapshot placement 0 is p1');
 
+  // Verify peekProject returns direct reference without clone
+  const peeked1 = session.peekProject();
+  const peeked2 = session.peekProject();
+  assert(peeked1 === peeked2, 'peekProject returns same reference without cloning');
+  assert(peeked1 !== snap, 'snapshot returns cloned object while peekProject does not');
+  assertEqual(peeked1.revision, 10, 'peekProject has correct revision');
+
   // Verify default constructor without arguments
   const emptySession = new EditorSession();
   assertEqual(emptySession.revision, 0, 'Empty session has revision 0');

@@ -56,12 +56,11 @@ export class EditorSessionStore {
       statusMessage: this.statusMessage,
       canUndo: this.session.canUndo(),
       canRedo: this.session.canRedo(),
-      project: this.session.snapshot(),
+      project: this.session.peekProject(),
     };
   }
 
-  private updateSnapshotAndNotify(): void {
-    this.currentSnapshot = this.buildSnapshot();
+  private notify(): void {
     for (const listener of this.listeners) {
       try {
         listener();
@@ -69,6 +68,11 @@ export class EditorSessionStore {
         console.error('EditorSessionStore listener error:', err);
       }
     }
+  }
+
+  private updateSnapshotAndNotify(): void {
+    this.currentSnapshot = this.buildSnapshot();
+    this.notify();
   }
 
   public getSnapshot = (): EditorStoreState => {
@@ -85,26 +89,42 @@ export class EditorSessionStore {
   public setSelectedTool(tool: string): void {
     if (this.selectedTool !== tool) {
       this.selectedTool = tool;
-      this.updateSnapshotAndNotify();
+      this.currentSnapshot = {
+        ...this.currentSnapshot,
+        selectedTool: tool,
+      };
+      this.notify();
     }
   }
 
   public setActiveBottomTab(tab: string | null): void {
     if (this.activeBottomTab !== tab) {
       this.activeBottomTab = tab;
-      this.updateSnapshotAndNotify();
+      this.currentSnapshot = {
+        ...this.currentSnapshot,
+        activeBottomTab: tab,
+      };
+      this.notify();
     }
   }
 
   public setImportReport(report: any | null): void {
     this.importReport = report;
-    this.updateSnapshotAndNotify();
+    this.currentSnapshot = {
+      ...this.currentSnapshot,
+      importReport: report,
+    };
+    this.notify();
   }
 
   public setStatusMessage(message: string | null): void {
     if (this.statusMessage !== message) {
       this.statusMessage = message;
-      this.updateSnapshotAndNotify();
+      this.currentSnapshot = {
+        ...this.currentSnapshot,
+        statusMessage: message,
+      };
+      this.notify();
     }
   }
 

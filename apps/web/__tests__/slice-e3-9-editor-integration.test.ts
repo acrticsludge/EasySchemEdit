@@ -195,7 +195,7 @@ async function runTests() {
 
   // Test 4: Build Library Save & Place
   console.log('--- Test 4: Build Library Integration ---');
-  const placements = runtime.store.getSnapshot().project.placements;
+  const placements = [...runtime.store.getSnapshot().project.placements];
   if (placements.length > 0) {
     const libEntry = await runtime.persistence.savePlacementToLibrary(placements[0].id, { name: 'Vault Template' });
     assert(libEntry !== null && libEntry !== undefined, 'placement saved to library');

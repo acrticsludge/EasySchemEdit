@@ -67,12 +67,13 @@ export function bytesToBase64(bytes: Uint8Array): string {
   if (typeof Buffer !== 'undefined') {
     return Buffer.from(bytes).toString('base64');
   }
-  let binary = '';
+  const CHUNK_SIZE = 8192;
+  const chunks: string[] = [];
   const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < len; i += CHUNK_SIZE) {
+    chunks.push(String.fromCharCode(...bytes.subarray(i, i + CHUNK_SIZE)));
   }
-  return btoa(binary);
+  return btoa(chunks.join(''));
 }
 
 /**

@@ -414,6 +414,14 @@ export class EditorSession {
   }
 
   /**
+   * Return a direct reference to the current project state.
+   * Callers must treat the returned project as read-only.
+   */
+  peekProject(): Project {
+    return this.project;
+  }
+
+  /**
    * Subscribe to document change events.
    * Emits { revision, kind, placementIds, chunkKeys } on commit, undo, and redo.
    * Returns an unsubscribe function.

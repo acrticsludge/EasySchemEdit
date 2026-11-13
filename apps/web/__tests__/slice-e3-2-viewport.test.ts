@@ -2,7 +2,7 @@
 // Unit tests for Slice E3.2: Three.js chunked viewport, DDA raycaster, camera controller, and overlays.
 
 import * as THREE from 'three';
-import type { Bounds3i, Placement, VoxelChunk } from '@easyschemedit/domain';
+import type { Bounds3i, Placement, Project, VoxelChunk } from '@easyschemedit/domain';
 
 import {
   ChunkSceneManager,
@@ -74,6 +74,24 @@ function createPlacement(id: string, chunks: Map<string, VoxelChunk>): Placement
       pendingFluidTicks: [],
       unknownTags: new Map(),
     },
+  };
+}
+
+function createProject(id: string, name: string, placements: Placement[]): Project {
+  return {
+    schemaVersion: 1,
+    id,
+    name,
+    placements,
+    importGroups: [],
+    overlapPolicy: 'top-wins',
+    conflictOverlay: 'conflicts',
+    metadata: {
+      author: 'Tester',
+      createdAt: new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
+    },
+    revision: 1,
   };
 }
 
@@ -340,6 +358,123 @@ console.log('--- Test 4: Viewport Overlays ---');
   assert(selGroup.children.length === 2, 'Selection box should contain 1 fill mesh + 1 line segments outline');
 
   console.log('✓ Test 4 passed: overlays respect default-off flags and generate line segments when enabled.');
+}
+
+// ============================================================================
+// Test 5: O(1) Transform Updates & Revision Cache
+// ============================================================================
+console.log('--- Test 5: O(1) Transform Updates & Revision Cache ---');
+{
+  const manager = new ChunkSceneManager();
+
+  const chunk0Indices = new Uint8Array(4096);
+  chunk0Indices[0] = 1;
+  const chunk0: VoxelChunk = {
+    key: '0_0_0',
+    palette: [
+      { id: 'minecraft:air', props: {} },
+      { id: 'minecraft:stone', props: {} },
+    ],
+    indices: chunk0Indices,
+    revision: 1,
+  };
+
+  const chunksMap = new Map<string, VoxelChunk>();
+  chunksMap.set('0_0_0', chunk0);
+  const placement = createPlacement('p-transform', chunksMap);
+  const project = createProject('proj-trans', 'TransProject', [placement]);
+
+  manager.syncProject(project);
+  assertEqual(manager.getStats().meshCount, 1, 'Initial mesh count must be 1');
+
+  // Grab the Three.js mesh instance
+  const group = manager.rootGroup.getObjectByName('placement-p-transform') as THREE.Group;
+  assert(group !== undefined, 'Placement root group must exist');
+  const innerGroup = group.getObjectByName('placement-p-transform-inner') as THREE.Group;
+  const initialMesh = innerGroup.children[0];
+  assert(initialMesh !== undefined, 'Mesh must exist in inner group');
+
+  // 1. Update transforms on placement in O(1)
+  placement.transform.translation = [15, 25, 35];
+  placement.transform.rotationY = 90;
+  placement.transform.mirror = 'x';
+  manager.updatePlacementTransforms(project);
+
+  assertDeepEqual(
+    [group.position.x, group.position.y, group.position.z],
+    [15, 25, 35],
+    'Group position must match updated translation'
+  );
+  assert(Math.abs(group.rotation.y - Math.PI / 2) < 1e-5, 'Group rotationY must match 90 deg');
+  assertEqual(group.scale.x, -1, 'Group scale.x must be -1 for mirror x');
+  assert(innerGroup.children[0] === initialMesh, 'Mesh must not be recreated during transform update');
+
+  // 2. Calling rebuildPlacementChunks without revision changes skips re-meshing
+  manager.rebuildPlacementChunks(placement);
+  assert(
+    innerGroup.children[0] === initialMesh,
+    'Mesh must not be recreated when chunk revision and assetEpoch match cache'
+  );
+
+  // 3. Changing revision triggers re-mesh
+  chunk0.revision = 2;
+  manager.rebuildPlacementChunks(placement);
+  const updatedMesh = innerGroup.children[0];
+  assert(
+    updatedMesh !== initialMesh,
+    'Mesh must be recreated when chunk revision changes'
+  );
+
+  manager.dispose();
+  console.log('✓ Test 5 passed: O(1) transform updates modify groups without re-meshing, revision cache prevents redundant builds.');
+}
+
+// ============================================================================
+// Test 6: Incremental Time-Sliced Chunk Queue
+// ============================================================================
+console.log('--- Test 6: Incremental Time-Sliced Chunk Queue ---');
+{
+  const manager = new ChunkSceneManager();
+
+  const chunksMap = new Map<string, VoxelChunk>();
+  for (let i = 0; i < 5; i++) {
+    const indices = new Uint8Array(4096);
+    indices[0] = 1;
+    chunksMap.set(`${i}_0_0`, {
+      key: `${i}_0_0`,
+      palette: [
+        { id: 'minecraft:air', props: {} },
+        { id: 'minecraft:stone', props: {} },
+      ],
+      indices,
+      revision: 1,
+    });
+  }
+
+  const placement = createPlacement('p-queue', chunksMap);
+  const project = createProject('proj-queue', 'QueueProject', [placement]);
+
+  // Queue sync
+  manager.queueProjectSync(project);
+  assertEqual(manager.getPendingChunkCount(), 5, 'Pending chunk count must initially be 5');
+
+  // Process first slice with 0ms budget -> should process at least 1 chunk
+  const hasMore1 = manager.processChunkQueue(0);
+  assert(hasMore1, 'processChunkQueue should return true when chunks remain');
+  assert(manager.getPendingChunkCount() < 5, 'Pending count should decrease after slice');
+
+  // Process remaining chunks until done
+  let iterations = 0;
+  while (manager.processChunkQueue(10)) {
+    iterations++;
+    assert(iterations < 100, 'Queue processing should not loop indefinitely');
+  }
+
+  assertEqual(manager.getPendingChunkCount(), 0, 'Pending count must be 0 when finished');
+  assertEqual(manager.getStats().chunkCount, 5, 'All 5 chunks should now be meshed in the scene');
+
+  manager.dispose();
+  console.log('✓ Test 6 passed: queueProjectSync and processChunkQueue time-slice meshing correctly.');
 }
 
 console.log('\nAll Slice E3.2 Viewport tests passed successfully!');

@@ -452,14 +452,22 @@ export function shouldCullFace(
   lz: number,
   getBlockAt: (x: number, y: number, z: number) => BlockLookupResult,
   assets: AssetSource,
-  blockInfoCache: Map<string, CachedBlockInfo>
+  blockInfoCache: Map<string, CachedBlockInfo>,
+  getNeighborInfo?: (nx: number, ny: number, nz: number) => CachedBlockInfo | null | undefined
 ): boolean {
   if (!face.cullface) {
     return false;
   }
 
-  const effCullDir = rotateDirection(face.cullface, part.x, part.y);
-  const offset = DIR_VECTORS[effCullDir];
+  let offset: [number, number, number] | undefined;
+  const partX = part.x ?? 0;
+  const partY = part.y ?? 0;
+  if (partX === 0 && partY === 0) {
+    offset = DIR_VECTORS[face.cullface.toLowerCase()];
+  } else {
+    const effCullDir = rotateDirection(face.cullface, partX, partY);
+    offset = DIR_VECTORS[effCullDir];
+  }
   if (!offset) {
     return false;
   }
@@ -468,17 +476,28 @@ export function shouldCullFace(
   const ny = ly + offset[1];
   const nz = lz + offset[2];
 
-  const neighborRaw = getBlockAt(nx, ny, nz);
-  const neighborParsed = parseBlockData(neighborRaw);
-  if (!neighborParsed) {
-    return false;
+  let neighborInfo: CachedBlockInfo | null | undefined;
+  if (getNeighborInfo) {
+    neighborInfo = getNeighborInfo(nx, ny, nz);
   }
 
-  const neighborKey = formatBlockStateCacheKey(neighborParsed.name, neighborParsed.properties ?? {});
-  let neighborInfo = blockInfoCache.get(neighborKey);
+  if (neighborInfo === undefined) {
+    const neighborRaw = getBlockAt(nx, ny, nz);
+    const neighborParsed = parseBlockData(neighborRaw);
+    if (!neighborParsed) {
+      return false;
+    }
+
+    const neighborKey = formatBlockStateCacheKey(neighborParsed.name, neighborParsed.properties ?? {});
+    neighborInfo = blockInfoCache.get(neighborKey);
+    if (!neighborInfo) {
+      neighborInfo = computeBlockInfo(neighborParsed, assets);
+      blockInfoCache.set(neighborKey, neighborInfo);
+    }
+  }
+
   if (!neighborInfo) {
-    neighborInfo = computeBlockInfo(neighborParsed, assets);
-    blockInfoCache.set(neighborKey, neighborInfo);
+    return false;
   }
 
   // Condition 1: Neighbor is an opaque full cube
@@ -621,6 +640,89 @@ class PassBufferBuilder {
     this.colors[cOffset + 9] = color[0];
     this.colors[cOffset + 10] = color[1];
     this.colors[cOffset + 11] = color[2];
+
+    // Indices: (0, 1, 2) and (0, 2, 3)
+    this.indices[iOffset] = vIdx;
+    this.indices[iOffset + 1] = vIdx + 1;
+    this.indices[iOffset + 2] = vIdx + 2;
+    this.indices[iOffset + 3] = vIdx;
+    this.indices[iOffset + 4] = vIdx + 2;
+    this.indices[iOffset + 5] = vIdx + 3;
+
+    this.vertexCount += 4;
+    this.faceCount += 1;
+  }
+
+  public addFaceDirect(
+    v0x: number, v0y: number, v0z: number,
+    v1x: number, v1y: number, v1z: number,
+    v2x: number, v2y: number, v2z: number,
+    v3x: number, v3y: number, v3z: number,
+    nx: number, ny: number, nz: number,
+    uv0u: number, uv0v: number,
+    uv1u: number, uv1v: number,
+    uv2u: number, uv2v: number,
+    uv3u: number, uv3v: number,
+    colorR: number, colorG: number, colorB: number
+  ): void {
+    this.ensureCapacity(4, 6);
+
+    const vIdx = this.vertexCount;
+    const pOffset = vIdx * 3;
+    const uvOffset = vIdx * 2;
+    const iOffset = this.faceCount * 6;
+
+    // V0
+    this.positions[pOffset] = v0x;
+    this.positions[pOffset + 1] = v0y;
+    this.positions[pOffset + 2] = v0z;
+    this.normals[pOffset] = nx;
+    this.normals[pOffset + 1] = ny;
+    this.normals[pOffset + 2] = nz;
+    this.uvs[uvOffset] = uv0u;
+    this.uvs[uvOffset + 1] = uv0v;
+    this.colors[pOffset] = colorR;
+    this.colors[pOffset + 1] = colorG;
+    this.colors[pOffset + 2] = colorB;
+
+    // V1
+    this.positions[pOffset + 3] = v1x;
+    this.positions[pOffset + 4] = v1y;
+    this.positions[pOffset + 5] = v1z;
+    this.normals[pOffset + 3] = nx;
+    this.normals[pOffset + 4] = ny;
+    this.normals[pOffset + 5] = nz;
+    this.uvs[uvOffset + 2] = uv1u;
+    this.uvs[uvOffset + 3] = uv1v;
+    this.colors[pOffset + 3] = colorR;
+    this.colors[pOffset + 4] = colorG;
+    this.colors[pOffset + 5] = colorB;
+
+    // V2
+    this.positions[pOffset + 6] = v2x;
+    this.positions[pOffset + 7] = v2y;
+    this.positions[pOffset + 8] = v2z;
+    this.normals[pOffset + 6] = nx;
+    this.normals[pOffset + 7] = ny;
+    this.normals[pOffset + 8] = nz;
+    this.uvs[uvOffset + 4] = uv2u;
+    this.uvs[uvOffset + 5] = uv2v;
+    this.colors[pOffset + 6] = colorR;
+    this.colors[pOffset + 7] = colorG;
+    this.colors[pOffset + 8] = colorB;
+
+    // V3
+    this.positions[pOffset + 9] = v3x;
+    this.positions[pOffset + 10] = v3y;
+    this.positions[pOffset + 11] = v3z;
+    this.normals[pOffset + 9] = nx;
+    this.normals[pOffset + 10] = ny;
+    this.normals[pOffset + 11] = nz;
+    this.uvs[uvOffset + 6] = uv3u;
+    this.uvs[uvOffset + 7] = uv3v;
+    this.colors[pOffset + 9] = colorR;
+    this.colors[pOffset + 10] = colorG;
+    this.colors[pOffset + 11] = colorB;
 
     // Indices: (0, 1, 2) and (0, 2, 3)
     this.indices[iOffset] = vIdx;
@@ -797,18 +899,70 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
     emissive: new PassBufferBuilder(),
   };
 
-  for (let ly = 0; ly < 16; ly++) {
-    for (let lz = 0; lz < 16; lz++) {
-      for (let lx = 0; lx < 16; lx++) {
-        const rawBlock = getBlockAt(lx, ly, lz);
-        const parsed = parseBlockData(rawBlock);
-        if (!parsed) continue;
+  const hasPaletteIndices = Boolean(input.palette && input.indices);
+  let paletteParsed: (BlockStateData | null)[] | null = null;
+  let paletteInfo: (CachedBlockInfo | null)[] | null = null;
 
+  if (hasPaletteIndices) {
+    const pal = input.palette!;
+    const palLen = pal.length;
+    paletteParsed = new Array(palLen);
+    paletteInfo = new Array(palLen);
+    for (let i = 0; i < palLen; i++) {
+      const raw = pal[i];
+      const parsed = parseBlockData(raw);
+      paletteParsed[i] = parsed;
+      if (parsed) {
         const blockKey = formatBlockStateCacheKey(parsed.name, parsed.properties ?? {}, seed);
         let info = blockInfoCache.get(blockKey);
         if (!info) {
           info = computeBlockInfo(parsed, assets, seed, modelCache);
           blockInfoCache.set(blockKey, info);
+        }
+        paletteInfo[i] = info;
+      } else {
+        paletteInfo[i] = null;
+      }
+    }
+  }
+
+  const indices = input.indices;
+  const getNeighborInfo = hasPaletteIndices
+    ? (nx: number, ny: number, nz: number): CachedBlockInfo | null | undefined => {
+        if (nx >= 0 && nx < 16 && ny >= 0 && ny < 16 && nz >= 0 && nz < 16) {
+          const nIdx = nx + nz * 16 + ny * 256;
+          const nPIdx = indices![nIdx];
+          return nPIdx !== undefined ? (paletteInfo![nPIdx] ?? null) : null;
+        }
+        return undefined;
+      }
+    : undefined;
+
+  let idx = 0;
+  for (let ly = 0; ly < 16; ly++) {
+    const originY = origin[1] + ly;
+    for (let lz = 0; lz < 16; lz++) {
+      const originZ = origin[2] + lz;
+      for (let lx = 0; lx < 16; lx++, idx++) {
+        const originX = origin[0] + lx;
+
+        let info: CachedBlockInfo | null = null;
+        if (hasPaletteIndices) {
+          const pIdx = indices![idx];
+          if (pIdx === undefined) continue;
+          info = paletteInfo![pIdx] ?? null;
+          if (!info) continue;
+        } else {
+          const rawBlock = getBlockAt(lx, ly, lz);
+          const parsed = parseBlockData(rawBlock);
+          if (!parsed) continue;
+
+          const blockKey = formatBlockStateCacheKey(parsed.name, parsed.properties ?? {}, seed);
+          info = blockInfoCache.get(blockKey) ?? null;
+          if (!info) {
+            info = computeBlockInfo(parsed, assets, seed, modelCache);
+            blockInfoCache.set(blockKey, info);
+          }
         }
 
         // Process each resolved model part
@@ -817,8 +971,52 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
           const partY = part.y ?? 0;
           const uvlock = Boolean(part.uvlock);
 
+          const hasPartRot = partX !== 0 || partY !== 0;
+          let cosPartX = 1;
+          let sinPartX = 0;
+          let cosPartY = 1;
+          let sinPartY = 0;
+          if (partX !== 0) {
+            const radX = (partX * Math.PI) / 180;
+            cosPartX = Math.cos(radX);
+            sinPartX = Math.sin(radX);
+          }
+          if (partY !== 0) {
+            const radY = (partY * Math.PI) / 180;
+            cosPartY = Math.cos(radY);
+            sinPartY = Math.sin(radY);
+          }
+
           for (const el of part.elements) {
-            for (const [dir, face] of Object.entries(el.faces)) {
+            const x1 = el.from[0] / 16;
+            const y1 = el.from[1] / 16;
+            const z1 = el.from[2] / 16;
+            const x2 = el.to[0] / 16;
+            const y2 = el.to[1] / 16;
+            const z2 = el.to[2] / 16;
+
+            const hasElRot = Boolean(el.rotation && el.rotation.angle !== 0);
+            let elOx = 0;
+            let elOy = 0;
+            let elOz = 0;
+            let elCos = 1;
+            let elSin = 0;
+            let elScale = 1;
+            let elAxis: 'x' | 'y' | 'z' = 'y';
+            if (hasElRot) {
+              const rot = el.rotation!;
+              elOx = rot.origin[0] / 16;
+              elOy = rot.origin[1] / 16;
+              elOz = rot.origin[2] / 16;
+              const rad = (rot.angle * Math.PI) / 180;
+              elCos = Math.cos(rad);
+              elSin = Math.sin(rad);
+              elScale = rot.rescale ? 1 / elCos : 1.0;
+              elAxis = rot.axis;
+            }
+
+            for (const dir in el.faces) {
+              const face = (el.faces as Record<string, ResolvedFace | undefined>)[dir];
               if (!face) continue;
 
               // Face culling test
@@ -832,7 +1030,8 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
                   lz,
                   getBlockAt,
                   assets,
-                  blockInfoCache
+                  blockInfoCache,
+                  getNeighborInfo
                 )
               ) {
                 continue;
@@ -840,82 +1039,214 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
 
               // Determine pass for this face/texture
               const texInfo = getTextureUv ? getTextureUv(face.texture) : undefined;
-              const facePass = classifyPass(
-                parsed.name,
-                texInfo?.hasAlpha ?? 'none',
-                { properties: parsed.properties }
-              );
+              const hasAlpha = texInfo?.hasAlpha ?? 'none';
+              const facePass =
+                hasAlpha === 'none'
+                  ? info.pass
+                  : classifyPass(info.name, hasAlpha, { properties: info.properties });
 
-              // 1. Get raw quad vertices and normal
-              const rawQuad = getRawFaceQuad(dir, el.from, el.to);
+              // 1. Get raw quad coordinates and normal
+              let p0x: number, p0y: number, p0z: number;
+              let p1x: number, p1y: number, p1z: number;
+              let p2x: number, p2y: number, p2z: number;
+              let p3x: number, p3y: number, p3z: number;
+              let nx: number, ny: number, nz: number;
+
+              const lowerDir = dir.toLowerCase();
+              switch (lowerDir) {
+                case 'down':
+                  p0x = x1; p0y = y1; p0z = z2;
+                  p1x = x1; p1y = y1; p1z = z1;
+                  p2x = x2; p2y = y1; p2z = z1;
+                  p3x = x2; p3y = y1; p3z = z2;
+                  nx = 0; ny = -1; nz = 0;
+                  break;
+                case 'up':
+                  p0x = x1; p0y = y2; p0z = z1;
+                  p1x = x1; p1y = y2; p1z = z2;
+                  p2x = x2; p2y = y2; p2z = z2;
+                  p3x = x2; p3y = y2; p3z = z1;
+                  nx = 0; ny = 1; nz = 0;
+                  break;
+                case 'north':
+                  p0x = x2; p0y = y2; p0z = z1;
+                  p1x = x2; p1y = y1; p1z = z1;
+                  p2x = x1; p2y = y1; p2z = z1;
+                  p3x = x1; p3y = y2; p3z = z1;
+                  nx = 0; ny = 0; nz = -1;
+                  break;
+                case 'south':
+                  p0x = x1; p0y = y2; p0z = z2;
+                  p1x = x1; p1y = y1; p1z = z2;
+                  p2x = x2; p2y = y1; p2z = z2;
+                  p3x = x2; p3y = y2; p3z = z2;
+                  nx = 0; ny = 0; nz = 1;
+                  break;
+                case 'west':
+                  p0x = x1; p0y = y2; p0z = z1;
+                  p1x = x1; p1y = y1; p1z = z1;
+                  p2x = x1; p2y = y1; p2z = z2;
+                  p3x = x1; p3y = y2; p3z = z2;
+                  nx = -1; ny = 0; nz = 0;
+                  break;
+                case 'east':
+                  p0x = x2; p0y = y2; p0z = z2;
+                  p1x = x2; p1y = y1; p1z = z2;
+                  p2x = x2; p2y = y1; p2z = z1;
+                  p3x = x2; p3y = y2; p3z = z1;
+                  nx = 1; ny = 0; nz = 0;
+                  break;
+                default:
+                  p0x = x1; p0y = y2; p0z = z1;
+                  p1x = x1; p1y = y1; p1z = z1;
+                  p2x = x2; p2y = y1; p2z = z1;
+                  p3x = x2; p3y = y2; p3z = z1;
+                  nx = 0; ny = 0; nz = -1;
+                  break;
+              }
 
               // 2. Element-level rotation
-              const elRotatedQuad = rawQuad.vertices.map((v) =>
-                rotateElementVertex(v[0], v[1], v[2], el.rotation)
-              ) as [
-                [number, number, number],
-                [number, number, number],
-                [number, number, number],
-                [number, number, number]
-              ];
-              const elRotatedNormal = rotateElementNormal(
-                rawQuad.normal[0],
-                rawQuad.normal[1],
-                rawQuad.normal[2],
-                el.rotation
-              );
+              if (hasElRot) {
+                if (elAxis === 'x') {
+                  let dy = (p0y - elOy) * elScale; let dz = (p0z - elOz) * elScale;
+                  p0y = elOy + dy * elCos - dz * elSin; p0z = elOz + dy * elSin + dz * elCos;
+                  dy = (p1y - elOy) * elScale; dz = (p1z - elOz) * elScale;
+                  p1y = elOy + dy * elCos - dz * elSin; p1z = elOz + dy * elSin + dz * elCos;
+                  dy = (p2y - elOy) * elScale; dz = (p2z - elOz) * elScale;
+                  p2y = elOy + dy * elCos - dz * elSin; p2z = elOz + dy * elSin + dz * elCos;
+                  dy = (p3y - elOy) * elScale; dz = (p3z - elOz) * elScale;
+                  p3y = elOy + dy * elCos - dz * elSin; p3z = elOz + dy * elSin + dz * elCos;
+
+                  const nny = ny * elCos - nz * elSin;
+                  const nnz = ny * elSin + nz * elCos;
+                  ny = nny; nz = nnz;
+                } else if (elAxis === 'y') {
+                  let dx = (p0x - elOx) * elScale; let dz = (p0z - elOz) * elScale;
+                  p0x = elOx + dx * elCos - dz * elSin; p0z = elOz + dx * elSin + dz * elCos;
+                  dx = (p1x - elOx) * elScale; dz = (p1z - elOz) * elScale;
+                  p1x = elOx + dx * elCos - dz * elSin; p1z = elOz + dx * elSin + dz * elCos;
+                  dx = (p2x - elOx) * elScale; dz = (p2z - elOz) * elScale;
+                  p2x = elOx + dx * elCos - dz * elSin; p2z = elOz + dx * elSin + dz * elCos;
+                  dx = (p3x - elOx) * elScale; dz = (p3z - elOz) * elScale;
+                  p3x = elOx + dx * elCos - dz * elSin; p3z = elOz + dx * elSin + dz * elCos;
+
+                  const nnx = nx * elCos - nz * elSin;
+                  const nnz = nx * elSin + nz * elCos;
+                  nx = nnx; nz = nnz;
+                } else {
+                  let dx = (p0x - elOx) * elScale; let dy = (p0y - elOy) * elScale;
+                  p0x = elOx + dx * elCos - dy * elSin; p0y = elOy + dx * elSin + dy * elCos;
+                  dx = (p1x - elOx) * elScale; dy = (p1y - elOy) * elScale;
+                  p1x = elOx + dx * elCos - dy * elSin; p1y = elOy + dx * elSin + dy * elCos;
+                  dx = (p2x - elOx) * elScale; dy = (p2y - elOy) * elScale;
+                  p2x = elOx + dx * elCos - dy * elSin; p2y = elOy + dx * elSin + dy * elCos;
+                  dx = (p3x - elOx) * elScale; dy = (p3y - elOy) * elScale;
+                  p3x = elOx + dx * elCos - dy * elSin; p3y = elOy + dx * elSin + dy * elCos;
+
+                  const nnx = nx * elCos - ny * elSin;
+                  const nny = nx * elSin + ny * elCos;
+                  nx = nnx; ny = nny;
+                }
+              }
 
               // 3. Model-part rotation around block center [0.5, 0.5, 0.5]
-              const partRotatedQuad = elRotatedQuad.map((v) =>
-                rotatePointPart(v[0], v[1], v[2], partX, partY)
-              ) as [
-                [number, number, number],
-                [number, number, number],
-                [number, number, number],
-                [number, number, number]
-              ];
-              const finalNormal = rotateVectorPart(
-                elRotatedNormal[0],
-                elRotatedNormal[1],
-                elRotatedNormal[2],
-                partX,
-                partY
-              );
+              if (hasPartRot) {
+                // P0
+                let px = p0x - 0.5, py = p0y - 0.5, pz = p0z - 0.5;
+                if (partX !== 0) {
+                  const nny = py * cosPartX - pz * sinPartX;
+                  const nnz = py * sinPartX + pz * cosPartX;
+                  py = nny; pz = nnz;
+                }
+                if (partY !== 0) {
+                  const nnx = px * cosPartY - pz * sinPartY;
+                  const nnz = px * sinPartY + pz * cosPartY;
+                  px = nnx; pz = nnz;
+                }
+                p0x = px + 0.5; p0y = py + 0.5; p0z = pz + 0.5;
+
+                // P1
+                px = p1x - 0.5; py = p1y - 0.5; pz = p1z - 0.5;
+                if (partX !== 0) {
+                  const nny = py * cosPartX - pz * sinPartX;
+                  const nnz = py * sinPartX + pz * cosPartX;
+                  py = nny; pz = nnz;
+                }
+                if (partY !== 0) {
+                  const nnx = px * cosPartY - pz * sinPartY;
+                  const nnz = px * sinPartY + pz * cosPartY;
+                  px = nnx; pz = nnz;
+                }
+                p1x = px + 0.5; p1y = py + 0.5; p1z = pz + 0.5;
+
+                // P2
+                px = p2x - 0.5; py = p2y - 0.5; pz = p2z - 0.5;
+                if (partX !== 0) {
+                  const nny = py * cosPartX - pz * sinPartX;
+                  const nnz = py * sinPartX + pz * cosPartX;
+                  py = nny; pz = nnz;
+                }
+                if (partY !== 0) {
+                  const nnx = px * cosPartY - pz * sinPartY;
+                  const nnz = px * sinPartY + pz * cosPartY;
+                  px = nnx; pz = nnz;
+                }
+                p2x = px + 0.5; p2y = py + 0.5; p2z = pz + 0.5;
+
+                // P3
+                px = p3x - 0.5; py = p3y - 0.5; pz = p3z - 0.5;
+                if (partX !== 0) {
+                  const nny = py * cosPartX - pz * sinPartX;
+                  const nnz = py * sinPartX + pz * cosPartX;
+                  py = nny; pz = nnz;
+                }
+                if (partY !== 0) {
+                  const nnx = px * cosPartY - pz * sinPartY;
+                  const nnz = px * sinPartY + pz * cosPartY;
+                  px = nnx; pz = nnz;
+                }
+                p3x = px + 0.5; p3y = py + 0.5; p3z = pz + 0.5;
+
+                // Normal
+                px = nx; py = ny; pz = nz;
+                if (partX !== 0) {
+                  const nny = py * cosPartX - pz * sinPartX;
+                  const nnz = py * sinPartX + pz * cosPartX;
+                  py = nny; pz = nnz;
+                }
+                if (partY !== 0) {
+                  const nnx = px * cosPartY - pz * sinPartY;
+                  const nnz = px * sinPartY + pz * cosPartY;
+                  px = nnx; pz = nnz;
+                }
+                nx = px; ny = py; nz = pz;
+              }
 
               // 4. Translate to chunk/block world coordinates
-              const v0: [number, number, number] = [
-                origin[0] + lx + partRotatedQuad[0][0],
-                origin[1] + ly + partRotatedQuad[0][1],
-                origin[2] + lz + partRotatedQuad[0][2],
-              ];
-              const v1: [number, number, number] = [
-                origin[0] + lx + partRotatedQuad[1][0],
-                origin[1] + ly + partRotatedQuad[1][1],
-                origin[2] + lz + partRotatedQuad[1][2],
-              ];
-              const v2: [number, number, number] = [
-                origin[0] + lx + partRotatedQuad[2][0],
-                origin[1] + ly + partRotatedQuad[2][1],
-                origin[2] + lz + partRotatedQuad[2][2],
-              ];
-              const v3: [number, number, number] = [
-                origin[0] + lx + partRotatedQuad[3][0],
-                origin[1] + ly + partRotatedQuad[3][1],
-                origin[2] + lz + partRotatedQuad[3][2],
-              ];
+              const v0x = originX + p0x;
+              const v0y = originY + p0y;
+              const v0z = originZ + p0z;
+
+              const v1x = originX + p1x;
+              const v1y = originY + p1y;
+              const v1z = originZ + p1z;
+
+              const v2x = originX + p2x;
+              const v2y = originY + p2y;
+              const v2z = originZ + p2z;
+
+              const v3x = originX + p3x;
+              const v3y = originY + p3y;
+              const v3z = originZ + p3z;
 
               // 5. UV Mapping & rotation
-              const [u1, v1_uv, u2, v2_uv] = face.uv;
-              const rawUvs: [number, number][] = [
-                [u1, v1_uv],
-                [u1, v2_uv],
-                [u2, v2_uv],
-                [u2, v1_uv],
-              ];
+              const u1 = face.uv[0];
+              const v1_uv = face.uv[1];
+              const u2 = face.uv[2];
+              const v2_uv = face.uv[3];
 
               let faceRot = face.rotation ?? 0;
               if (uvlock) {
-                const lowerDir = dir.toLowerCase();
                 if (lowerDir === 'up') {
                   faceRot = (faceRot + 360 - (partY % 360)) % 360;
                 } else if (lowerDir === 'down') {
@@ -936,22 +1267,28 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
               const du = atlasU1 - atlasU0;
               const dv = atlasV1 - atlasV0;
 
-              const mapUv = (raw: [number, number]): [number, number] => [
-                atlasU0 + (raw[0] / 16) * du,
-                atlasV0 + (raw[1] / 16) * dv,
-              ];
+              const raw0 = shift % 4;
+              const uv0u = atlasU0 + ((raw0 === 0 || raw0 === 1 ? u1 : u2) / 16) * du;
+              const uv0v = atlasV0 + ((raw0 === 0 || raw0 === 3 ? v1_uv : v2_uv) / 16) * dv;
 
-              const uv0 = mapUv(rawUvs[shift % 4]!);
-              const uv1 = mapUv(rawUvs[(shift + 1) % 4]!);
-              const uv2 = mapUv(rawUvs[(shift + 2) % 4]!);
-              const uv3 = mapUv(rawUvs[(shift + 3) % 4]!);
+              const raw1 = (shift + 1) % 4;
+              const uv1u = atlasU0 + ((raw1 === 0 || raw1 === 1 ? u1 : u2) / 16) * du;
+              const uv1v = atlasV0 + ((raw1 === 0 || raw1 === 3 ? v1_uv : v2_uv) / 16) * dv;
+
+              const raw2 = (shift + 2) % 4;
+              const uv2u = atlasU0 + ((raw2 === 0 || raw2 === 1 ? u1 : u2) / 16) * du;
+              const uv2v = atlasV0 + ((raw2 === 0 || raw2 === 3 ? v1_uv : v2_uv) / 16) * dv;
+
+              const raw3 = (shift + 3) % 4;
+              const uv3u = atlasU0 + ((raw3 === 0 || raw3 === 1 ? u1 : u2) / 16) * du;
+              const uv3v = atlasV0 + ((raw3 === 0 || raw3 === 3 ? v1_uv : v2_uv) / 16) * dv;
 
               // 6. Vertex Colors (Tint + Directional Shade)
               let baseR = 1.0;
               let baseG = 1.0;
               let baseB = 1.0;
               if (face.tintindex !== undefined && face.tintindex >= 0) {
-                const tint = getTint(parsed.name, face.tintindex);
+                const tint = getTint(info.name, face.tintindex);
                 if (tint) {
                   baseR = tint[0];
                   baseG = tint[1];
@@ -961,11 +1298,11 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
 
               let shade = 1.0;
               if (el.shade !== false) {
-                const ax = Math.abs(finalNormal[0]);
-                const ay = Math.abs(finalNormal[1]);
-                const az = Math.abs(finalNormal[2]);
+                const ax = Math.abs(nx);
+                const ay = Math.abs(ny);
+                const az = Math.abs(nz);
                 if (ay >= ax && ay >= az) {
-                  shade = finalNormal[1] > 0 ? 1.0 : 0.5;
+                  shade = ny > 0 ? 1.0 : 0.5;
                 } else if (az >= ax && az >= ay) {
                   shade = 0.8;
                 } else {
@@ -973,24 +1310,22 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
                 }
               }
 
-              const finalColor: [number, number, number] = [
-                baseR * shade,
-                baseG * shade,
-                baseB * shade,
-              ];
+              const colorR = baseR * shade;
+              const colorG = baseG * shade;
+              const colorB = baseB * shade;
 
               // Add face to builder for facePass
-              passBuilders[facePass].addFace(
-                v0,
-                v1,
-                v2,
-                v3,
-                finalNormal,
-                uv0,
-                uv1,
-                uv2,
-                uv3,
-                finalColor
+              passBuilders[facePass].addFaceDirect(
+                v0x, v0y, v0z,
+                v1x, v1y, v1z,
+                v2x, v2y, v2z,
+                v3x, v3y, v3z,
+                nx, ny, nz,
+                uv0u, uv0v,
+                uv1u, uv1v,
+                uv2u, uv2v,
+                uv3u, uv3v,
+                colorR, colorG, colorB
               );
             }
           }

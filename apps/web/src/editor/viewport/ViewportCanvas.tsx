@@ -28,6 +28,35 @@ export interface GhostPreviewSpec {
 
 const EMPTY_STRING_SET = new Set<string>();
 
+const TRANSFORM_OR_METADATA_EVENT_KINDS = new Set<string>([
+  'transform',
+  'move',
+  'rotate',
+  'mirror',
+  'visible',
+  'lock',
+  'select',
+  'metadata',
+  'placement:transform',
+  'placement:set-visible',
+  'placement:set-locked',
+]);
+
+function isTransformOrMetadataEvent(kind: string): boolean {
+  if (TRANSFORM_OR_METADATA_EVENT_KINDS.has(kind)) return true;
+  const lower = kind.toLowerCase();
+  return (
+    lower.includes('transform') ||
+    lower.includes('move') ||
+    lower.includes('rotate') ||
+    lower.includes('mirror') ||
+    lower.includes('visible') ||
+    lower.includes('lock') ||
+    lower.includes('select') ||
+    lower.includes('metadata')
+  );
+}
+
 export interface ViewportCanvasProps {
   session: EditorSession;
   atlasTexture?: THREE.Texture | null;
@@ -113,6 +142,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
   // Animation frame & input tracking
   const animFrameIdRef = useRef<number | null>(null);
+  const chunkSyncRafRef = useRef<number | null>(null);
   const isDraggingRef = useRef<boolean>(false);
   const dragButtonRef = useRef<number>(0);
   const lastMousePosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -129,7 +159,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const scene = sceneRef.current;
     if (!scene) return;
 
-    const project = session.snapshot();
+    const project = session.peekProject();
     const selIds = selectedPlacementIdsRef.current;
     const gPrefs = gridPrefsRef.current;
     const cPos = conflictOverlayPositionsRef.current;
@@ -209,42 +239,83 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   }, [session]);
 
   // --------------------------------------------------------------------------
-  // Sync Chunks
+  // Incremental Chunk Sync (rAF Time-Sliced)
   // --------------------------------------------------------------------------
-  const syncChunks = useCallback(() => {
-    const manager = chunkManagerRef.current;
-    if (!manager) return;
+  const scheduleChunkSync = useCallback(
+    (dirtyPlacementIds?: string[], dirtyChunkKeys?: string[]) => {
+      const manager = chunkManagerRef.current;
+      if (!manager) return;
 
-    const project = session.snapshot();
-    manager.syncProject(project, {
-      assetSource: assetSourceRef.current,
-      uvLookup: uvLookupRef.current,
-    });
-    setStats(manager.getStats());
-
-    if (prevPlacementCountRef.current === 0 && project.placements.length > 0) {
-      let minX = Infinity, minY = Infinity, minZ = Infinity;
-      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-      for (const p of project.placements) {
-        minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-        minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-        minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-        maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-        maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-        maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+      if (chunkSyncRafRef.current !== null) {
+        cancelAnimationFrame(chunkSyncRafRef.current);
+        chunkSyncRafRef.current = null;
       }
-      if (Number.isFinite(minX) && cameraCtrlRef.current) {
-        cameraCtrlRef.current.frameBounds({
-          min: [minX, minY, minZ],
-          maxExclusive: [maxX, maxY, maxZ],
-        });
-        if (cameraRef.current) {
-          cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+
+      const project = session.peekProject();
+
+      let dirtyChunkKeysByPlacement: Map<string, string[]> | undefined;
+      if (
+        dirtyChunkKeys &&
+        dirtyChunkKeys.length > 0 &&
+        dirtyPlacementIds &&
+        dirtyPlacementIds.length > 0
+      ) {
+        dirtyChunkKeysByPlacement = new Map();
+        for (const pId of dirtyPlacementIds) {
+          dirtyChunkKeysByPlacement.set(pId, dirtyChunkKeys);
         }
       }
-    }
-    prevPlacementCountRef.current = project.placements.length;
-  }, [session]);
+
+      manager.queueProjectSync(project, {
+        assetSource: assetSourceRef.current,
+        uvLookup: uvLookupRef.current,
+        dirtyChunkKeysByPlacement,
+      });
+
+      const hasMore = manager.processChunkQueue(10);
+      setStats(manager.getStats());
+
+      if (prevPlacementCountRef.current === 0 && project.placements.length > 0) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (const p of project.placements) {
+          minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
+          minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
+          minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
+          maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
+          maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
+          maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+        }
+        if (Number.isFinite(minX) && cameraCtrlRef.current) {
+          cameraCtrlRef.current.frameBounds({
+            min: [minX, minY, minZ],
+            maxExclusive: [maxX, maxY, maxZ],
+          });
+          if (cameraRef.current) {
+            cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+          }
+        }
+      }
+      prevPlacementCountRef.current = project.placements.length;
+
+      if (hasMore) {
+        const stepQueue = () => {
+          const stillMore = manager.processChunkQueue(10);
+          setStats(manager.getStats());
+          if (stillMore) {
+            chunkSyncRafRef.current = requestAnimationFrame(stepQueue);
+          } else {
+            chunkSyncRafRef.current = null;
+          }
+        };
+        chunkSyncRafRef.current = requestAnimationFrame(stepQueue);
+      }
+    },
+    [session]
+  );
+
+  const scheduleChunkSyncRef = useRef(scheduleChunkSync);
+  scheduleChunkSyncRef.current = scheduleChunkSync;
 
   // Update atlas texture on manager when prop changes
   useEffect(() => {
@@ -259,8 +330,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   }, [updateOverlays, selectedPlacementIds, gridPrefs, conflictOverlayPositions, ghostPreview]);
 
   useEffect(() => {
-    syncChunks();
-  }, [syncChunks, assetSource, uvLookup, atlasTexture]);
+    scheduleChunkSync();
+  }, [scheduleChunkSync, assetSource, uvLookup, atlasTexture]);
 
   // --------------------------------------------------------------------------
   // Main Three.js Lifecycle
@@ -323,11 +394,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(chunkManager.rootGroup);
 
     // Initial project synchronization
-    syncChunks();
+    scheduleChunkSync();
     updateOverlays();
 
     // Auto-frame initial project if placements exist
-    const project = session.snapshot();
+    const project = session.peekProject();
     if (project.placements.length > 0) {
       let minX = Infinity, minY = Infinity, minZ = Infinity;
       let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
@@ -349,9 +420,14 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
 
     // Subscribe to session changes
-    const unsubscribeSession = session.subscribe((_event: SessionChangeEvent) => {
-      syncChunks();
-      updateOverlays();
+    const unsubscribeSession = session.subscribe((event: SessionChangeEvent) => {
+      if (isTransformOrMetadataEvent(event.kind)) {
+        chunkManager.updatePlacementTransforms(session.peekProject());
+        updateOverlays();
+      } else {
+        scheduleChunkSyncRef.current(event.placementIds, event.chunkKeys);
+        updateOverlays();
+      }
     });
 
     // WebGL context loss handlers
@@ -362,7 +438,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
     const handleContextRestored = () => {
       setContextLost(false);
-      syncChunks();
+      scheduleChunkSyncRef.current();
       updateOverlays();
     };
 
@@ -419,6 +495,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       if (animFrameIdRef.current) {
         cancelAnimationFrame(animFrameIdRef.current);
       }
+      if (chunkSyncRafRef.current !== null) {
+        cancelAnimationFrame(chunkSyncRafRef.current);
+        chunkSyncRafRef.current = null;
+      }
       resizeObserver.disconnect();
       unsubscribeSession();
 
@@ -465,7 +545,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         mouseRaycaster.current.ray.direction.z,
       ];
 
-      const project = session.snapshot();
+      const project = session.peekProject();
       const blockLookup = createProjectBlockLookup(project);
 
       const voxelHit = raycastVoxels(rayOrigin, rayDir, 256, blockLookup);
@@ -577,7 +657,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const cameraCtrl = cameraCtrlRef.current;
     if (!cameraCtrl) return;
 
-    const project = session.snapshot();
+    const project = session.peekProject();
     let bounds: Bounds3i | undefined;
     if (project.placements.length > 0) {
       let minX = Infinity, minY = Infinity, minZ = Infinity;
@@ -604,7 +684,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const handleFrameAll = () => {
     const cameraCtrl = cameraCtrlRef.current;
     if (!cameraCtrl) return;
-    const project = session.snapshot();
+    const project = session.peekProject();
     if (project.placements.length === 0) return;
 
     let minX = Infinity, minY = Infinity, minZ = Infinity;
