@@ -75,6 +75,7 @@ export type ModelElement = {
     angle: number;
     axis: 'x' | 'y' | 'z';
     origin: [number, number, number];
+    rescale?: boolean;
   };
   shade?: boolean;
   faces: Record<string, ModelFace>;

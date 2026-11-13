@@ -114,3 +114,93 @@ export type {
   AtlasValidation,
   ValidationManager,
 } from './validation.ts';
+
+export type {
+  AtlasEntryInput,
+  PackAtlasOptions,
+  AtlasPageRect,
+  AtlasPackOutput,
+  AnimationFrameDef,
+  McmetaAnimation,
+} from './atlas-packer.ts';
+
+export {
+  packAtlas,
+  parseMcmetaAnimation,
+  getFirstFrameDimensions,
+  getAnimationFrameDimensions,
+} from './atlas-packer.ts';
+
+export type {
+  ClassifyPassOptions,
+} from './render-pass.ts';
+
+export {
+  TRANSLUCENT_BLOCKS,
+  CUTOUT_BLOCKS,
+  EMISSIVE_BLOCKS,
+  isTranslucentBlock,
+  isCutoutBlock,
+  isEmissiveBlock,
+  classifyPass,
+} from './render-pass.ts';
+
+export {
+  hexToRgb,
+  DEFAULT_PLAINS_GRASS_TINT,
+  DEFAULT_PLAINS_FOLIAGE_TINT,
+  BIRCH_LEAVES_TINT,
+  SPRUCE_LEAVES_TINT,
+  WATER_TINT,
+  LILY_PAD_TINT,
+  GRASS_TINTED_BLOCKS,
+  FOLIAGE_TINTED_BLOCKS,
+  FIXED_TINT_BLOCKS,
+  getTint,
+} from './tints.ts';
+
+// Model Resolver (slice E2.1)
+export type {
+  AssetSource,
+  ResolvedFace,
+  ResolvedElement,
+  ResolvedModelPart,
+  ResolveModelOptions,
+  RawModelRef,
+  RawBlockModel,
+  RawBlockStateDefinition,
+} from './model-resolver.ts';
+
+export {
+  resolveBlockModels,
+  normalizeResourceLocation,
+  createMissingModelPart,
+  computeDefaultUv,
+  resolveTextureVariable,
+  matchWhenCondition,
+  selectWeightedModel,
+  formatBlockStateCacheKey,
+  clearModelCache,
+  MISSING_MODEL_TEXTURE,
+} from './model-resolver.ts';
+
+// Chunk Mesher (slice E2.3)
+export type {
+  BlockStateData,
+  BlockLookupResult,
+  TextureUvInfo,
+  ChunkMeshInput,
+  PassGeometryBuffer,
+  ChunkMeshOutput,
+} from './chunk-mesher.ts';
+
+export {
+  meshChunk,
+  isAirBlock,
+  parseBlockData,
+  rotateDirection,
+  isOpaqueFullCube,
+  shouldCullFace,
+} from './chunk-mesher.ts';
+
+

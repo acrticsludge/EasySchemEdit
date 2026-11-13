@@ -125,4 +125,34 @@ Items here are unresolved; nothing here may be implemented as a guess.
   `slice-g-3-design-tokens.test.ts` pins every measured value.
 - **Severity:** Medium (a genuine AA failure in a normal interaction state).
 
+## D-10: Emissive block list not enumerated in SUBSPEC-E — UNVERIFIED
+
+- **Context:** `docs/specs/subs/SUBSPEC-E_RENDERING_RESOURCE_PACKS.md` §3.4 and §4.13 define the emissive
+  render pass ("additive blending, no depth write", "self-illumination via additive pass, no bloom (v1)"),
+  and acceptance criterion 7 requires "Opaque, cutout, translucent, emissive geometry through appropriate
+  material/pass paths". However, SUBSPEC-E does not enumerate which specific Minecraft block IDs belong to the
+  emissive pass.
+- **Slice E2.2 Implementation:** In `packages/renderer/src/render-pass.ts`, defaulted `EMISSIVE_BLOCKS` to
+  standard light-emitting blocks: `glowstone`, `sea_lantern`, `shroomlight`, `lava`, `flowing_lava`,
+  `magma_block`, `*_froglight` (`ochre_froglight`, `pearlescent_froglight`, `verdant_froglight`),
+  `jack_o_lantern`, `crying_obsidian`, `respawn_anchor`, `beacon`, `end_rod`, `fire`, `soul_fire`,
+  `campfire`, `soul_campfire`, `torch`, `wall_torch`, `soul_torch`, `soul_wall_torch`, `redstone_torch`,
+  `redstone_wall_torch`, `lantern`, `soul_lantern`, and lit redstone lamp (`redstone_lamp[lit=true]`, `lit_redstone_lamp`).
+  `classifyPass` also accepts explicit overrides via `opts.isEmissive` and `opts.forcePass`.
+- **Question for the spec owner:** Confirm or adjust the set of blocks routed to the emissive pass in v1.
+- **Severity:** Low (visual pass routing only; easily adjusted without breaking data structures).
+
+## D-11: Default UV projection for omitted face UVs in model JSON — UNVERIFIED
+
+- **Context:** `docs/specs/subs/SUBSPEC-E_RENDERING_RESOURCE_PACKS.md` §2.1 defines `ModelFace.uv?: [number, number, number, number]`.
+  When `uv` is omitted from an element face in model JSON, vanilla Minecraft derives default UVs from the element's 3D bounds (`from` and `to`).
+- **Slice E2.1 Implementation:** In `packages/renderer/src/model-resolver.ts`, `computeDefaultUv(dir, from, to)` projects coordinates onto face axes:
+  `up`: `[x1, z1, x2, z2]`, `down`: `[x1, 16 - z2, x2, 16 - z1]`,
+  `north`: `[16 - x2, 16 - y2, 16 - x1, 16 - y1]`, `south`: `[x1, 16 - y2, x2, 16 - y1]`,
+  `west`: `[z1, 16 - y2, z2, 16 - y1]`, `east`: `[16 - z2, 16 - y2, 16 - z1, 16 - y1]`.
+  For full cubes `[0, 0, 0]` to `[16, 16, 16]`, all faces evaluate to `[0, 0, 16, 16]`.
+- **Question for the spec owner:** Confirm whether any custom orientation or coordinate inversion is preferred for partial-block default UV projections.
+- **Severity:** Low (affects only custom models that omit explicit face UVs on partial cubes).
+
+
 
