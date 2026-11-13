@@ -49,6 +49,15 @@ export type {
 } from './inspector.ts';
 
 export {
+  createOnboarding,
+} from './onboarding.ts';
+
+export type {
+  OnboardingController,
+  OnboardingControllerOptions,
+} from './onboarding.ts';
+
+export {
   createTooltipController,
 } from './tooltips.ts';
 
