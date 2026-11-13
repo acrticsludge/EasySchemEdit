@@ -49,6 +49,15 @@ export type {
 } from './inspector.ts';
 
 export {
+  createAssetLoadPanel,
+} from './asset-load-panel.ts';
+
+export type {
+  AssetLoadPanel,
+  AssetLoadState,
+} from './asset-load-panel.ts';
+
+export {
   createBottomPanels,
 } from './bottom-panels.ts';
 
