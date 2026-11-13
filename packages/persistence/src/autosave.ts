@@ -21,8 +21,17 @@ export interface RecoveryEntry {
 }
 
 // Save an autosave snapshot (overwrites previous autosave for projectId).
-// Uses crash-safe commit protocol via saveProject.
+// Uses crash-safe commit protocol via saveProject and records to journal.
 export async function saveAutosave(entry: AutosaveEntry): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_AUTOSAVE_JOURNAL, 'readwrite');
+    const store = tx.objectStore(STORE_AUTOSAVE_JOURNAL);
+    const req = store.put(entry);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(new Error(`AUTOSAVE_JOURNAL_SAVE_FAILED: ${req.error?.message ?? 'Unknown error'}`));
+  });
+
   await saveProject({
     projectId: entry.projectId,
     revision: entry.revision,

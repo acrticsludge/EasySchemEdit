@@ -157,7 +157,7 @@ async function writeTempKey(db: IDBDatabase, key: string, data: ArrayBuffer): Pr
   return new Promise((resolve, reject) => {
     const tx = db.transaction('commitRecords', 'readwrite');
     const store = tx.objectStore('commitRecords');
-    const req = store.put({ key, data, tempKey: true }, key);
+    const req = store.put({ transactionId: key, key, data, tempKey: true });
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });

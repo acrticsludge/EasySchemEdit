@@ -6,6 +6,7 @@ import { openDB, STORE_CHUNKS } from './idb-store.ts';
 export interface ChunkBlob {
   chunkKey: string;      // e.g. "2_-1_0"
   projectId: string;
+  placementId?: string;
   data: ArrayBuffer;     // binary chunk data (.bin format)
   savedAt: string;
 }
@@ -34,23 +35,22 @@ export async function getChunk(chunkKey: string, projectId: string): Promise<Chu
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CHUNKS, 'readonly');
     const store = tx.objectStore(STORE_CHUNKS);
-    // chunkKey is the primary key; filter by projectId in JS
-    const req = store.get(chunkKey);
+    const req = store.get([projectId, chunkKey]);
     req.onsuccess = () => {
       const result = req.result as ChunkBlob | undefined;
-      resolve(result && result.projectId === projectId ? result : null);
+      resolve(result ?? null);
     };
     req.onerror = () => reject(new Error(`CHUNK_READ_FAILED: ${req.error?.message ?? 'Unknown error'}`));
   });
 }
 
 // Delete a chunk blob.
-export async function deleteChunk(chunkKey: string): Promise<void> {
+export async function deleteChunk(chunkKey: string, projectId?: string): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_CHUNKS, 'readwrite');
     const store = tx.objectStore(STORE_CHUNKS);
-    const req = store.delete(chunkKey);
+    const req = projectId ? store.delete([projectId, chunkKey]) : store.delete(chunkKey as any);
     req.onsuccess = () => resolve();
     req.onerror = () => reject(new Error(`CHUNK_DELETE_FAILED: ${req.error?.message ?? 'Unknown error'}`));
   });

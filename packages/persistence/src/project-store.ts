@@ -48,8 +48,8 @@ export async function saveProject(archive: ProjectArchive): Promise<void> {
       return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
     },
     getProjectRevision: async (pid: string) => {
-      const existing = await getProject(pid);
-      return existing?.revision ?? 0;
+      const existingProj = await getProject(pid);
+      return existingProj?.revision ?? 0;
     },
     updateProjectRevision: async (_pid: string, _revision: number) => {
       // Revision is stored in the archive itself; no separate update needed
@@ -68,8 +68,20 @@ export async function saveProject(archive: ProjectArchive): Promise<void> {
     throw new ProjectStoreError('COMMIT_FAILED', result.error);
   }
 
-  // After successful commit, move temp data to permanent key
-  await moveTempToPermanent(db, tempKey, archive.projectId);
+  // After successful commit, write project archive permanently
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_PROJECTS, 'readwrite');
+    const store = tx.objectStore(STORE_PROJECTS);
+    const req = store.put({ ...archive, id: archive.projectId });
+    req.onsuccess = () => resolve();
+    req.onerror = () => {
+      if (req.error?.name === 'QuotaExceededError') {
+        reject(new ProjectStoreError('QUOTA_EXCEEDED', 'Storage quota exceeded'));
+      } else {
+        reject(new ProjectStoreError('WRITE_FAILED', req.error?.message ?? 'Unknown write error'));
+      }
+    };
+  });
 }
 
 // Get a project archive by projectId.
@@ -103,43 +115,11 @@ export async function listProjects(): Promise<string[]> {
     const tx = db.transaction(STORE_PROJECTS, 'readonly');
     const store = tx.objectStore(STORE_PROJECTS);
     const req = store.getAllKeys();
-    req.onsuccess = () => resolve(req.result as string[]);
-    req.onerror = () => reject(new ProjectStoreError('LIST_FAILED', req.error?.message ?? 'Unknown list error'));
-  });
-}
-
-async function writeTempKey(db: IDBDatabase, key: string, data: ArrayBuffer): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_PROJECTS, 'readwrite');
-    const store = tx.objectStore(STORE_PROJECTS);
-    const req = store.put({ key, data, tempKey: true }, key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
-}
-
-async function moveTempToPermanent(db: IDBDatabase, tempKey: string, projectId: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_PROJECTS, 'readwrite');
-    const store = tx.objectStore(STORE_PROJECTS);
-
-    const getReq = store.get(tempKey);
-    getReq.onsuccess = () => {
-      const result = getReq.result as { key: string; data: ArrayBuffer; tempKey: boolean } | undefined;
-      if (!result) {
-        reject(new Error(`Temp key ${tempKey} not found`));
-        return;
-      }
-
-      const putReq = store.put({ key: projectId, data: result.data, tempKey: false }, projectId);
-      putReq.onsuccess = () => {
-        const delReq = store.delete(tempKey);
-        delReq.onsuccess = () => resolve();
-        delReq.onerror = () => reject(delReq.error);
-      };
-      putReq.onerror = () => reject(putReq.error);
+    req.onsuccess = () => {
+      const keys = (req.result as string[]).filter((k) => typeof k === 'string' && !k.startsWith('temp_'));
+      resolve(keys);
     };
-    getReq.onerror = () => reject(getReq.error);
+    req.onerror = () => reject(new ProjectStoreError('LIST_FAILED', req.error?.message ?? 'Unknown list error'));
   });
 }
 

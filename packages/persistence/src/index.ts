@@ -3,10 +3,21 @@
 
 export {
   openDB,
+  closeDB,
+  setIDBFactory,
+  getIDBFactory,
+  isIDBAvailable,
   STORE_PROJECTS,
   STORE_CHUNKS,
   STORE_AUTOSAVE_JOURNAL,
   STORE_RECOVERY,
+  STORE_LIBRARY,
+  STORE_ANCILLARY,
+  STORE_HISTORY,
+  STORE_ASSETS,
+  STORE_SETTINGS,
+  STORE_IDEMPOTENCY,
+  STORE_COMMIT_RECORDS,
 } from './idb-store.ts';
 
 export {
@@ -15,7 +26,7 @@ export {
   deleteProject,
   listProjects,
   type ProjectArchive,
-  type ProjectStoreError,
+  ProjectStoreError,
 } from './project-store.ts';
 
 export {
@@ -41,10 +52,8 @@ export {
   type CommitPhase,
 } from './commit-protocol.ts';
 
-export type { HistoryEntryType } from './history.ts';
-export type { HistoryEntry } from './history.ts';
+export type { HistoryEntryType, HistoryEntry, HistoryManagerOptions } from './history.ts';
 export { HistoryManager } from './history.ts';
-export type { HistoryManagerOptions } from './history.ts';
 
 export {
   type SchemaVersion,
@@ -74,6 +83,8 @@ export {
   type VxprojServices,
   serializeVxproj,
   deserializeVxproj,
+  packVxprojArchive,
+  unpackVxprojArchive,
 } from './vxproj.ts';
 
 export {
@@ -81,3 +92,12 @@ export {
   type IdempotencyConfig,
   IdempotencyManager,
 } from './idempotency.ts';
+
+export {
+  type LibraryEntry,
+  saveLibraryEntry,
+  getLibraryEntry,
+  listLibraryEntries,
+  deleteLibraryEntry,
+  getLibraryStorageStats,
+} from './library-store.ts';
