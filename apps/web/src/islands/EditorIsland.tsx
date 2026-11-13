@@ -67,10 +67,35 @@ export default function EditorIsland() {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
 
-      const { detectFormat } = await import('@easyschemedit/formats');
-      const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      const format = detectFormat(bytes, ext);
-      setStatus(`Loaded ${file.name} (${bytes.length} bytes, format: ${format.format.kind})`);
+      // NbtServices using browser's DecompressionStream
+      const services = {
+        gzipCompress: (b: Uint8Array) => b, // not needed for reading
+        gzipDecompress: async (b: Uint8Array, max: number) => {
+          const ds = new DecompressionStream('gzip');
+          const writer = ds.writable.getWriter();
+          writer.write(b);
+          writer.close();
+          const reader = ds.readable.getReader();
+          const chunks: Uint8Array[] = [];
+          let total = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            total += value.length;
+            if (total > max) throw new Error('decompressed too large');
+          }
+          const result = new Uint8Array(total);
+          let off = 0;
+          for (const c of chunks) { result.set(c, off); off += c.length; }
+          return result;
+        },
+      };
+
+      const { inspect } = await import('@easyschemedit/formats');
+      const info = await inspect(bytes, services as any);
+      setStatus(`Loaded ${file.name}: ${info.dimensions?.width}×${info.dimensions?.height}×${info.dimensions?.length}, ${info.nonAirBlockCount ?? '?'} blocks`);
+      setFileName(file.name);
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
