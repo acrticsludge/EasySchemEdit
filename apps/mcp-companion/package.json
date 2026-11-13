@@ -10,7 +10,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
-    "test": "node --experimental-strip-types __tests__/slice-f-7-destructive-protocol.test.ts && node --experimental-strip-types __tests__/slice-f-8-mcp-export.test.ts && node --experimental-strip-types __tests__/slice-f-9-agent-log.test.ts && node --experimental-strip-types __tests__/slice-f-10-health.test.ts && node --experimental-strip-types __tests__/slice-f-11-failure-handling.test.ts"
+    "test": "node --experimental-strip-types __tests__/slice-f-7-destructive-protocol.test.ts && node --experimental-strip-types __tests__/slice-f-8-mcp-export.test.ts && node --experimental-strip-types __tests__/slice-f-9-agent-log.test.ts && node --experimental-strip-types __tests__/slice-f-10-health.test.ts && node --experimental-strip-types __tests__/slice-f-11-failure-handling.test.ts && node --experimental-strip-types __tests__/slice-f-12-acceptance.test.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",

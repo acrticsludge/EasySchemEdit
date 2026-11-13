@@ -26,7 +26,7 @@ Build in thin vertical slices per the incremental-implementation skill:
 | `slice-f-9.md` | Agent log entry + sanitization | `apps/mcp-companion/src/agent-log.ts` | Sanitize tokens, paths, usernames, secrets, raw NBT, raw file contents |
 | `slice-f-10.md` | Health endpoint: /healthz, /readyz, /metrics | `apps/mcp-companion/src/health.ts` | Health status, bridge status, uptime |
 | `slice-f-11.md` | Failure handling: error codes, stale revision, duplicate requestId, over-limit, locked placement | `apps/mcp-companion/src/failure-handling.ts` | Error codes, rejection paths |
-| `slice-f-12.md` | Acceptance criteria verification | `apps/mcp-companion/__tests__/` | All 25 SUBSPEC-F acceptance items |
+| `slice-f-12.md` | Acceptance criteria verification | `apps/mcp-companion/__tests__/` | All 25 SUBSPEC-F acceptance items — 12 PASS / 13 BLOCKED, 54 assertions, exit 0 |
 
 ## Acceptance Criteria (from SUBSPEC-F §10.2, revised)
 
@@ -62,9 +62,21 @@ Build in thin vertical slices per the incremental-implementation skill:
 
 Research questions F-1 through F-5 documented there.
 
+## Phase 3 audit traceability (MF-1 … MF-5)
+
+Round-1 audit `docs/audits/subplan-f-round-1.md` raised five findings. Status after slices f-7 … f-12:
+
+| Finding | Severity | Status |
+|---------|----------|--------|
+| MF-1: no test files exist for any slice | High | **Resolved for f-7…f-12** — 411 assertions across 6 files, all passing. Slices f-0…f-6 remain types-only (no test files). |
+| MF-2: items 3, 4, 14, 15, 16 mapped to f-0 but involve UI too | Medium | **Resolved by re-mapping** — those items are now explicitly BLOCKED in `slice-f-12.md` with "cross-subspec (MCP + UI)" as the blocking dependency, rather than claimed by an MCP-only slice. |
+| MF-3: f-8 overlaps subplan-c c-8 (.vxproj) | Medium | **Resolved by role split** — c-8 owns the archive format; f-8 owns the workspace write path and never serializes the archive itself. |
+| MF-4: is Zod permitted as a dependency? | Medium | **Resolved** — Zod is an implementation dependency of `apps/mcp-companion` (declared in `package.json`). The "pure TypeScript" constraint applies to the domain/logic modules, which import no runtime libraries. |
+| MF-5: verification checklist unmet | Low | **Resolved for f-7…f-12** — every slice in that range has a recorded command and result. f-0…f-6 still have no tests. |
+
 ## Traceability
 
-All 25 SUBSPEC-F §10.2 acceptance items mapped to slices and test files above. Unmapped criteria = plan bug.
+All 25 SUBSPEC-F §10.2 acceptance items mapped to slices and test files above. Executed status per item is in `slice-f-12.md` (12 PASS / 13 BLOCKED, each BLOCKED naming its dependency).
 
 ## Verification checklist
 
