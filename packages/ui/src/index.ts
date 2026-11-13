@@ -49,6 +49,21 @@ export type {
 } from './inspector.ts';
 
 export {
+  createBottomPanels,
+} from './bottom-panels.ts';
+
+export type {
+  BottomPanels,
+  BottomPanelsOptions,
+  BottomPanelState,
+  BottomTabId,
+  ConfirmDialog,
+  ProgressState,
+  Severity,
+  Warning,
+} from './bottom-panels.ts';
+
+export {
   createOnboarding,
 } from './onboarding.ts';
 
