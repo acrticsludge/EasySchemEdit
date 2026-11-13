@@ -29,7 +29,10 @@ function asList(e: { type: string; value: unknown } | undefined): { value: { typ
   return e?.type === 'list' ? (e as { value: { type: string; value: unknown }[] }) : undefined;
 }
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? (e.value as number) : undefined;
+  if (!e) return undefined;
+  if (e.type === 'int' || e.type === 'short' || e.type === 'byte') return e.value as number;
+  if (e.type === 'long') return Number(e.value);
+  return undefined;
 }
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
   return e?.type === 'string' ? (e.value as string) : undefined;
@@ -61,10 +64,27 @@ export class VanillaNbtAdapter implements FormatAdapter {
     const dataVersion = asInt(entries.get('DataVersion'));
 
     const sizeEntry = entries.get('size');
-    const sizeCompound = asCompound(sizeEntry);
-    const width = sizeCompound ? asInt(getMap(sizeCompound, 'x')) ?? 0 : 0;
-    const height = sizeCompound ? asInt(getMap(sizeCompound, 'y')) ?? 0 : 0;
-    const length = sizeCompound ? asInt(getMap(sizeCompound, 'z')) ?? 0 : 0;
+    let width = 0;
+    let height = 0;
+    let length = 0;
+    if (sizeEntry?.type === 'compound') {
+      const sizeCompound = asCompound(sizeEntry);
+      if (sizeCompound) {
+        width = asInt(getMap(sizeCompound, 'x')) ?? asInt(getMap(sizeCompound, 'X')) ?? 0;
+        height = asInt(getMap(sizeCompound, 'y')) ?? asInt(getMap(sizeCompound, 'Y')) ?? 0;
+        length = asInt(getMap(sizeCompound, 'z')) ?? asInt(getMap(sizeCompound, 'Z')) ?? 0;
+      }
+    } else if (sizeEntry?.type === 'intArray') {
+      const arr = sizeEntry.value as Int32Array | number[];
+      width = arr[0] ?? 0;
+      height = arr[1] ?? 0;
+      length = arr[2] ?? 0;
+    } else if (sizeEntry?.type === 'list') {
+      const list = (sizeEntry.value as { type: string; value: unknown }[]).map((e) => asInt(e) ?? 0);
+      width = list[0] ?? 0;
+      height = list[1] ?? 0;
+      length = list[2] ?? 0;
+    }
 
     // Palette: List<Compound { Name, Properties }> — support multiple palettes
     const paletteEntry = entries.get('palette');

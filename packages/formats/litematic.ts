@@ -54,7 +54,10 @@ function asList(
 }
 
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? (e.value as number) : undefined;
+  if (!e) return undefined;
+  if (e.type === 'int' || e.type === 'short' || e.type === 'byte') return e.value as number;
+  if (e.type === 'long') return Number(e.value);
+  return undefined;
 }
 
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
@@ -209,6 +212,9 @@ export class LitematicAdapter implements FormatAdapter {
     let regionCount = 0;
     let totalPaletteSize = 0;
 
+    let enclosingMinX = Infinity, enclosingMinY = Infinity, enclosingMinZ = Infinity;
+    let enclosingMaxX = -Infinity, enclosingMaxY = -Infinity, enclosingMaxZ = -Infinity;
+
     for (const [regionName, regionEntry] of regions.value) {
       const region = asCompound(regionEntry);
       if (!region) continue;
@@ -233,6 +239,13 @@ export class LitematicAdapter implements FormatAdapter {
       const normSize = normalizeRegionSize({ ax, ay, az });
       const width = normSize.ax, height = normSize.ay, length = normSize.az;
       regionCount++;
+
+      if (pos[0]! < enclosingMinX) enclosingMinX = pos[0]!;
+      if (pos[1]! < enclosingMinY) enclosingMinY = pos[1]!;
+      if (pos[2]! < enclosingMinZ) enclosingMinZ = pos[2]!;
+      if (pos[0]! + width > enclosingMaxX) enclosingMaxX = pos[0]! + width;
+      if (pos[1]! + height > enclosingMaxY) enclosingMaxY = pos[1]! + height;
+      if (pos[2]! + length > enclosingMaxZ) enclosingMaxZ = pos[2]! + length;
 
       // Build palette: BlockStateId[] ({Name, Properties})
       const palette: BlockStateId[] = [];
@@ -410,11 +423,16 @@ export class LitematicAdapter implements FormatAdapter {
       } as Placement);
     }
 
+    const enclosingWidth = regionCount > 0 ? Math.max(0, enclosingMaxX - enclosingMinX) : 0;
+    const enclosingHeight = regionCount > 0 ? Math.max(0, enclosingMaxY - enclosingMinY) : 0;
+    const enclosingLength = regionCount > 0 ? Math.max(0, enclosingMaxZ - enclosingMinZ) : 0;
+    const enclosingVolume = BigInt(enclosingWidth) * BigInt(enclosingHeight) * BigInt(enclosingLength);
+
     const report: any = {
       format: { kind: 'litematic', confidence: 'high' },
       minecraftDataVersion: mcDataVersion,
-      dimensions: { width: 0, height: 0, length: 0 },
-      volume: BigInt(0),
+      dimensions: { width: enclosingWidth, height: enclosingHeight, length: enclosingLength },
+      volume: enclosingVolume,
       nonAirBlockCount,
       paletteSize: totalPaletteSize,
       regionCount,

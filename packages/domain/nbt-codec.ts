@@ -29,13 +29,143 @@ export function encodeNbt(tag: NbtTag): Uint8Array {
   return mergeUint8Arrays(parts);
 }
 
+export function isSyntheticDoubleTaggedNbt(bytes: Uint8Array): boolean {
+  if (bytes.length === 0) return true;
+  if (bytes[0] !== 10) return true; // TAG_COMPOUND
+  if (bytes.length === 2 && bytes[0] === 10 && bytes[1] === 0) return true;
+  if (bytes.length < 4) return true;
+  const firstEntryType = bytes[1];
+  if (firstEntryType >= 1 && firstEntryType <= 12) {
+    const nameLen = (bytes[2] << 8) | bytes[3];
+    if (bytes.length > 4 + nameLen && bytes[4 + nameLen] === firstEntryType) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function decodeNbt(bytes: Uint8Array): { tag: NbtTag; valid: boolean } {
-  let offset = 0;
-  const result = readTag(bytes, offset);
-  if (!result) {
+  try {
+    let offset = 0;
+    if (isSyntheticDoubleTaggedNbt(bytes)) {
+      const result = readTag(bytes, offset);
+      if (!result) {
+        return { tag: null as unknown as NbtTag, valid: false };
+      }
+      return { tag: result.tag, valid: true };
+    } else {
+      if (bytes.length < 3) {
+        return { tag: null as unknown as NbtTag, valid: false };
+      }
+      const typeId = bytes[0];
+      if (typeId !== TAG_COMPOUND) {
+        return { tag: null as unknown as NbtTag, valid: false };
+      }
+      const rootNameLen = readInt16BE(bytes, 1);
+      offset = 3 + rootNameLen;
+      const result = readStandardPayload(bytes, offset, typeId);
+      if (!result) {
+        return { tag: null as unknown as NbtTag, valid: false };
+      }
+      return { tag: result.tag, valid: true };
+    }
+  } catch {
     return { tag: null as unknown as NbtTag, valid: false };
   }
-  return { tag: result.tag, valid: true };
+}
+
+function readStandardPayload(
+  bytes: Uint8Array,
+  offset: number,
+  typeId: number,
+): { tag: NbtTag; nextOffset: number } | null {
+  if (offset >= bytes.length) return null;
+  if (typeId === TAG_END) {
+    return { tag: { type: 'compound', value: new Map() }, nextOffset: offset };
+  }
+
+  switch (typeId) {
+    case TAG_BYTE:
+      return { tag: { type: 'byte', value: readInt8(bytes, offset) }, nextOffset: offset + 1 };
+    case TAG_SHORT:
+      return { tag: { type: 'short', value: readInt16BE(bytes, offset) }, nextOffset: offset + 2 };
+    case TAG_INT:
+      return { tag: { type: 'int', value: readInt32BE(bytes, offset) }, nextOffset: offset + 4 };
+    case TAG_LONG:
+      return { tag: { type: 'long', value: readInt64BE(bytes, offset) }, nextOffset: offset + 8 };
+    case TAG_FLOAT:
+      return { tag: { type: 'float', value: readFloat32BE(bytes, offset) }, nextOffset: offset + 4 };
+    case TAG_DOUBLE:
+      return { tag: { type: 'double', value: readFloat64BE(bytes, offset) }, nextOffset: offset + 8 };
+    case TAG_BYTE_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      return {
+        tag: { type: 'byteArray', value: bytes.slice(offset, offset + len) },
+        nextOffset: offset + len,
+      };
+    }
+    case TAG_STRING: {
+      const len = readInt16BE(bytes, offset);
+      offset += 2;
+      const str = decodeModifiedUtf8(bytes.slice(offset, offset + len));
+      return { tag: { type: 'string', value: str }, nextOffset: offset + len };
+    }
+    case TAG_LIST: {
+      const elemType = bytes[offset];
+      offset += 1;
+      const count = readInt32BE(bytes, offset);
+      offset += 4;
+      const elems: NbtTag[] = [];
+      for (let i = 0; i < count; i++) {
+        const res = readStandardPayload(bytes, offset, elemType);
+        if (!res) return null;
+        elems.push(res.tag);
+        offset = res.nextOffset;
+      }
+      const elemTypeName = elemTypeIdToName(elemType) as NbtElementType;
+      return { tag: { type: 'list', elementType: elemTypeName, value: elems }, nextOffset: offset };
+    }
+    case TAG_COMPOUND: {
+      const map = new Map<string, NbtTag>();
+      while (offset < bytes.length) {
+        const entryType = bytes[offset];
+        offset++;
+        if (entryType === TAG_END) break;
+        const nameLen = readInt16BE(bytes, offset);
+        offset += 2;
+        const name = decodeModifiedUtf8(bytes.slice(offset, offset + nameLen));
+        offset += nameLen;
+        const res = readStandardPayload(bytes, offset, entryType);
+        if (!res) return null;
+        map.set(name, res.tag);
+        offset = res.nextOffset;
+      }
+      return { tag: { type: 'compound', value: map }, nextOffset: offset };
+    }
+    case TAG_INT_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      const arr = new Int32Array(len);
+      for (let i = 0; i < len; i++) {
+        arr[i] = readInt32BE(bytes, offset);
+        offset += 4;
+      }
+      return { tag: { type: 'intArray', value: arr }, nextOffset: offset };
+    }
+    case TAG_LONG_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      const arr = new BigInt64Array(len);
+      for (let i = 0; i < len; i++) {
+        arr[i] = readInt64BE(bytes, offset);
+        offset += 8;
+      }
+      return { tag: { type: 'longArray', value: arr }, nextOffset: offset };
+    }
+    default:
+      return null;
+  }
 }
 
 // ---------- Encoding ----------

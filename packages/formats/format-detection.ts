@@ -16,14 +16,32 @@ import {
 const GZIP_MAGIC_0 = 0x1f;
 const GZIP_MAGIC_1 = 0x8b;
 
-function hasGzipMagic(bytes: Uint8Array): boolean {
-  return bytes.length >= 2 && bytes[0] === GZIP_MAGIC_0 && bytes[1] === GZIP_MAGIC_1;
+function isCompressed(bytes: Uint8Array): boolean {
+  if (bytes.length < 2) return false;
+  const b0 = bytes[0]!;
+  const b1 = bytes[1]!;
+  if (b0 === GZIP_MAGIC_0 && b1 === GZIP_MAGIC_1) return true;
+  return (b0 & 0x0f) === 8 && (((b0 << 8) | b1) % 31) === 0;
 }
 
 function getInt(entries: ReadonlyMap<string, NbtTagEntry>, key: string): number | undefined {
   const entry = entries.get(key);
-  if (!entry || entry.type !== 'int') return undefined;
-  return entry.value as number;
+  if (!entry) return undefined;
+  if (entry.type === 'int' || entry.type === 'short' || entry.type === 'byte') return entry.value as number;
+  if (entry.type === 'long') return Number(entry.value);
+  return undefined;
+}
+
+function getDim(entries: ReadonlyMap<string, NbtTagEntry>, key: string): number | undefined {
+  const entry = entries.get(key);
+  if (!entry) return undefined;
+  if (entry.type === 'short') {
+    const v = entry.value as number;
+    return v < 0 ? v + 65536 : v;
+  }
+  if (entry.type === 'int' || entry.type === 'byte') return entry.value as number;
+  if (entry.type === 'long') return Number(entry.value);
+  return undefined;
 }
 
 type NbtTagEntry = {
@@ -47,8 +65,8 @@ export function detectFormat(
   let working = bytes;
   let decompressionRequired = false;
 
-  // Step 1: gzip magic detection
-  if (hasGzipMagic(bytes)) {
+  // Step 1: compression detection (gzip or zlib)
+  if (isCompressed(bytes)) {
     decompressionRequired = true;
     if (!services) {
       return {
@@ -87,56 +105,63 @@ export function detectFormat(
     };
   }
 
-  const entries = root.value as ReadonlyMap<string, NbtTagEntry>;
-  const version = getInt(entries as unknown as ReadonlyMap<string, NbtTagEntry>, 'Version');
-  const dataVersion = getInt(entries as unknown as ReadonlyMap<string, NbtTagEntry>, 'DataVersion');
+  let entries = root.value as ReadonlyMap<string, NbtTagEntry>;
+  const wrapped = entries.get('Schematic');
+  if (wrapped?.type === 'compound') entries = wrapped.value as typeof entries;
+
+  const version = getInt(entries, 'Version');
+  const dataVersion = getInt(entries, 'DataVersion');
+  const width = getDim(entries, 'Width');
+  const height = getDim(entries, 'Height');
+  const length = getDim(entries, 'Length');
+  const hasWidth = width !== undefined;
+  const hasHeight = height !== undefined;
+  const hasLength = length !== undefined;
   const hasPalette = entries.has('Palette');
   const hasPaletteLower = entries.has('palette');
   const hasBlockData = entries.has('BlockData');
   const hasMaterials = entries.has('Materials');
-  const hasBlocks = entries.has('Blocks');
+  const blocksEntry = entries.get('Blocks');
+  const blocksCompound = isCompound(blocksEntry);
+  const blocksMap = blocksCompound ? (blocksEntry.value as ReadonlyMap<string, NbtTagEntry>) : undefined;
+  const blocksHasDataOrPalette = blocksMap ? (blocksMap.has('Data') || blocksMap.has('Palette')) : false;
+  const hasBlocks = blocksEntry !== undefined;
   const hasSize = entries.has('size');
-  const hasWidth = entries.has('Width');
-  const hasHeight = entries.has('Height');
-  const hasLength = entries.has('Length');
-  const hasOffset = entries.has('Offset');
   const hasRegions = entries.has('Regions');
   const hasMetadata = entries.has('Metadata');
   const hasMinecraftDataVersion = entries.has('MinecraftDataVersion');
 
   let format: DetectedFormat;
 
-  // Sponge v3: root "Schematic" compound {Version=3, DataVersion, W/H/L, Offset, Blocks{...}, Entities, Biomes}
-  if (
-    version === 3 &&
+  // 1. Legacy .schematic: root Materials + Blocks (checked first)
+  if (hasMaterials && hasBlocks) {
+    format = { kind: 'schematic-legacy', confidence: 'high' };
+  }
+  // 2. Sponge v3: Width & Height & Length present AND Blocks is a compound AND (version === 3 OR Blocks.value has Data or Palette)
+  else if (
     hasWidth &&
     hasHeight &&
     hasLength &&
-    hasOffset &&
-    hasBlocks &&
-    dataVersion !== undefined
+    blocksCompound &&
+    (version === 3 || blocksHasDataOrPalette)
   ) {
     format = { kind: 'schem-v3', confidence: 'high' };
   }
-  // Litematic: root {Version, SubVersion, MinecraftDataVersion, Metadata, Regions{...}}
+  // 3. Litematic: root {Version, SubVersion, MinecraftDataVersion, Metadata, Regions{...}}
   else if (hasRegions && hasMetadata && hasMinecraftDataVersion) {
     format = { kind: 'litematic', confidence: 'high' };
   }
-  // Sponge v2: root Palette (compound: state string -> int) + BlockData (VarInt bytes)
-  else if (hasPalette && hasBlockData) {
+  // 4. Sponge v2: (Palette && BlockData) OR (Width && Height && Length && BlockData)
+  else if ((hasPalette && hasBlockData) || (hasWidth && hasHeight && hasLength && hasBlockData)) {
     const palette = entries.get('Palette');
     const blockData = entries.get('BlockData');
     if (isCompound(palette) && isByteArray(blockData)) {
       format = { kind: 'schem-v2', confidence: 'high' };
     } else {
-      format = { kind: 'schem-v2', confidence: 'low' };
+      format = { kind: 'schem-v2', confidence: hasBlockData ? 'high' : 'low' };
     }
   }
-  // Legacy .schematic: root Materials + Blocks + Data
-  else if (hasMaterials && hasBlocks) {
-    format = { kind: 'schematic-legacy', confidence: 'high' };
-  }
-  // Vanilla .nbt: root size + palette + blocks + DataVersion
+  // 5. Vanilla .nbt: root size + palette + blocks + DataVersion
   else if (hasSize && hasPaletteLower && entries.has('blocks') && dataVersion !== undefined) {
     format = { kind: 'vanilla-nbt', confidence: 'high' };
   }
@@ -147,9 +172,9 @@ export function detectFormat(
   let extensionMatches = false;
   switch (format.kind) {
     case 'schem-v3':
+    case 'schem-v2':
       extensionMatches = ext === '.schem';
       break;
-    case 'schem-v2':
     case 'litematic':
       extensionMatches = ext === '.litematic';
       break;

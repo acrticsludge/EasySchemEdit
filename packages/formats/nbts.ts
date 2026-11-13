@@ -51,6 +51,21 @@ export function encodeNbt(tag: NbtTag, services: NbtServices): Uint8Array {
   return services.gzipCompress(raw);
 }
 
+export function isSyntheticDoubleTaggedNbt(bytes: Uint8Array): boolean {
+  if (bytes.length === 0) return true;
+  if (bytes[0] !== 10) return true; // TAG_COMPOUND
+  if (bytes.length === 2 && bytes[0] === 10 && bytes[1] === 0) return true;
+  if (bytes.length < 4) return true;
+  const firstEntryType = bytes[1];
+  if (firstEntryType >= 1 && firstEntryType <= 12) {
+    const nameLen = (bytes[2] << 8) | bytes[3];
+    if (bytes.length > 4 + nameLen && bytes[4 + nameLen] === firstEntryType) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function decodeNbtFromBytes(
   decompressed: Uint8Array,
   limits: Partial<NbtSafetyLimits> = {},
@@ -59,11 +74,247 @@ export function decodeNbtFromBytes(
   const startTime = Date.now();
   let tagCount = 0;
   let offset = 0;
-  const result = readTag(decompressed, offset, merged, startTime, tagCountRef(tagCount), 0);
-  if (!result) {
-    throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Failed to parse NBT data');
+  if (isSyntheticDoubleTaggedNbt(decompressed)) {
+    const result = readTag(decompressed, offset, merged, startTime, tagCountRef(tagCount), 0);
+    if (!result) {
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Failed to parse NBT data');
+    }
+    return result.tag;
+  } else {
+    // Standard Minecraft Binary NBT root
+    if (decompressed.length < 3) {
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Invalid standard NBT buffer');
+    }
+    const typeId = decompressed[0];
+    if (typeId !== TAG_COMPOUND) {
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Standard NBT root must be a compound');
+    }
+    const rootNameLen = readInt16BE(decompressed, 1);
+    offset = 3 + rootNameLen;
+    const result = readStandardPayload(decompressed, offset, typeId, merged, startTime, tagCountRef(tagCount), 0);
+    if (!result) {
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Failed to parse standard NBT root compound');
+    }
+    return result.tag;
   }
-  return result.tag;
+}
+
+function readStandardPayload(
+  bytes: Uint8Array,
+  offset: number,
+  typeId: number,
+  limits: NbtSafetyLimits,
+  startTime: number,
+  counter: { value: number },
+  depth: number,
+): { tag: NbtTag; nextOffset: number } | null {
+  if (Date.now() - startTime > limits.maxParseDurationMs) {
+    throw new NbtSafetyError('NBT_PARSE_DURATION_EXCEEDED', 'Parsing took too long');
+  }
+  if (depth > limits.maxNestingDepth) {
+    throw new NbtSafetyError('NBT_NESTING_DEPTH_EXCEEDED', 'Nesting depth exceeds limit');
+  }
+  if (offset >= bytes.length) return null;
+
+  counter.value++;
+  if (counter.value > limits.maxTagCount) {
+    throw new NbtSafetyError('NBT_TAG_COUNT_EXCEEDED', 'Tag count exceeds limit');
+  }
+
+  if (typeId === TAG_END) {
+    return { tag: { type: 'compound', value: new Map() }, nextOffset: offset };
+  }
+
+  switch (typeId) {
+    case TAG_BYTE:
+      return { tag: { type: 'byte', value: readInt8(bytes, offset) }, nextOffset: offset + 1 };
+    case TAG_SHORT:
+      return { tag: { type: 'short', value: readInt16BE(bytes, offset) }, nextOffset: offset + 2 };
+    case TAG_INT:
+      return { tag: { type: 'int', value: readInt32BE(bytes, offset) }, nextOffset: offset + 4 };
+    case TAG_LONG:
+      return { tag: { type: 'long', value: readInt64BE(bytes, offset) }, nextOffset: offset + 8 };
+    case TAG_FLOAT:
+      return { tag: { type: 'float', value: readFloat32BE(bytes, offset) }, nextOffset: offset + 4 };
+    case TAG_DOUBLE:
+      return { tag: { type: 'double', value: readFloat64BE(bytes, offset) }, nextOffset: offset + 8 };
+    case TAG_BYTE_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      if (len > limits.maxArrayLength) {
+        throw new NbtSafetyError('NBT_ARRAY_TOO_LONG', 'Byte array exceeds limit');
+      }
+      return {
+        tag: { type: 'byteArray', value: bytes.subarray(offset, offset + len) },
+        nextOffset: offset + len,
+      };
+    }
+    case TAG_STRING: {
+      const len = readInt16BE(bytes, offset);
+      offset += 2;
+      const strBytes = bytes.subarray(offset, offset + len);
+      if (strBytes.length > limits.maxStringBytes) {
+        throw new NbtSafetyError('NBT_STRING_TOO_LONG', 'String exceeds limit');
+      }
+      const str = decodeModifiedUtf8(strBytes);
+      return { tag: { type: 'string', value: str }, nextOffset: offset + len };
+    }
+    case TAG_LIST: {
+      const elemType = bytes[offset];
+      offset += 1;
+      const count = readInt32BE(bytes, offset);
+      offset += 4;
+      if (count > limits.maxListElements) {
+        throw new NbtSafetyError('NBT_LIST_TOO_LONG', 'List exceeds limit');
+      }
+      const elements: NbtTag[] = [];
+      for (let i = 0; i < count; i++) {
+        const res = readStandardPayload(bytes, offset, elemType, limits, startTime, counter, depth + 1);
+        if (!res) return null;
+        elements.push(res.tag);
+        offset = res.nextOffset;
+      }
+      return {
+        tag: { type: 'list', elementType: elemTypeIdToName(elemType) as NbtElementType, value: elements },
+        nextOffset: offset,
+      };
+    }
+    case TAG_COMPOUND: {
+      const map = new Map<string, NbtTag>();
+      while (offset < bytes.length) {
+        const entryType = bytes[offset];
+        offset++;
+        if (entryType === TAG_END) break;
+        const nameLen = readInt16BE(bytes, offset);
+        offset += 2;
+        const nameBytes = bytes.subarray(offset, offset + nameLen);
+        const name = decodeModifiedUtf8(nameBytes);
+        offset += nameLen;
+        const res = readStandardPayload(bytes, offset, entryType, limits, startTime, counter, depth + 1);
+        if (!res) return null;
+        map.set(name, res.tag);
+        offset = res.nextOffset;
+      }
+      return { tag: { type: 'compound', value: map }, nextOffset: offset };
+    }
+    case TAG_INT_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      if (len > limits.maxArrayLength) {
+        throw new NbtSafetyError('NBT_ARRAY_TOO_LONG', 'Int array exceeds limit');
+      }
+      const arr = new Int32Array(len);
+      for (let i = 0; i < len; i++) {
+        arr[i] = readInt32BE(bytes, offset);
+        offset += 4;
+      }
+      return { tag: { type: 'intArray', value: arr }, nextOffset: offset };
+    }
+    case TAG_LONG_ARRAY: {
+      const len = readInt32BE(bytes, offset);
+      offset += 4;
+      if (len > limits.maxArrayLength) {
+        throw new NbtSafetyError('NBT_ARRAY_TOO_LONG', 'Long array exceeds limit');
+      }
+      const arr = new BigInt64Array(len);
+      for (let i = 0; i < len; i++) {
+        arr[i] = readInt64BE(bytes, offset);
+        offset += 8;
+      }
+      return { tag: { type: 'longArray', value: arr }, nextOffset: offset };
+    }
+    default:
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', `Unknown NBT tag type ID: ${typeId}`);
+  }
+}
+
+export function encodeStandardNbt(tag: NbtTag, services: NbtServices, rootName = 'Schematic'): Uint8Array {
+  const parts: Uint8Array[] = [];
+  parts.push(new Uint8Array([TAG_COMPOUND]));
+  const rootNameBytes = encodeModifiedUtf8(rootName);
+  parts.push(writeInt16BE(rootNameBytes.length));
+  parts.push(rootNameBytes);
+  encodeStandardCompoundPayload(parts, tag);
+  const raw = mergeUint8Arrays(parts);
+  return services.gzipCompress(raw);
+}
+
+function encodeStandardCompoundPayload(parts: Uint8Array[], tag: NbtTag): void {
+  if (tag.type !== 'compound') {
+    throw new Error('Standard NBT root must be compound');
+  }
+  for (const [name, value] of tag.value) {
+    parts.push(new Uint8Array([tagTypeId(value)]));
+    const nameBytes = encodeModifiedUtf8(name);
+    parts.push(writeInt16BE(nameBytes.length));
+    parts.push(nameBytes);
+    encodeTagPayload(parts, value);
+  }
+  parts.push(new Uint8Array([TAG_END]));
+}
+
+function encodeTagPayload(parts: Uint8Array[], tag: NbtTag): void {
+  switch (tag.type) {
+    case 'byte':
+      parts.push(writeInt8(tag.value));
+      break;
+    case 'short':
+      parts.push(writeInt16BE(tag.value));
+      break;
+    case 'int':
+      parts.push(writeInt32BE(tag.value));
+      break;
+    case 'long':
+      parts.push(writeInt64BE(tag.value));
+      break;
+    case 'float':
+      parts.push(writeFloat32BE(tag.value));
+      break;
+    case 'double':
+      parts.push(writeFloat64BE(tag.value));
+      break;
+    case 'byteArray':
+      parts.push(writeInt32BE(tag.value.length));
+      parts.push(tag.value);
+      break;
+    case 'string': {
+      const strBytes = encodeModifiedUtf8(tag.value);
+      parts.push(writeInt16BE(strBytes.length));
+      parts.push(strBytes);
+      break;
+    }
+    case 'list': {
+      const elemTypeId = tagElementTypeId(tag.elementType);
+      parts.push(new Uint8Array([elemTypeId]));
+      parts.push(writeInt32BE(tag.value.length));
+      for (const elem of tag.value) {
+        encodeTagPayload(parts, elem);
+      }
+      break;
+    }
+    case 'compound':
+      for (const [name, value] of tag.value) {
+        parts.push(new Uint8Array([tagTypeId(value)]));
+        const nameBytes = encodeModifiedUtf8(name);
+        parts.push(writeInt16BE(nameBytes.length));
+        parts.push(nameBytes);
+        encodeTagPayload(parts, value);
+      }
+      parts.push(new Uint8Array([TAG_END]));
+      break;
+    case 'intArray':
+      parts.push(writeInt32BE(tag.value.length));
+      for (const val of tag.value) {
+        parts.push(writeInt32BE(val));
+      }
+      break;
+    case 'longArray':
+      parts.push(writeInt32BE(tag.value.length));
+      for (const val of tag.value) {
+        parts.push(writeInt64BE(val));
+      }
+      break;
+  }
 }
 
 export function decodeNbt(

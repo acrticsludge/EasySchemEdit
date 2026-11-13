@@ -10,7 +10,9 @@ import {
   NbtSafetyError,
   ExportError,
 } from '../index.ts';
-import { encodeNbt } from '../nbts.ts';
+import { encodeNbt, encodeStandardNbt } from '../nbts.ts';
+import { detectFormat } from '../format-detection.ts';
+import { inspect } from '../inspect.ts';
 import { blockStateId, CANONICAL_AIR } from '../../domain/block-state.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
 import type { Bounds3i, Vec3i } from '../../domain/types.ts';
@@ -594,6 +596,74 @@ console.log('--- TEST SUITE: slice E1.1 API & Codecs ---');
     check(err.code === 'EXPORT_DIMENSION_LIMIT', 'oversized error code is EXPORT_DIMENSION_LIMIT');
   }
   check(dimCaught, 'dimension > 65535 rejected on Sponge v3 export');
+}
+
+// ============================================================================
+// TEST 6: Standard Minecraft binary NBT .schem v2 and v3 import tests
+// ============================================================================
+{
+  console.log('\n[Test 6] Standard binary NBT .schem v2 and v3 imports');
+
+  // 6a: Standard NBT Sponge v2 .schem
+  const v2Root = compound([
+    ['Width', short(2)],
+    ['Height', short(2)],
+    ['Length', short(2)],
+    ['Offset', { type: 'intArray', value: new Int32Array([1, 2, 3]) }],
+    ['Palette', compound([['minecraft:air', int(0)], ['minecraft:oak_stairs[facing=north,half=bottom]', int(1)]])],
+    ['BlockData', { type: 'byteArray', value: new Uint8Array([0, 1, 0, 0, 0, 0, 0, 0]) }],
+  ]);
+  const bytesV2 = encodeStandardNbt(v2Root, { gzipCompress, gzipDecompress: gzipDecompressBounded }, 'Schematic');
+
+  const detV2 = detectFormat(bytesV2, '.schem', { gzipCompress, gzipDecompress: gzipDecompressBounded });
+  check(detV2.format.kind === 'schem-v2' && detV2.extensionMatches === true, 'Test 6a: detectFormat recognizes schem-v2');
+
+  const inspV2 = await inspect(bytesV2, { gzipCompress, gzipDecompress: gzipDecompressBounded });
+  check(inspV2.format.kind === 'schem-v2', 'Test 6a: inspect recognizes schem-v2');
+  check(inspV2.dimensions?.width === 2 && inspV2.dimensions?.height === 2 && inspV2.dimensions?.length === 2, 'Test 6a: inspect dimensions correct');
+
+  const importedV2 = await importSchematic(bytesV2, 'house.schem');
+  check(importedV2.placements.length === 1, 'Test 6a: importSchematic returns 1 placement');
+  check(importedV2.placements[0].volume.nonAirCount === 1, 'Test 6a: nonAirBlockCount === 1');
+  check(
+    importedV2.placements[0].transform.translation[0] === 1 &&
+    importedV2.placements[0].transform.translation[1] === 2 &&
+    importedV2.placements[0].transform.translation[2] === 3,
+    'Test 6a: translation matches Offset [1, 2, 3]'
+  );
+
+  const chunkV2 = importedV2.placements[0].volume.chunks.get('0_0_0');
+  check(!!chunkV2, 'Test 6a: chunk 0_0_0 exists');
+  // local (1, 0, 0): index = (0*16 + 0)*16 + 1 = 1
+  const blockV2 = chunkV2?.palette[chunkV2.indices[1]];
+  check(blockV2?.id === 'minecraft:oak_stairs', 'Test 6a: block at (1,0,0) is minecraft:oak_stairs');
+  check(blockV2?.props.facing === 'north', 'Test 6a: block props facing=north');
+
+  // 6b: Standard NBT Sponge v3 .schem with "Schematic" child wrapper and no Offset
+  const innerV3 = compound([
+    ['Version', int(3)],
+    ['DataVersion', int(3955)],
+    ['Width', short(2)],
+    ['Height', short(1)],
+    ['Length', short(2)],
+    ['Blocks', compound([
+      ['Palette', compound([['minecraft:air', int(0)], ['minecraft:stone', int(1)]])],
+      ['Data', { type: 'byteArray', value: new Uint8Array([0, 1, 0, 0]) }]
+    ])]
+  ]);
+  const wrappedV3 = compound([['Schematic', innerV3]]);
+  const bytesV3 = encodeStandardNbt(wrappedV3, { gzipCompress, gzipDecompress: gzipDecompressBounded }, '');
+
+  const detV3 = detectFormat(bytesV3, '.schem', { gzipCompress, gzipDecompress: gzipDecompressBounded });
+  check(detV3.format.kind === 'schem-v3', 'Test 6b: detectFormat recognizes schem-v3');
+
+  const inspV3 = await inspect(bytesV3, { gzipCompress, gzipDecompress: gzipDecompressBounded });
+  check(inspV3.format.kind === 'schem-v3', 'Test 6b: inspect recognizes schem-v3');
+  check(inspV3.dimensions?.width === 2 && inspV3.dimensions?.height === 1 && inspV3.dimensions?.length === 2, 'Test 6b: inspect dimensions correct');
+
+  const importedV3 = await importSchematic(bytesV3, 'wrapped.schem');
+  check(importedV3.placements.length === 1, 'Test 6b: importSchematic returns 1 placement');
+  check(importedV3.placements[0].volume.nonAirCount === 1, 'Test 6b: nonAirBlockCount === 1');
 }
 
 // ============================================================================

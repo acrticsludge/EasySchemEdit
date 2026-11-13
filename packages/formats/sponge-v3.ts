@@ -48,7 +48,21 @@ function asList(
 }
 
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
-  return e?.type === 'int' ? (e.value as number) : undefined;
+  if (!e) return undefined;
+  if (e.type === 'int' || e.type === 'short' || e.type === 'byte') return e.value as number;
+  if (e.type === 'long') return Number(e.value);
+  return undefined;
+}
+
+function asDim(e: { type: string; value: unknown } | undefined): number | undefined {
+  if (!e) return undefined;
+  if (e.type === 'short') {
+    const v = e.value as number;
+    return v < 0 ? v + 65536 : v;
+  }
+  if (e.type === 'int' || e.type === 'byte') return e.value as number;
+  if (e.type === 'long') return Number(e.value);
+  return undefined;
 }
 
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
@@ -163,21 +177,26 @@ export class SpongeV3Adapter implements FormatAdapter {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 root is not a compound');
     }
     let entries = root.value as Map<string, { type: string; value: unknown }>;
+    const wrapped = entries.get('Schematic');
+    if (wrapped?.type === 'compound') entries = wrapped.value as typeof entries;
 
-    // Some tools wrap the root compound under a "Schematic" key
-    if (!entries.has('Version') && entries.has('Schematic')) {
-      const schem = asCompound(entries.get('Schematic'));
-      if (schem) entries = schem.value;
+    const blocksEntry = entries.get('Blocks');
+    const blocks = asCompound(blocksEntry);
+    if (!blocks) {
+      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 missing Blocks compound');
     }
 
-    if (asInt(entries.get('Version')) !== 3) {
+    const versionVal = asInt(entries.get('Version'));
+    const hasPaletteInBlocks = blocks.value.has('Palette');
+    const hasDataInBlocks = blocks.value.has('Data') || blocks.value.has('BlockData');
+    if (versionVal !== 3 && !(hasPaletteInBlocks && hasDataInBlocks)) {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 root Version must be 3');
     }
 
     const mcDataVersion = asInt(entries.get('DataVersion'));
-    const width = asInt(entries.get('Width')) ?? 0;
-    const height = asInt(entries.get('Height')) ?? 0;
-    const length = asInt(entries.get('Length')) ?? 0;
+    const width = asDim(entries.get('Width')) ?? 0;
+    const height = asDim(entries.get('Height')) ?? 0;
+    const length = asDim(entries.get('Length')) ?? 0;
 
     // Offset is int[3] (IntArray or Compound), relative to paste point: pasteTarget + Offset = min corner
     const offsetEntry = entries.get('Offset');
@@ -192,12 +211,6 @@ export class SpongeV3Adapter implements FormatAdapter {
         asInt(getMap(offsetCompound, 'Y')) ?? asInt(getMap(offsetCompound, 'y')) ?? 0,
         asInt(getMap(offsetCompound, 'Z')) ?? asInt(getMap(offsetCompound, 'z')) ?? 0,
       ];
-    }
-
-    const blocksEntry = entries.get('Blocks');
-    const blocks = asCompound(blocksEntry);
-    if (!blocks) {
-      throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 missing Blocks compound');
     }
 
     // Palette: Compound (mapping state string -> int index) OR List<String>
@@ -218,7 +231,7 @@ export class SpongeV3Adapter implements FormatAdapter {
     }
 
     // Data: VarInt array (byte array of VarInt-encoded palette indices)
-    const dataEntry = getMap(blocks, 'Data');
+    const dataEntry = getMap(blocks, 'Data') ?? getMap(blocks, 'BlockData');
     const dataBytes = dataEntry?.type === 'byteArray' ? (dataEntry.value as Uint8Array) : undefined;
     if (!dataBytes) {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 missing Blocks.Data byte array');
@@ -242,9 +255,8 @@ export class SpongeV3Adapter implements FormatAdapter {
       });
     }
 
-    // Build palette array: index → BlockStateId
-    const paletteArray: BlockStateId[] = indices.map((idx) => {
-      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx]! : 'minecraft:air';
+    // Parse each paletteNames entry ONCE into parsedPalette
+    const parsedPalette: BlockStateId[] = paletteNames.map((name) => {
       try {
         return parseBlockStateString(name);
       } catch {
@@ -252,34 +264,34 @@ export class SpongeV3Adapter implements FormatAdapter {
       }
     });
 
-    // Deduplicate palette
+    // Deduplicate palette to uniquePalette and build remap array
     const uniquePalette: BlockStateId[] = [];
     const uniqueIndexMap = new Map<string, number>();
-    for (const bs of paletteArray) {
-      const key = `${bs.id}:${JSON.stringify(Object.entries(bs.props).sort())}`;
-      if (!uniqueIndexMap.has(key)) {
-        uniqueIndexMap.set(key, uniquePalette.length);
+    const remap: number[] = new Array(parsedPalette.length);
+    for (let i = 0; i < parsedPalette.length; i++) {
+      const bs = parsedPalette[i]!;
+      const key = `${bs.id}:${JSON.stringify(bs.props)}`;
+      let uIdx = uniqueIndexMap.get(key);
+      if (uIdx === undefined) {
+        uIdx = uniquePalette.length;
+        uniqueIndexMap.set(key, uIdx);
         uniquePalette.push(bs);
       }
+      remap[i] = uIdx;
     }
 
-    // Remap indices to unique palette
-    const remappedIndices = indices.map((idx) => {
-      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx]! : 'minecraft:air';
-      let bs: BlockStateId;
-      try {
-        bs = parseBlockStateString(name);
-      } catch {
-        bs = blockStateId(name);
-      }
-      const key = `${bs.id}:${JSON.stringify(Object.entries(bs.props).sort())}`;
-      return uniqueIndexMap.get(key) ?? 0;
-    });
+    // Remap indices with Int32Array
+    const remappedIndices = new Int32Array(indices.length);
+    for (let i = 0; i < indices.length; i++) {
+      const origIdx = indices[i]!;
+      remappedIndices[i] = (origIdx >= 0 && origIdx < remap.length) ? remap[origIdx]! : 0;
+    }
 
     // Build volume: chunks of CHUNK_SIZE
     const CHUNK_SIZE = 16;
     const bounds = { min: [0, 0, 0] as Vec3i, maxExclusive: [width, height, length] as Vec3i };
     const chunks = new Map<string, any>();
+    const chunkPaletteMaps = new Map<string, Map<string, number>>();
     let nonAirBlockCount = 0;
 
     for (let y = 0; y < height; y++) {
@@ -288,13 +300,15 @@ export class SpongeV3Adapter implements FormatAdapter {
           const flat = x + z * width + y * width * length;
           const stateIdx = remappedIndices[flat] ?? 0;
           const state = uniquePalette[stateIdx] ?? CANONICAL_AIR;
-          if (!VANILLA_AIR_LIKE.has(state.id)) nonAirBlockCount++;
+          const isAirLike = VANILLA_AIR_LIKE.has(state.id);
+          if (!isAirLike) nonAirBlockCount++;
 
           const cx = Math.floor(x / CHUNK_SIZE);
           const cy = Math.floor(y / CHUNK_SIZE);
           const cz = Math.floor(z / CHUNK_SIZE);
           const ckey = `${cx}_${cy}_${cz}`;
           let chunk = chunks.get(ckey);
+          let paletteMapForChunk = chunkPaletteMaps.get(ckey);
           if (!chunk) {
             chunk = {
               key: ckey,
@@ -303,6 +317,8 @@ export class SpongeV3Adapter implements FormatAdapter {
               revision: 0,
             };
             chunks.set(ckey, chunk);
+            paletteMapForChunk = new Map<string, number>();
+            chunkPaletteMaps.set(ckey, paletteMapForChunk);
           }
           const localX = x % CHUNK_SIZE;
           const localY = y % CHUNK_SIZE;
@@ -310,22 +326,15 @@ export class SpongeV3Adapter implements FormatAdapter {
           const li = (localY * CHUNK_SIZE + localZ) * CHUNK_SIZE + localX;
 
           let stateIdxInChunk = 0;
-          if (state.id !== 'minecraft:air') {
-            let existingIdx = -1;
-            for (let pi = 1; pi < chunk.palette.length; pi++) {
-              if (
-                chunk.palette[pi].id === state.id &&
-                JSON.stringify(chunk.palette[pi].props) === JSON.stringify(state.props)
-              ) {
-                existingIdx = pi;
-                break;
-              }
-            }
-            if (existingIdx >= 0) {
+          if (!isAirLike) {
+            const stateKey = `${state.id}:${JSON.stringify(state.props)}`;
+            const existingIdx = paletteMapForChunk!.get(stateKey);
+            if (existingIdx !== undefined) {
               stateIdxInChunk = existingIdx;
             } else {
               stateIdxInChunk = chunk.palette.length;
               chunk.palette.push(state);
+              paletteMapForChunk!.set(stateKey, stateIdxInChunk);
             }
           }
           chunk.indices[li] = stateIdxInChunk;
@@ -402,7 +411,7 @@ export class SpongeV3Adapter implements FormatAdapter {
     const biomesEntry = entries.get('Biomes');
 
     const placement = {
-      id: 'sponge-v3',
+      id: `schem_v3_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
       name: 'sponge-v3',
       volume,
       transform,
