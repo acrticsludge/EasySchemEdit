@@ -15,17 +15,17 @@
 - Slice f-13 (2026-11-13): single-port bridge router + listener on 127.0.0.1:43127 replaces the two Phase-2 stubs (8765/8766). Pipeline: Host -> preflight/PNA -> CORS -> rate limit -> auth -> route. Pair-once-then-session auth; tools, /healthz, /readyz, /metrics, /ws. 60 unit assertions + 27 live HTTP checks (scripts/live-e2e.sh), the latter catching two Windows path bugs the doubles could not
 - Recommended resolutions applied (2026-11-13): D-1 (one classification), D-5 (one constants module), D-6 (one tsconfig rule in all 8 packages; every package's `build` now passes), D-7 (one port). Remaining open: D-2, D-3, D-4
 - Verification totals after this session: 639 unit assertions across 8 f-slices + 27 live HTTP checks, 0 failures; `tsc --noEmit` exit 0 for all 8 packages; acceptance 15/25 PASS / 10 BLOCKED
+- subplan-g started (2026-11-13): `packages/ui` created (it did not exist). g-0 workspace layout model — 74 assertions; g-1 shortcut registry with the G5 table + typing guard — 142 assertions. Both with `tsc --noEmit` exit 0. Research in `docs/research/subplan-g.md` (G-6.1..G-6.4); new open question D-8
 - Docs updated: DOUBTS.md created (D-1..D-4), research decisions F-6.x/F-8.x/F-9.x recorded, subplan-f index records status of audit findings MF-1..MF-5
 - Known constraint found and worked around: value imports of `.ts` files inside `apps/mcp-companion/src/` failed TS5097 while `allowImportingTsExtensions` was unset. RESOLVED by D-6: all 8 packages now set it together with `noEmit`, so value imports are legal everywhere and collaborators no longer need injecting for compiler reasons
 
 
 ## Next
-- Subplan-f implementation is now genuinely wired: 15/25 acceptance items PASS (was 12), 639 unit assertions + 27 live HTTP checks green, build hygiene fixed across all 8 packages.
+- subplan-g (UI) is now started and needs the remaining 24 slices planned (only g-0 and g-1 exist on disk; the index lists 17). Next units, in dependency order: g-2 tooltip/onboarding types, g-3 design tokens (contrast-verified), g-4 layout implementation, g-5 outliner, g-6 inspector, g-7 status bar, then g-8..g-16.
 - Remaining subplan-f work, all cross-subspec or dependency-bound:
-  1. Shared command bus (`packages/operations` -> listener) so mutations actually edit a document instead of bumping a revision counter. Unblocks items 3, 4, 14, 15, 16.
+  1. Shared command bus (`packages/operations` -> listener) so mutations actually edit a document instead of bumping a revision counter. Unblocks acceptance items 3, 4, 14, 15, 16.
   2. IndexedDB idempotency persistence (item 10) and the ~40-tool Zod surface (item 20), history-backed diffs (item 21).
-  3. subplan-g (UI interaction): only `g-0` is planned; the other 15 slice files declared in the index do not exist on disk, so planning must be re-done before implementation.
-- Phase 5: questions, then final fix. Open questions are D-2, D-3, D-4 in `docs/agent/DOUBTS.md` (D-1, D-5, D-6, D-7 resolved).
+- Phase 5: questions, then final fix. Open questions are D-2, D-3, D-4, D-8 in `docs/agent/DOUBTS.md` (D-1, D-5, D-6, D-7 resolved).
 
 ## Blocked
 - None
