@@ -11,10 +11,13 @@ export default function EditorIsland() {
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const selectionBoxRef = useRef<THREE.Mesh | null>(null);
   const isSelecting = useRef(false);
-  const selectStart = useRef<THREE.Vector3 | null>(null);
+  const isBoxSelecting = useRef(false);
+  const boxStart = useRef<THREE.Vector2 | null>(null);
   const [status, setStatus] = useState('Drop a .schem or .litematic file here');
   const [fileName, setFileName] = useState<string | null>(null);
   const [selectedCount, setSelectedCount] = useState(0);
+  const [boxCorner1, setBoxCorner1] = useState<THREE.Vector3 | null>(null);
+  const [boxCorner2, setBoxCorner2] = useState<THREE.Vector3 | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -75,6 +78,47 @@ export default function EditorIsland() {
       if (!blockGroup) return;
 
       const intersects = raycaster.intersectObjects(blockGroup.children, false);
+
+      if (event.shiftKey) {
+        // Box selection mode
+        if (intersects.length > 0) {
+          const hit = intersects[0].object as THREE.Mesh;
+          if (!boxCorner1) {
+            setBoxCorner1(hit.position.clone());
+            setStatus('Click second corner for box selection');
+          } else {
+            setBoxCorner2(hit.position.clone());
+            // Select all blocks in the box
+            const min = new THREE.Vector3(
+              Math.min(boxCorner1.x, hit.position.x),
+              Math.min(boxCorner1.y, hit.position.y),
+              Math.min(boxCorner1.z, hit.position.z),
+            );
+            const max = new THREE.Vector3(
+              Math.max(boxCorner1.x, hit.position.x),
+              Math.max(boxCorner1.y, hit.position.y),
+              Math.max(boxCorner1.z, hit.position.z),
+            );
+            selectedRef.current.forEach((m) => {
+              (m.material as THREE.MeshLambertMaterial).emissive.setHex(0x000000);
+            });
+            selectedRef.current.clear();
+            blockGroup.children.forEach((mesh: any) => {
+              const p = mesh.position;
+              if (p.x >= min.x && p.x <= max.x && p.y >= min.y && p.y <= max.y && p.z >= min.z && p.z <= max.z) {
+                selectedRef.current.add(mesh);
+                (mesh.material as THREE.MeshLambertMaterial).emissive.setHex(0x444400);
+              }
+            });
+            setSelectedCount(selectedRef.current.size);
+            setBoxCorner1(null);
+            setBoxCorner2(null);
+            setStatus(`Box selected ${selectedRef.current.size} blocks`);
+          }
+        }
+        return;
+      }
+
       if (intersects.length > 0) {
         const hit = intersects[0].object as THREE.Mesh;
         const mat = hit.material as THREE.MeshLambertMaterial;
