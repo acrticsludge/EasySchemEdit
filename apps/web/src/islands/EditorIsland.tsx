@@ -67,9 +67,10 @@ export default function EditorIsland() {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
 
+      const { detectFormat } = await import('@easyschemedit/formats');
       const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-      const format = ext === 'litematic' ? 'litematic' : ext === 'schem' ? 'sponge' : ext === 'nbt' ? 'vanilla-nbt' : 'unknown';
-      setStatus(`Loaded ${file.name} (${bytes.length} bytes, format: ${format})`);
+      const format = detectFormat(bytes, ext);
+      setStatus(`Loaded ${file.name} (${bytes.length} bytes, format: ${format.format.kind})`);
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
