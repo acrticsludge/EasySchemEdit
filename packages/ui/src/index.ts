@@ -49,6 +49,15 @@ export type {
 } from './inspector.ts';
 
 export {
+  createTooltipController,
+} from './tooltips.ts';
+
+export type {
+  TooltipController,
+  TooltipControllerOptions,
+} from './tooltips.ts';
+
+export {
   createShortcutHandler,
 } from './shortcuts.ts';
 
