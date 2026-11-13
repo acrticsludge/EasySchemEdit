@@ -21,16 +21,35 @@ export type {
   PairingToken,
   PairingTokenState,
   SecurityConfig,
+  SecurityPolicy,
   ConnectionSecurity,
   PairingProtocol,
+  PairingTokenRecord,
+  PairingAuthority,
+  PairingAuthorityOptions,
+  PairingAuthorityServices,
+  ConnectResult,
+  ConnectFailure,
+  HostCheck,
+  OriginCheck,
+  CorsPolicy,
+  CorsDecision,
 } from './pairing-token.ts';
 
-export type {
-  DEFAULT_PAIRING_TOKEN_TTL_MS,
-  DEFAULT_MAX_CONNECTION_ATTEMPTS,
-  DEFAULT_BLOCK_DURATION_MS,
-  LOOPBACK_ADDRESSES,
-} from './pairing-token.ts';
+export {
+  createPairingAuthority,
+  checkHost,
+  checkOrigin,
+  corsPreflightResponse,
+  classifyAddressSpace,
+  checkLoopback,
+  checkPNA,
+  constantTimeEquals,
+  DEFAULT_SESSION_IDLE_TIMEOUT_MS,
+  COMPANION_PORT,
+  ALLOWED_HOSTNAMES,
+  PAIRING_TOKEN_BYTES,
+} from './pairing-token';
 
 export type {
   ClipboardTool,
