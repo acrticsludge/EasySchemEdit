@@ -35,6 +35,27 @@ export type {
 } from './layout-types.ts';
 
 export {
+  DEFAULT_TOOLTIP_CONFIG,
+  MIN_TOOLTIP_DELAY_MS,
+  MAX_TOOLTIP_DELAY_MS,
+  BROWSER_RESERVED_SHORTCUTS,
+  createOnboardingState,
+  createTooltipState,
+  isBrowserReservedShortcut,
+  validateTooltipConfig,
+  SHORTCUT_REFERENCE_KEY,
+} from './tooltip-types.ts';
+
+export type {
+  OnboardingState,
+  OnboardingStateApi,
+  TooltipConfig,
+  TooltipStateApi,
+  TooltipStateOptions,
+  TooltipValidation,
+} from './tooltip-types.ts';
+
+export {
   DEFAULT_BINDINGS,
   G5_SHORTCUT_TABLE,
   createShortcutRegistry,
