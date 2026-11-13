@@ -66,15 +66,8 @@ function makeFs(opts?: {
       }
       return path;
     },
-    ensureDir(path: string): string {
-      return path;
-    },
     exists(path: string): boolean {
       return existing.has(path) || files.has(path);
-    },
-    readFile(path: string): ArrayBuffer {
-      const content = files.get(path) ?? '';
-      return new TextEncoder().encode(content).buffer as ArrayBuffer;
     },
     readTemp(path: string): ArrayBuffer {
       const content = files.get(path) ?? '';

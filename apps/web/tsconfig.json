@@ -10,13 +10,16 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "isolatedModules": true,
-    "baseUrl": ".",
-    "paths": {
-      "@easyschemedit/formats": ["../../packages/formats/index.ts"],
-      "@easyschemedit/domain": ["../../packages/domain/src/index.ts"]
-    }
+    "isolatedModules": true
   },
-  "include": ["src/**/*.astro", "src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.astro",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "__tests__/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

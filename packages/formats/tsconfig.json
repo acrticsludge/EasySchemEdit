@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "strict": true,
     "noImplicitAny": true,
     "noFallthroughCasesInSwitch": true,
@@ -18,7 +18,7 @@
   },
   "include": [
     "*.ts",
-    "__tests__/*.ts",
+    "__tests__/**/*.ts",
     "../domain/*.ts"
   ],
   "exclude": [

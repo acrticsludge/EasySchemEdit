@@ -57,11 +57,11 @@ console.log('--- Slice g-4: resize ---');
   // A resize that would starve the viewport is clamped so the viewport keeps 400px.
   const c4 = createLayoutController(undefined, WINDOW);
   c4.resizePanel('hierarchy', { width: 5000 }, WINDOW);
-  const vp = c4.state().viewport;
+  const vp = (c4.state() as any).viewport;
   assert(vp.width >= 400, 'g-4.2: the viewport keeps its 400px floor under a giant resize');
   const left = panelById(c4.state(), 'hierarchy')?.width ?? 0;
   const right = panelById(c4.state(), 'inspector')?.width ?? 0;
-  assert(c4.state().overflow.horizontal === true, 'g-4.2: an impossible resize reports horizontal overflow');
+  assert((c4.state() as any).overflow.horizontal === true, 'g-4.2: an impossible resize reports horizontal overflow');
 
   // Resizing a collapsed panel is a no-op.
   const c5 = createLayoutController(undefined, WINDOW);
@@ -78,7 +78,7 @@ console.log('--- Slice g-4: collapse / expand / toggle ---');
   assertEqual(c.isCollapsed('hierarchy'), false, 'g-4.3: starts expanded');
   c.collapsePanel('hierarchy', WINDOW);
   assertEqual(c.isCollapsed('hierarchy'), true, 'g-4.3: collapse sets collapsed=true');
-  const vpAfter = c.state().viewport.width;
+  const vpAfter = (c.state() as any).viewport.width;
   assert(vpAfter > 444, 'g-4.3: collapsing a side panel widens the viewport');
 
   c.expandPanel('hierarchy', WINDOW);

@@ -72,7 +72,7 @@ function makeHarness(opts?: {
         return {
           operation,
           affectedPlacementIds: ['pl-1'],
-          affectedBounds: [{ min: [0, 0, 0], max: [3, 3, 3] }],
+          affectedBounds: [{ min: [0, 0, 0], max: [3, 3, 3] } as any],
           candidateCells: 64,
           changedCells: opts?.wouldChange ?? 64,
           resultingNonAirCount: opts?.wouldChange ?? 64,
@@ -89,7 +89,7 @@ function makeHarness(opts?: {
             revision,
             changedCells: 0,
             changedPlacements: [],
-            warnings: ['command bus rejected'],
+            warnings: [{ code: 'REJECTED', message: 'command bus rejected', severity: 'warning' }],
             errorCode: opts.executeErrorCode ?? 'LOCKED_PLACEMENT',
             errorMessage: 'placement is locked',
           };
@@ -119,9 +119,8 @@ function newProtocol(h: Harness, overrides?: Record<string, number>) {
       let n = 0;
       return () => `token-${++n}`;
     })(),
-    hashToken: (t: string) => `h(${t})`,
     ...overrides,
-  });
+  } as any);
 }
 
 console.log('--- Slice f-7: destructive classification (SPEC-F §6) ---');

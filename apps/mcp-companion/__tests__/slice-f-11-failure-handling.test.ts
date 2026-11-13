@@ -90,11 +90,11 @@ console.log('--- Slice f-11: suggested actions ---');
   assert(typeof stale.suggestedAction === 'string' && stale.suggestedAction.length > 0, 'f-11.9: stale revision suggests an action');
 
   const expired = classifyFailure('expired_confirmation_token');
-  assert(expired.suggestedAction?.toLowerCase().includes('dry-run'), 'f-11.9: expiry suggests a new dry-run');
+  assert(Boolean(expired.suggestedAction?.toLowerCase().includes('dry-run')), 'f-11.9: expiry suggests a new dry-run');
 
   const mismatch = classifyFailure('duplicate_request_id_args_mismatch');
   assertEqual(mismatch.code, MCP_ERROR_CODES.IDEMPOTENCY_ARGS_MISMATCH, 'f-11.9: args mismatch code');
-  assert(mismatch.suggestedAction?.toLowerCase().includes('requestid'), 'f-11.9: args mismatch suggests a new requestId');
+  assert(Boolean(mismatch.suggestedAction?.toLowerCase().includes('requestid')), 'f-11.9: args mismatch suggests a new requestId');
 
   const locked = classifyFailure('locked_placement', { lockedPlacements: ['pl-1', 'pl-2'] });
   assertEqual(locked.code, MCP_ERROR_CODES.LOCKED_PLACEMENT, 'f-11.9: locked placement code');
@@ -156,8 +156,8 @@ console.log('--- Slice f-11: §4.3 budget arithmetic ---');
   assertEqual(overDefault.ok, false, 'f-11.8: above the default budget is refused');
   assertEqual(overDefault.exceeded, 'maxChangedCells', 'f-11.8: the exceeded budget is named');
   assertEqual(overDefault.overridable, true, 'f-11.8: the default budget is overridable');
-  assert(overDefault.error?.message.includes('250001'), 'f-11.8: the message quotes the actual count');
-  assert(overDefault.error?.message.includes('250000'), 'f-11.8: the message quotes the budget');
+  assert(Boolean(overDefault.error?.message.includes('250001')), 'f-11.8: the message quotes the actual count');
+  assert(Boolean(overDefault.error?.message.includes('250000')), 'f-11.8: the message quotes the budget');
 
   const overDefaultWithIncrease = checkBudgets(
     { candidateCells: 300_000, changedCells: 250_001, estimatedRuntimeMs: 100, estimatedMemoryBytes: 1024 },

@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pure TypeScript file format adapters for EasySchemEdit \u2014 zero Three.js/React/DOM/UI imports",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "description": "Pure TypeScript file format adapters for EasySchemEdit — zero Three.js/React/DOM/UI imports",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "test": "node --experimental-strip-types __tests__/slice-b-0-types.test.ts",
@@ -17,6 +20,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@easyschemedit/domain": "workspace:*"
+    "@easyschemedit/domain": "workspace:*",
+    "fflate": "0.8.2"
   }
 }

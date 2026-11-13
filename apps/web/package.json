@@ -7,13 +7,19 @@
   "scripts": {
     "build": "astro build",
     "dev": "astro dev",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@astrojs/react": "^4.0.0",
-    "@types/react": "^19.3.0",
-    "@types/react-dom": "^19.3.0",
-    "@types/three": "^0.187.0",
+    "@easyschemedit/asset-pipeline": "workspace:*",
+    "@easyschemedit/domain": "workspace:*",
+    "@easyschemedit/formats": "workspace:*",
+    "@easyschemedit/operations": "workspace:*",
+    "@easyschemedit/persistence": "workspace:*",
+    "@easyschemedit/renderer": "workspace:*",
+    "@easyschemedit/ui": "workspace:*",
+    "@easyschemedit/workers": "workspace:*",
     "astro": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -21,6 +27,9 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261113.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
     "typescript": "^5.6.0",
     "wrangler": "^4.161.0"
   },

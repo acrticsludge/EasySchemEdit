@@ -3,16 +3,21 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pure TypeScript renderer for EasySchemEdit \u2014 domain imports only, Three.js in implementation only",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "description": "Pure TypeScript renderer for EasySchemEdit — domain imports only, Three.js in implementation only",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "test": "node --experimental-strip-types __tests__/slice-e-0-types.test.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@easyschemedit/domain": "workspace:*"
+  },
   "devDependencies": {
-    "@easyschemedit/domain": "workspace:*",
     "typescript": "^5.6.0"
   },
   "license": "MIT"

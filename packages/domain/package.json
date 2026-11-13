@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pure TypeScript domain model for EasySchemEdit \u2014 zero framework/browser/Node/Three.js/MCP imports",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "description": "Pure TypeScript domain model for EasySchemEdit — zero framework/browser/Node/Three.js/MCP imports",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "test": "node --experimental-strip-types __tests__/slice-0-types.test.ts",

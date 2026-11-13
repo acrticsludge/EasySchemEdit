@@ -174,7 +174,7 @@ console.log('--- Acceptance: item 13 --- responsive ---');
 {
   const ctrl = createLayoutController(undefined, { width: 1024, height: 768 });
   ctrl.resizePanel('hierarchy', { width: 0 }, { width: 1024, height: 768 });
-  assert(ctrl.state().viewport.width >= 400, 'AC13: min viewport at 1024x768');
+  assert((ctrl.state() as any).viewport.width >= 400, 'AC13: min viewport at 1024x768');
 }
 
 console.log('--- Acceptance: item 14 --- touch ---');

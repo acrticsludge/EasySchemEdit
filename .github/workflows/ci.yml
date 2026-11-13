@@ -18,21 +18,23 @@ jobs:
         with:
           version: 9
 
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Type check all packages
-        run: |
-          pnpm --filter @easyschemedit/domain exec tsc --noEmit
-          pnpm --filter @easyschemedit/formats exec tsc --noEmit
-          pnpm --filter @easyschemedit/asset-pipeline exec tsc --noEmit
-          pnpm --filter @easyschemedit/persistence exec tsc --noEmit
-          pnpm --filter @easyschemedit/workers exec tsc --noEmit
+        run: pnpm typecheck
 
       - name: Run all tests
-        run: |
-          pnpm --filter @easyschemedit/domain exec npx tsx __tests__/slice-*.test.ts
-          pnpm --filter @easyschemedit/formats exec npx tsx __tests__/slice-b-*.test.ts
+        run: pnpm test
+
+      - name: Build web application
+        run: pnpm build
 
   deploy:
     needs: build-and-test
@@ -47,15 +49,17 @@ jobs:
         with:
           version: 9
 
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'pnpm'
+
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
 
       - name: Build Astro app
-        run: |
-          pnpm --filter @easyschemedit/web exec astro build
-
-      - name: Install Wrangler
-        run: pnpm --filter @easyschemedit/web exec pnpm add -D wrangler
+        run: pnpm build
 
       - name: Deploy to Cloudflare Workers
         run: pnpm --filter @easyschemedit/web exec wrangler deploy
