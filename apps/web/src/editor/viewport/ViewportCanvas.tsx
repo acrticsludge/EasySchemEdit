@@ -26,6 +26,8 @@ export interface GhostPreviewSpec {
   mirror: 'none' | 'x' | 'z';
 }
 
+const EMPTY_STRING_SET = new Set<string>();
+
 export interface ViewportCanvasProps {
   session: EditorSession;
   atlasTexture?: THREE.Texture | null;
@@ -52,7 +54,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   onVoxelClick,
   onVoxelHover,
   conflictOverlayPositions,
-  selectedPlacementIds = new Set(),
+  selectedPlacementIds = EMPTY_STRING_SET,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -72,6 +74,25 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const conflictGroupRef = useRef<THREE.Group | null>(null);
   const ghostGroupRef = useRef<THREE.Group | null>(null);
 
+  // Prop refs for stable callbacks
+  const assetSourceRef = useRef(assetSource);
+  assetSourceRef.current = assetSource;
+  const uvLookupRef = useRef(uvLookup);
+  uvLookupRef.current = uvLookup;
+  const selectedPlacementIdsRef = useRef(selectedPlacementIds);
+  selectedPlacementIdsRef.current = selectedPlacementIds;
+  const gridPrefsRef = useRef<GridBordersPrefs>({
+    chunkBorders: false,
+    sectionBorders: false,
+    blockBorders: false,
+  });
+  const conflictOverlayPositionsRef = useRef(conflictOverlayPositions);
+  conflictOverlayPositionsRef.current = conflictOverlayPositions;
+  const ghostPreviewRef = useRef(ghostPreview);
+  ghostPreviewRef.current = ghostPreview;
+  const prevPlacementCountRef = useRef<number>(0);
+  const pointerDownPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
   // UI state
   const [contextLost, setContextLost] = useState<boolean>(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('orbit');
@@ -80,6 +101,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     sectionBorders: false,
     blockBorders: false,
   });
+  gridPrefsRef.current = gridPrefs;
+  const [hudCollapsed, setHudCollapsed] = useState<boolean>(false);
   const [stats, setStats] = useState<ChunkSceneStats>({
     meshCount: 0,
     chunkCount: 0,
@@ -107,12 +130,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (!scene) return;
 
     const project = session.snapshot();
+    const selIds = selectedPlacementIdsRef.current;
+    const gPrefs = gridPrefsRef.current;
+    const cPos = conflictOverlayPositionsRef.current;
+    const gPrev = ghostPreviewRef.current;
 
     // 1. Placement bounds
     if (placementBoundsGroupRef.current) scene.remove(placementBoundsGroupRef.current);
     placementBoundsGroupRef.current = buildPlacementBoundsGroup(
       project.placements,
-      selectedPlacementIds
+      selIds
     );
     scene.add(placementBoundsGroupRef.current);
 
@@ -149,18 +176,18 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       }
     }
     if (gridGroupRef.current) scene.remove(gridGroupRef.current);
-    gridGroupRef.current = buildGridBordersGroup(unionBounds, gridPrefs);
+    gridGroupRef.current = buildGridBordersGroup(unionBounds, gPrefs);
     scene.add(gridGroupRef.current);
 
     // 5. Conflicts
     if (conflictGroupRef.current) scene.remove(conflictGroupRef.current);
     const confGroup = new THREE.Group();
     confGroup.name = 'conflicts-root';
-    if (conflictOverlayPositions?.sameState?.length) {
-      confGroup.add(buildConflictOverlayGroup(conflictOverlayPositions.sameState, 0x00e5ff));
+    if (cPos?.sameState?.length) {
+      confGroup.add(buildConflictOverlayGroup(cPos.sameState, 0x00e5ff));
     }
-    if (conflictOverlayPositions?.stateConflict?.length) {
-      confGroup.add(buildConflictOverlayGroup(conflictOverlayPositions.stateConflict, 0xff3344));
+    if (cPos?.stateConflict?.length) {
+      confGroup.add(buildConflictOverlayGroup(cPos.stateConflict, 0xff3344));
     }
     conflictGroupRef.current = confGroup;
     scene.add(conflictGroupRef.current);
@@ -169,8 +196,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (ghostGroupRef.current) scene.remove(ghostGroupRef.current);
     const ghost = new THREE.Group();
     ghost.name = 'ghost-preview';
-    if (ghostPreview) {
-      const { bounds, position, rotationY, mirror } = ghostPreview;
+    if (gPrev) {
+      const { bounds, position, rotationY, mirror } = gPrev;
       const ghostBox = buildSelectionBoxMesh(bounds);
       ghostBox.position.set(position[0], position[1], position[2]);
       ghostBox.rotation.y = (rotationY * Math.PI) / 180;
@@ -179,7 +206,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
     ghostGroupRef.current = ghost;
     scene.add(ghostGroupRef.current);
-  }, [session, selectedPlacementIds, gridPrefs, conflictOverlayPositions, ghostPreview]);
+  }, [session]);
 
   // --------------------------------------------------------------------------
   // Sync Chunks
@@ -189,9 +216,35 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (!manager) return;
 
     const project = session.snapshot();
-    manager.syncProject(project, { assetSource, uvLookup });
+    manager.syncProject(project, {
+      assetSource: assetSourceRef.current,
+      uvLookup: uvLookupRef.current,
+    });
     setStats(manager.getStats());
-  }, [session, assetSource, uvLookup]);
+
+    if (prevPlacementCountRef.current === 0 && project.placements.length > 0) {
+      let minX = Infinity, minY = Infinity, minZ = Infinity;
+      let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+      for (const p of project.placements) {
+        minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
+        minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
+        minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
+        maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
+        maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
+        maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+      }
+      if (Number.isFinite(minX) && cameraCtrlRef.current) {
+        cameraCtrlRef.current.frameBounds({
+          min: [minX, minY, minZ],
+          maxExclusive: [maxX, maxY, maxZ],
+        });
+        if (cameraRef.current) {
+          cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+        }
+      }
+    }
+    prevPlacementCountRef.current = project.placements.length;
+  }, [session]);
 
   // Update atlas texture on manager when prop changes
   useEffect(() => {
@@ -200,10 +253,14 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
   }, [atlasTexture]);
 
-  // Re-sync when overlays or session changes
+  // Separate useEffects for prop updates without recreating WebGL context
   useEffect(() => {
     updateOverlays();
-  }, [updateOverlays]);
+  }, [updateOverlays, selectedPlacementIds, gridPrefs, conflictOverlayPositions, ghostPreview]);
+
+  useEffect(() => {
+    syncChunks();
+  }, [syncChunks, assetSource, uvLookup, atlasTexture]);
 
   // --------------------------------------------------------------------------
   // Main Three.js Lifecycle
@@ -371,7 +428,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       chunkManager.dispose();
       renderer.dispose();
     };
-  }, [session, syncChunks, updateOverlays]);
+  }, [session]);
 
   // --------------------------------------------------------------------------
   // Mouse and Keyboard Event Handlers
@@ -380,6 +437,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     isDraggingRef.current = true;
     dragButtonRef.current = e.button;
     lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -410,7 +468,25 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       const project = session.snapshot();
       const blockLookup = createProjectBlockLookup(project);
 
-      return raycastVoxels(rayOrigin, rayDir, 256, blockLookup);
+      const voxelHit = raycastVoxels(rayOrigin, rayDir, 256, blockLookup);
+      if (voxelHit) return voxelHit;
+
+      if (Math.abs(rayDir[1]) > 1e-5) {
+        const t = -rayOrigin[1] / rayDir[1];
+        if (t > 0 && t <= 512) {
+          const gx = Math.floor(rayOrigin[0] + rayDir[0] * t);
+          const gz = Math.floor(rayOrigin[2] + rayDir[2] * t);
+          return {
+            position: [gx, 0, gz],
+            normal: [0, 1, 0],
+            adjacentPosition: [gx, 0, gz],
+            distance: t,
+            state: { id: 'minecraft:air', props: {} } as any,
+            placementId: null,
+          };
+        }
+      }
+      return null;
     },
     [session]
   );
@@ -467,6 +543,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const dist = Math.hypot(
+      e.clientX - pointerDownPosRef.current.x,
+      e.clientY - pointerDownPosRef.current.y
+    );
+    if (dist > 5) return;
+
     const hit = performRaycast(e.clientX, e.clientY);
     if (hit) {
       onVoxelClick?.(hit, e);
@@ -566,6 +648,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         onPointerUp={handlePointerUp}
         onWheel={handleWheel}
         onClick={handleClick}
+        onContextMenu={(e) => e.preventDefault()}
         style={{
           display: 'block',
           width: '100%',
@@ -668,42 +751,58 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           >
             Frame
           </button>
+          <button
+            onClick={() => setHudCollapsed((c) => !c)}
+            style={{
+              ...btnStyle,
+              marginLeft: '4px',
+              fontWeight: 700,
+              padding: '4px 8px',
+            }}
+            title={hudCollapsed ? 'Expand HUD' : 'Collapse HUD'}
+          >
+            {hudCollapsed ? '▸' : '▾'}
+          </button>
         </div>
 
-        {/* Overlay toggles */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: '#a0a0b8' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={gridPrefs.chunkBorders}
-              onChange={(e) => setGridPrefs((p) => ({ ...p, chunkBorders: e.target.checked }))}
-            />
-            Chunk Grid
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={gridPrefs.sectionBorders}
-              onChange={(e) => setGridPrefs((p) => ({ ...p, sectionBorders: e.target.checked }))}
-            />
-            Section Grid
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={gridPrefs.blockBorders}
-              onChange={(e) => setGridPrefs((p) => ({ ...p, blockBorders: e.target.checked }))}
-            />
-            Block Grid
-          </label>
-        </div>
+        {!hudCollapsed && (
+          <>
+            {/* Overlay toggles */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: '#a0a0b8' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={gridPrefs.chunkBorders}
+                  onChange={(e) => setGridPrefs((p) => ({ ...p, chunkBorders: e.target.checked }))}
+                />
+                Chunk Grid
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={gridPrefs.sectionBorders}
+                  onChange={(e) => setGridPrefs((p) => ({ ...p, sectionBorders: e.target.checked }))}
+                />
+                Section Grid
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={gridPrefs.blockBorders}
+                  onChange={(e) => setGridPrefs((p) => ({ ...p, blockBorders: e.target.checked }))}
+                />
+                Block Grid
+              </label>
+            </div>
 
-        {/* Scene Stats */}
-        <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: '#8888a0' }}>
-          <span>Meshes: <strong>{stats.meshCount}</strong></span>
-          <span>Chunks: <strong>{stats.chunkCount}</strong></span>
-          <span>Triangles: <strong>{stats.triangleCount.toLocaleString()}</strong></span>
-        </div>
+            {/* Scene Stats */}
+            <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: '#8888a0' }}>
+              <span>Meshes: <strong>{stats.meshCount}</strong></span>
+              <span>Chunks: <strong>{stats.chunkCount}</strong></span>
+              <span>Triangles: <strong>{stats.triangleCount.toLocaleString()}</strong></span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Bottom Floating Hover Readout */}

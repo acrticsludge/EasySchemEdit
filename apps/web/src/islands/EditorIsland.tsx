@@ -4,6 +4,7 @@
 'use client';
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import * as THREE from 'three';
 import '../editor/design-tokens.css';
 import {
   createEditorRuntime,
@@ -20,16 +21,33 @@ import {
   BlockPickerPanel,
   TransformControls,
   LibraryPanel,
+  useImportWorkflow,
+  type GhostPreviewSpec,
   type VoxelHit,
 } from '../editor/index.ts';
+import { useEditorSession } from '../editor/session-store.ts';
 
 export default function EditorIsland() {
   const runtime = useMemo(() => createEditorRuntime(), []);
+
+  const sessionState = useEditorSession(runtime.store);
+  const [assetSnap, setAssetSnap] = useState(() => runtime.assetManager.getStateSnapshot());
+  const importState = useImportWorkflow(runtime.importWorkflow);
+
+  useEffect(() => {
+    return runtime.assetManager.subscribe(() => {
+      setAssetSnap(runtime.assetManager.getStateSnapshot());
+    });
+  }, [runtime]);
 
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isBakeOpen, setIsBakeOpen] = useState(false);
   const [isProjectOpen, setIsProjectOpen] = useState(false);
+
+  const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
+  const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
 
   // Crash recovery check on mount
   useEffect(() => {
@@ -47,16 +65,131 @@ export default function EditorIsland() {
     };
   }, [runtime]);
 
+  // Build GPU texture atlas when assets are ready
+  useEffect(() => {
+    if (
+      assetSnap.state !== 'ready' ||
+      typeof document === 'undefined' ||
+      typeof createImageBitmap === 'undefined'
+    ) {
+      setAtlasTexture(null);
+      return;
+    }
+
+    const bundle = runtime.assetManager.getBundle();
+    const atlas = runtime.assetManager.getAtlas();
+    const page = atlas?.pages?.[0];
+    if (!bundle || !atlas || !page) return;
+
+    let cancelled = false;
+    const canvas = document.createElement('canvas');
+    canvas.width = page.width;
+    canvas.height = page.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    (async () => {
+      for (const [path, rect] of atlas.rects.entries()) {
+        if (cancelled || rect.page !== 0) continue;
+        const pngBytes = bundle.getFile(path);
+        if (!pngBytes) continue;
+        try {
+          const blob = new Blob([pngBytes as unknown as BlobPart], { type: 'image/png' });
+          const bmp = await createImageBitmap(blob);
+          ctx.drawImage(bmp, 0, 0, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+          bmp.close();
+        } catch {
+          // Ignore individual unreadable texture
+        }
+      }
+      if (cancelled) return;
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.magFilter = THREE.NearestFilter;
+      texture.minFilter = THREE.NearestFilter;
+      texture.generateMipmaps = false;
+      texture.flipY = false;
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.needsUpdate = true;
+      setAtlasTexture(texture);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [assetSnap.state, assetSnap.textureCount, runtime]);
+
+  const assetSource = useMemo(
+    () => runtime.assetManager.getAssetSource(),
+    [runtime, assetSnap.state, assetSnap.textureCount]
+  );
+  const uvLookup = useMemo(
+    () => runtime.assetManager.getUvLookup(),
+    [runtime, assetSnap.state, assetSnap.textureCount]
+  );
+
+  const ghostPreview: GhostPreviewSpec | null = useMemo(() => {
+    if (importState.state !== 'ghost-preview' || !importState.pendingImport) return null;
+    const dims = importState.pendingImport.report?.dimensions ?? { width: 1, height: 1, length: 1 };
+    return {
+      bounds: {
+        min: [0, 0, 0],
+        maxExclusive: [
+          Math.max(1, dims.width),
+          Math.max(1, dims.height),
+          Math.max(1, dims.length),
+        ],
+      },
+      position: importState.cursorPosition,
+      rotationY: importState.ghostRotationY,
+      mirror: importState.ghostMirror,
+    };
+  }, [importState]);
+
+  const selectedPlacementId = runtime.workspace.inspector.context().selectedPlacementId;
+  const selectedPlacementIds = useMemo(
+    () => (selectedPlacementId ? new Set([selectedPlacementId]) : undefined),
+    [selectedPlacementId, sessionState.revision]
+  );
+
   const handleVoxelClick = useCallback((hit: VoxelHit, event: React.MouseEvent) => {
-    runtime.selectionTool.setCorner1(hit.position);
+    if (runtime.importWorkflow.getState() === 'ghost-preview') {
+      void runtime.importWorkflow.confirmPlace();
+      return;
+    }
+
+    const activeTool = runtime.store.getSnapshot().selectedTool;
+    if (['cuboid', 'cuboid-select', 'fill', 'replace', 'walls', 'hollow', 'delete', 'delete-region'].includes(activeTool)) {
+      if (event.shiftKey || runtime.selectionTool.getCorner1()) {
+        void runtime.selectionTool.setCorner2(hit.position);
+      } else {
+        runtime.selectionTool.setCorner1(hit.position);
+      }
+    } else if (['select', 'move', 'rotate'].includes(activeTool) && hit.placementId) {
+      runtime.workspace.selectPlacement(hit.placementId);
+    } else {
+      runtime.selectionTool.setCorner1(hit.position);
+    }
   }, [runtime]);
 
   const handleVoxelHover = useCallback((hit: VoxelHit | null) => {
-    // Optional hover feedback
-  }, []);
+    if (!hit) {
+      setHoveredBlockName(null);
+      setCursorCoordinates(null);
+      return;
+    }
+    setHoveredBlockName(hit.state.id);
+    setCursorCoordinates({ x: hit.position[0], y: hit.position[1], z: hit.position[2] });
+
+    if (runtime.importWorkflow.getState() === 'ghost-preview') {
+      runtime.importWorkflow.snapGhostToGround({
+        voxelPosition: hit.position,
+        adjacentPosition: hit.adjacentPosition,
+      });
+    }
+  }, [runtime]);
 
   return (
-    <div style={{ width: '100vw', height: '100vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ width: '100vw', height: '100dvh', overflow: 'hidden', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
       <WorkspaceShell
         store={runtime.store}
         controllers={runtime.workspace}
@@ -64,34 +197,43 @@ export default function EditorIsland() {
         onExport={() => setIsExportOpen(true)}
         onBake={() => setIsBakeOpen(true)}
         onSave={() => runtime.persistence.saveCurrentProject()}
+        hoveredBlockName={hoveredBlockName}
+        cursorCoordinates={cursorCoordinates}
         viewportSlot={
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             <ViewportCanvas
               session={runtime.store.session}
-              assetSource={runtime.assetManager.getAssetSource()}
-              uvLookup={runtime.assetManager.getUvLookup()}
+              assetSource={assetSource}
+              uvLookup={uvLookup}
+              atlasTexture={atlasTexture}
+              ghostPreview={ghostPreview}
+              selectedPlacementIds={selectedPlacementIds}
               onVoxelClick={handleVoxelClick}
               onVoxelHover={handleVoxelHover}
             />
-            <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10 }}>
-              <BlockPickerPanel
-                onSelectBlock={(blockId) => {
-                  runtime.regionTools.fill(blockId);
-                }}
-              />
-            </div>
-            <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 10 }}>
-              <TransformControls
-                controller={runtime.placementOps}
-              />
-            </div>
-            <div style={{ position: 'absolute', bottom: 16, right: 16, zIndex: 10, maxHeight: 300, overflowY: 'auto' }}>
-              <LibraryPanel
-                controller={runtime.persistence}
-              />
-            </div>
           </div>
         }
+        rightDockSlots={{
+          tools: (
+            <BlockPickerPanel
+              store={runtime.store}
+              selectionTool={runtime.selectionTool}
+              regionTools={runtime.regionTools}
+            />
+          ),
+          transform: (
+            <TransformControls
+              controller={runtime.placementOps}
+              store={runtime.store}
+              placementId={selectedPlacementId ?? undefined}
+            />
+          ),
+          library: (
+            <LibraryPanel
+              controller={runtime.persistence}
+            />
+          ),
+        }}
         tabSlots={{
           assets: <AssetLoadPanel manager={runtime.assetManager} />,
           materials: <MaterialListPanel controller={runtime.materialListController} />,
@@ -101,13 +243,11 @@ export default function EditorIsland() {
       />
 
       {/* Modals */}
-      {isImportOpen && (
-        <ImportDialog
-          controller={runtime.importWorkflow}
-          isOpen={isImportOpen}
-          onClose={() => setIsImportOpen(false)}
-        />
-      )}
+      <ImportDialog
+        controller={runtime.importWorkflow}
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+      />
 
       {isExportOpen && (
         <ExportDialog

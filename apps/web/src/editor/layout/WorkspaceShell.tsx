@@ -16,12 +16,19 @@ import { BottomDock } from './BottomDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import type { BottomTabId, KeyDescriptor } from '@easyschemedit/ui';
 
+export type RightDockTabId = 'inspector' | 'tools' | 'transform' | 'library';
+
 export interface WorkspaceShellProps {
   store: EditorSessionStore;
   controllers?: WorkspaceControllers;
   storage?: StorageLike;
   viewportSlot: React.ReactNode;
   tabSlots?: Partial<Record<BottomTabId, React.ReactNode>>;
+  rightDockSlots?: {
+    tools?: React.ReactNode;
+    transform?: React.ReactNode;
+    library?: React.ReactNode;
+  };
   onImport?: () => void;
   onExport?: () => void;
   onBake?: () => void;
@@ -40,6 +47,7 @@ export function WorkspaceShell({
   storage,
   viewportSlot,
   tabSlots,
+  rightDockSlots,
   onImport,
   onExport,
   onBake,
@@ -52,7 +60,7 @@ export function WorkspaceShell({
   className = '',
 }: WorkspaceShellProps) {
   // Sync with store state
-  useEditorSession(store);
+  const sessionSnap = useEditorSession(store);
 
   // Initialize or memoize controllers
   const controllers = useMemo(() => {
@@ -76,6 +84,19 @@ export function WorkspaceShell({
   const leftWidth = leftPanel?.collapsed ? 28 : (leftPanel?.width ?? 260);
   const rightWidth = rightPanel?.collapsed ? 28 : (rightPanel?.width ?? 320);
   const bottomHeight = bottomPanel?.collapsed ? 28 : (bottomPanel?.height ?? 220);
+
+  const [rightDockTab, setRightDockTab] = useState<RightDockTabId>('inspector');
+
+  useEffect(() => {
+    const activeTool = sessionSnap.selectedTool;
+    if (rightDockSlots) {
+      if (['cuboid', 'cuboid-select', 'fill', 'replace', 'walls', 'hollow', 'delete', 'delete-region', 'paste'].includes(activeTool) && rightDockSlots.tools) {
+        setRightDockTab('tools');
+      } else if (['move', 'rotate'].includes(activeTool) && rightDockSlots.transform) {
+        setRightDockTab('transform');
+      }
+    }
+  }, [sessionSnap.selectedTool, rightDockSlots]);
 
   // --------------------------------------------------------------------------
   // Divider Drag Resizing
@@ -185,8 +206,8 @@ export function WorkspaceShell({
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        minWidth: '1024px',
-        minHeight: '768px',
+        minWidth: 0,
+        minHeight: 0,
         backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
         color: 'var(--color-text-primary, #eaeaea)',
         overflow: 'hidden',
@@ -271,8 +292,8 @@ export function WorkspaceShell({
         <div
           style={{
             flex: 1,
-            minWidth: '400px',
-            minHeight: '300px',
+            minWidth: '200px',
+            minHeight: '180px',
             height: '100%',
             position: 'relative',
             overflow: 'hidden',
@@ -315,12 +336,69 @@ export function WorkspaceShell({
         >
           {rightPanel?.collapsed ? (
             <CollapsedBar
-              label="INSPECTOR"
+              label="INSPECTOR / TOOLS"
               onClick={() => {
                 controllers.layout.expandPanel('inspector');
                 forceLayoutUpdate();
               }}
             />
+          ) : rightDockSlots ? (
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: 'var(--color-bg-surface, #141414)', borderLeft: '1px solid var(--color-border, #222)' }}>
+              {/* Tab Header */}
+              <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border, #222)', background: 'var(--color-bg-alt, #1a1a1a)', flexShrink: 0, overflowX: 'auto' }}>
+                {(['inspector', 'tools', 'transform', 'library'] as RightDockTabId[]).map((tabId) => {
+                  if (tabId !== 'inspector' && !rightDockSlots[tabId as keyof typeof rightDockSlots]) return null;
+                  const isActive = rightDockTab === tabId;
+                  return (
+                    <button
+                      key={tabId}
+                      onClick={() => setRightDockTab(tabId)}
+                      style={{
+                        padding: '8px 12px',
+                        background: isActive ? 'var(--color-bg-surface, #141414)' : 'transparent',
+                        color: isActive ? 'var(--color-accent, #4a9eff)' : 'var(--color-text-secondary, #aaa)',
+                        border: 'none',
+                        borderBottom: isActive ? '2px solid var(--color-accent, #4a9eff)' : '2px solid transparent',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        fontWeight: isActive ? 600 : 400,
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {tabId}
+                    </button>
+                  );
+                })}
+                <div style={{ flex: 1 }} />
+                <button
+                  onClick={() => {
+                    controllers.layout.collapsePanel('inspector');
+                    forceLayoutUpdate();
+                  }}
+                  title="Collapse Right Dock"
+                  style={{ background: 'transparent', border: 'none', color: 'var(--color-text-secondary, #aaa)', cursor: 'pointer', padding: '8px 10px', fontSize: '10px' }}
+                >
+                  ▶
+                </button>
+              </div>
+              {/* Tab Content */}
+              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+                {rightDockTab === 'inspector' && (
+                  <InspectorPanel
+                    store={store}
+                    controllers={controllers}
+                    onCollapse={() => {
+                      controllers.layout.collapsePanel('inspector');
+                      forceLayoutUpdate();
+                    }}
+                  />
+                )}
+                {rightDockTab === 'tools' && rightDockSlots.tools}
+                {rightDockTab === 'transform' && rightDockSlots.transform}
+                {rightDockTab === 'library' && rightDockSlots.library}
+              </div>
+            </div>
           ) : (
             <InspectorPanel
               store={store}

@@ -119,6 +119,7 @@ export class ImportWorkflowController {
   private errorMessage: string | null = null;
   private lastImportedPlacementIds: string[] = [];
   private listeners: Set<() => void> = new Set();
+  private currentSnapshot: ImportWorkflowState = this.buildSnapshot();
   public readonly store: EditorSessionStore;
   private readonly parseFn?: ParseSchematicFn;
 
@@ -128,6 +129,7 @@ export class ImportWorkflowController {
   ) {
     this.store = store;
     this.parseFn = options?.parseFn;
+    this.currentSnapshot = this.buildSnapshot();
   }
 
   // --------------------------------------------------------------------------
@@ -141,17 +143,7 @@ export class ImportWorkflowController {
     };
   };
 
-  private notify(): void {
-    for (const listener of this.listeners) {
-      try {
-        listener();
-      } catch (err) {
-        console.error('ImportWorkflowController listener error:', err);
-      }
-    }
-  }
-
-  public getSnapshot = (): ImportWorkflowState => {
+  private buildSnapshot(): ImportWorkflowState {
     return {
       state: this.state,
       cursorPosition: [...this.cursorPosition] as Vec3i,
@@ -161,7 +153,20 @@ export class ImportWorkflowController {
       fileName: this.fileName,
       errorMessage: this.errorMessage,
     };
-  };
+  }
+
+  private notify(): void {
+    this.currentSnapshot = this.buildSnapshot();
+    for (const listener of this.listeners) {
+      try {
+        listener();
+      } catch (err) {
+        console.error('ImportWorkflowController listener error:', err);
+      }
+    }
+  }
+
+  public getSnapshot = (): ImportWorkflowState => this.currentSnapshot;
 
   public getState(): ImportWorkflowStateKind {
     return this.state;
