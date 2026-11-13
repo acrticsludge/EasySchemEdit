@@ -31,7 +31,7 @@ self.onmessage = async (e: MessageEvent<ParseRequest>) => {
       gzipDecompress: async (b: Uint8Array, max: number) => {
         const ds = new DecompressionStream('gzip');
         const writer = ds.writable.getWriter();
-        writer.write(b);
+        writer.write(b as any);
         writer.close();
         const reader = ds.readable.getReader();
         const chunks: Uint8Array[] = [];

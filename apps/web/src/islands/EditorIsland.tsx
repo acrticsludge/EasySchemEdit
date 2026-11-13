@@ -9,7 +9,7 @@ export default function EditorIsland() {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const selectionBoxRef = useRef<THREE.Mesh | null>(null);
+  const selectedRef = useRef<Set<THREE.Mesh>>(new Set());
   const isSelecting = useRef(false);
   const isBoxSelecting = useRef(false);
   const boxStart = useRef<THREE.Vector2 | null>(null);

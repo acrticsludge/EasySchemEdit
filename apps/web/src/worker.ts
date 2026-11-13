@@ -1,3 +1,4 @@
+/// <reference types="@cloudflare/workers-types" />
 // Worker entry point for Cloudflare Workers Static Assets.
 // Serves the Astro static build from the ASSETS binding and falls back to
 // index.html for SPA routes (client-side routing in the React editor island).
