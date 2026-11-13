@@ -350,6 +350,7 @@ export default function EditorIsland() {
       else if (e.key === 'x' || e.key === 'X') handleTransform('mirrorX');
       else if (e.key === 'z' || e.key === 'Z') handleTransform('mirrorZ');
       else if (e.key === 'Delete' || e.key === 'Backspace') handleTransform('delete');
+      if (e.key === 'f' || e.key === 'F') handleFill();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -498,6 +499,40 @@ export default function EditorIsland() {
     }
   }, []);
 
+  const handleFill = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+
+    const selected = Array.from(selectedRef.current);
+    if (selected.length === 0) {
+      setStatus('Select blocks first, then press F to fill');
+      return;
+    }
+
+    saveUndoState();
+
+    const blockName = prompt('Enter block name (e.g., minecraft:stone):', 'minecraft:stone');
+    if (!blockName) return;
+
+    const colorMap: Record<string, number> = {
+      'minecraft:stone': 0x7f7f7f,
+      'minecraft:dirt': 0x866043,
+      'minecraft:grass_block': 0x5a8a3c,
+      'minecraft:oak_planks': 0xb8945f,
+      'minecraft:cobblestone': 0x7a7a7a,
+    };
+    const color = colorMap[blockName] ?? (Math.abs(blockName.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 0xffffff);
+
+    selected.forEach((mesh) => {
+      const mat = mesh.material as THREE.MeshLambertMaterial;
+      mat.color.setHex(color);
+    });
+
+    setStatus(`Filled ${selected.length} blocks with ${blockName}`);
+  }, [saveUndoState]);
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
@@ -540,6 +575,7 @@ export default function EditorIsland() {
             <button onClick={() => handleTransform('rotateY')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Rotate (R)</button>
             <button onClick={() => handleTransform('mirrorX')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror X (X)</button>
             <button onClick={() => handleTransform('mirrorZ')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror Z (Z)</button>
+            <button onClick={handleFill} style={{ padding: '4px 8px', background: '#2a3a2a', border: '1px solid #555', color: '#66ff66', cursor: 'pointer', fontSize: '12px' }}>Fill (F)</button>
             <button onClick={() => handleTransform('delete')} style={{ padding: '4px 8px', background: '#3a1a1a', border: '1px solid #555', color: '#ff6666', cursor: 'pointer', fontSize: '12px' }}>Delete (Del)</button>
           </div>
         )}
