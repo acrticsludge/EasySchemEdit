@@ -214,12 +214,16 @@ export function TransformControls({
         className={className}
         data-testid="transform-controls"
         style={{
-          padding: '16px',
-          background: '#18181b',
+          padding: '12px',
+          background: 'transparent',
           color: '#a1a1aa',
-          borderRadius: '8px',
-          border: '1px solid #27272a',
+          borderRadius: 0,
+          border: 'none',
           fontSize: '13px',
+          width: '100%',
+          minWidth: 0,
+          maxWidth: '100%',
+          boxSizing: 'border-box',
         }}
       >
         <p style={{ margin: 0 }}>No placement selected</p>
@@ -239,13 +243,16 @@ export function TransformControls({
         display: 'flex',
         flexDirection: 'column',
         gap: '12px',
-        padding: '16px',
-        background: '#18181b',
+        padding: '12px',
+        background: 'transparent',
         color: '#fafafa',
-        borderRadius: '8px',
-        border: '1px solid #27272a',
+        borderRadius: 0,
+        border: 'none',
         fontSize: '13px',
-        maxWidth: '380px',
+        width: '100%',
+        minWidth: 0,
+        maxWidth: '100%',
+        boxSizing: 'border-box',
         userSelect: 'none',
       }}
     >
@@ -913,6 +920,8 @@ function buttonStyle(disabled: boolean, extra?: React.CSSProperties): React.CSSP
 function inputStyle(disabled: boolean): React.CSSProperties {
   return {
     width: '100%',
+    minWidth: 0,
+    boxSizing: 'border-box',
     padding: '4px 6px',
     borderRadius: '4px',
     border: '1px solid #3f3f46',
@@ -920,6 +929,5 @@ function inputStyle(disabled: boolean): React.CSSProperties {
     color: disabled ? '#52525b' : '#fafafa',
     fontSize: '12px',
     fontFamily: 'monospace',
-    boxSizing: 'border-box',
   };
 }

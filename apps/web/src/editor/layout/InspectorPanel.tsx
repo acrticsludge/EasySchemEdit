@@ -10,6 +10,7 @@ import type { Rotation, MirrorAxis } from '@easyschemedit/ui';
 export interface InspectorPanelProps {
   store: EditorSessionStore;
   controllers?: WorkspaceControllers;
+  hideHeader?: boolean;
   onCollapse?: () => void;
   className?: string;
 }
@@ -17,6 +18,7 @@ export interface InspectorPanelProps {
 export function InspectorPanel({
   store,
   controllers,
+  hideHeader = false,
   onCollapse,
   className = '',
 }: InspectorPanelProps) {
@@ -39,14 +41,16 @@ export function InspectorPanel({
         aria-label="Inspector"
         style={panelContainerStyle}
       >
-        <div style={panelHeaderStyle}>
-          <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
-          {onCollapse && (
-            <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
-              ▶
-            </button>
-          )}
-        </div>
+        {!hideHeader && (
+          <div style={panelHeaderStyle}>
+            <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
+            {onCollapse && (
+              <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
+                ▶
+              </button>
+            )}
+          </div>
+        )}
         <div
           style={{
             padding: '32px 16px',
@@ -169,14 +173,16 @@ export function InspectorPanel({
       style={panelContainerStyle}
     >
       {/* Header */}
-      <div style={panelHeaderStyle}>
-        <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
-        {onCollapse && (
-          <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
-            ▶
-          </button>
-        )}
-      </div>
+      {!hideHeader && (
+        <div style={panelHeaderStyle}>
+          <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
+          {onCollapse && (
+            <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
+              ▶
+            </button>
+          )}
+        </div>
+      )}
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
         {/* Placement Name */}

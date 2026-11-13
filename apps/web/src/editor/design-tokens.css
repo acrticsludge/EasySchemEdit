@@ -2,6 +2,7 @@
 /* Design tokens matching @easyschemedit/ui (SUBSPEC-G §1.5) and base reset styles. */
 
 :root {
+  color-scheme: dark;
   /* Surface colors */
   --color-bg-primary: #0d0d0d;
   --color-bg-secondary: #1a1a1a;
@@ -48,6 +49,23 @@
 }
 
 /* Base reset styles for the editor workspace */
+.editor-workspace {
+  color-scheme: dark;
+}
+.editor-workspace ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.editor-workspace ::-webkit-scrollbar-track {
+  background: #141414;
+}
+.editor-workspace ::-webkit-scrollbar-thumb {
+  background: #333333;
+  border-radius: 3px;
+}
+.editor-workspace ::-webkit-scrollbar-thumb:hover {
+  background: #4a4a4a;
+}
 .editor-workspace {
   position: relative;
   display: flex;

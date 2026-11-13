@@ -168,15 +168,16 @@ export function LibraryPanel({
       aria-label="Build Library Panel"
       style={{
         width: '100%',
-        maxWidth: '480px',
-        backgroundColor: '#18181b',
-        border: '1px solid #3f3f46',
-        borderRadius: '8px',
+        minWidth: 0,
+        maxWidth: '100%',
+        backgroundColor: 'transparent',
+        border: 'none',
+        borderRadius: 0,
         color: '#f4f4f5',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        maxHeight: '600px',
+        boxSizing: 'border-box',
         overflow: 'hidden',
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}

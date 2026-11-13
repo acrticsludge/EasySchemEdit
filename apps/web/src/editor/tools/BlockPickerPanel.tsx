@@ -203,15 +203,16 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: '12px',
-        background: '#18181b',
+        background: 'transparent',
         color: '#f4f4f5',
-        padding: '14px',
-        borderRadius: '8px',
-        border: '1px solid #27272a',
+        padding: '12px',
+        borderRadius: 0,
+        border: 'none',
         fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
         fontSize: '13px',
         width: '100%',
-        maxWidth: '440px',
+        minWidth: 0,
+        maxWidth: '100%',
         boxSizing: 'border-box',
       }}
     >
@@ -435,7 +436,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
         )}
 
         {/* Add Property Inputs */}
-        <div style={{ display: 'flex', gap: '4px' }}>
+        <div style={{ display: 'flex', gap: '4px', minWidth: 0 }}>
           <input
             type="text"
             placeholder="key (e.g. facing)"
@@ -444,6 +445,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             onChange={(e) => setNewPropKey(e.target.value)}
             style={{
               flex: 1,
+              minWidth: 0,
               padding: '4px 6px',
               fontSize: '11px',
               borderRadius: '3px',
@@ -466,6 +468,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             onChange={(e) => setNewPropValue(e.target.value)}
             style={{
               flex: 1,
+              minWidth: 0,
               padding: '4px 6px',
               fontSize: '11px',
               borderRadius: '3px',
@@ -486,6 +489,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             type="button"
             onClick={handleAddProperty}
             style={{
+              flexShrink: 0,
               padding: '4px 10px',
               fontSize: '11px',
               borderRadius: '3px',
@@ -618,7 +622,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
           <div style={{ fontSize: '11px', fontWeight: 600, color: '#a1a1aa' }}>
             REPLACE REGION
           </div>
-          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: 0 }}>
             <input
               type="text"
               placeholder="Find matcher (e.g. minecraft:stone)"
@@ -626,6 +630,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               onChange={(e) => setReplaceMatcher(e.target.value)}
               style={{
                 flex: 1,
+                minWidth: 0,
                 padding: '5px 8px',
                 fontSize: '11px',
                 borderRadius: '3px',
@@ -647,6 +652,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                 )
               }
               style={{
+                flexShrink: 0,
                 padding: '5px 12px',
                 background: '#d97706',
                 border: '1px solid #f59e0b',
@@ -732,7 +738,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
         </div>
 
         {/* Move Region Controls */}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', minWidth: 0 }}>
           <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Offset:</span>
           {(['dx', 'dy', 'dz'] as const).map((axis, i) => (
             <input
@@ -747,6 +753,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               }}
               style={{
                 width: '45px',
+                minWidth: 0,
                 padding: '4px',
                 fontSize: '11px',
                 background: '#09090b',
@@ -766,7 +773,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               )
             }
             style={{
-              flex: 1,
+              flexShrink: 0,
               padding: '5px 8px',
               fontSize: '11px',
               background: '#374151',

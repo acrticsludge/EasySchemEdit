@@ -82,7 +82,7 @@ export function WorkspaceShell({
   const bottomPanel = layoutState.panels.find((p) => p.id === 'bottom-dock');
 
   const leftWidth = leftPanel?.collapsed ? 28 : (leftPanel?.width ?? 260);
-  const rightWidth = rightPanel?.collapsed ? 28 : (rightPanel?.width ?? 320);
+  const rightWidth = rightPanel?.collapsed ? 28 : Math.max(310, rightPanel?.width ?? 320);
   const bottomHeight = bottomPanel?.collapsed ? 28 : (bottomPanel?.height ?? 220);
 
   const [rightDockTab, setRightDockTab] = useState<RightDockTabId>('inspector');
@@ -345,7 +345,7 @@ export function WorkspaceShell({
           ) : rightDockSlots ? (
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: 'var(--color-bg-surface, #141414)', borderLeft: '1px solid var(--color-border, #222)' }}>
               {/* Tab Header */}
-              <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border, #222)', background: 'var(--color-bg-alt, #1a1a1a)', flexShrink: 0, overflowX: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border, #222)', background: 'var(--color-bg-alt, #1a1a1a)', flexShrink: 0, overflowX: 'hidden' }}>
                 {(['inspector', 'tools', 'transform', 'library'] as RightDockTabId[]).map((tabId) => {
                   if (tabId !== 'inspector' && !rightDockSlots[tabId as keyof typeof rightDockSlots]) return null;
                   const isActive = rightDockTab === tabId;
@@ -354,13 +354,14 @@ export function WorkspaceShell({
                       key={tabId}
                       onClick={() => setRightDockTab(tabId)}
                       style={{
-                        padding: '8px 12px',
+                        padding: '8px 8px',
                         background: isActive ? 'var(--color-bg-surface, #141414)' : 'transparent',
                         color: isActive ? 'var(--color-accent, #4a9eff)' : 'var(--color-text-secondary, #aaa)',
                         border: 'none',
                         borderBottom: isActive ? '2px solid var(--color-accent, #4a9eff)' : '2px solid transparent',
                         cursor: 'pointer',
-                        fontSize: '11px',
+                        fontSize: '10px',
+                        letterSpacing: '0.3px',
                         fontWeight: isActive ? 600 : 400,
                         textTransform: 'uppercase',
                         whiteSpace: 'nowrap',
@@ -383,11 +384,12 @@ export function WorkspaceShell({
                 </button>
               </div>
               {/* Tab Content */}
-              <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0, minWidth: 0 }}>
                 {rightDockTab === 'inspector' && (
                   <InspectorPanel
                     store={store}
                     controllers={controllers}
+                    hideHeader={true}
                     onCollapse={() => {
                       controllers.layout.collapsePanel('inspector');
                       forceLayoutUpdate();
