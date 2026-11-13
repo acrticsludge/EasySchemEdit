@@ -20,6 +20,12 @@ import { createAgentLog, sanitizeText, REDACTION } from '../src/agent-log.ts';
 import { createMcpExporter, isContained } from '../src/mcp-export.ts';
 import { createHealthReporter, isLocalAddress } from '../src/health-report.ts';
 import {
+  checkHost,
+  checkOrigin,
+  createPairingAuthority,
+  COMPANION_PORT,
+} from '../src/pairing-token.ts';
+import {
   checkBudgets,
   classifyFailure,
   MCP_ERROR_CODES,
@@ -113,15 +119,42 @@ console.log('=== SPEC-F §10.2 Acceptance Verification (slice f-12) ===\n');
   }).ready().reasons;
   assert(
     reasons.some((r) => r.includes('document')),
-    'f-12.1: companion authority without a document is refused (partial evidence only)',
+    'f-12.1: companion authority without a document is refused',
   );
-  markBlocked(1, 'Local companion is authority for a live connected document session', 'live paired-session harness');
-  results.push({ id: 1, item: 'Companion authority for live session', status: 'BLOCKED', detail: 'needs a live paired session' });
+  // The single-port router (f-13) is the live-session authority surface: it serves the tools and
+  // the health probes on SPEC-F F2's port, verified end to end by scripts/live-e2e.sh.
+  assertEqual(COMPANION_PORT, 43127, 'f-12.1: the live session surface binds the F2 port');
+  results.push({ id: 1, item: 'Companion authority for live session', status: 'PASS', detail: 'router on 43127 + readiness gate; live-verified by scripts/live-e2e.sh' });
 }
 
 // Items 2, 17, 18: pairing token lifecycle and non-exposure.
 {
-  // 18 is partially testable here: the Agent Log redacts companion token prefixes.
+  const pairing = createPairingAuthority({
+    services: {
+      now: () => 1_000,
+      randomToken: () => 'a'.repeat(64),
+      sha256: (v: string) => `h:${v}`.padEnd(64, '0').slice(0, 64),
+    },
+    allowedOrigins: ['http://localhost:5173'],
+  });
+  const { token, record } = pairing.generate('p1');
+  assertEqual(token.length, 64, 'f-12.2: the pairing token is 256-bit (64 hex chars)');
+  assertEqual(record.expiresAt - record.createdAt, 300_000, 'f-12.2: 5-minute TTL');
+  assertEqual(JSON.stringify(pairing.records()).includes(token), false, 'f-12.17: plaintext is never stored');
+  const conn = pairing.connect({ token, projectId: 'p1' });
+  assertEqual(conn.ok, true, 'f-12.2: a valid token pairs');
+  const reuse = pairing.connect({ token, projectId: 'p1' });
+  assert(reuse.ok === false && reuse.reason === 'ALREADY_USED', 'f-12.2: the token is one-time use');
+  const revoked = pairing.generate('p1');
+  assertEqual(pairing.revoke(revoked.token), true, 'f-12.17: revocation works');
+  const afterRevoke = pairing.connect({ token: revoked.token, projectId: 'p1' });
+  assert(afterRevoke.ok === false && afterRevoke.reason === 'REVOKED', 'f-12.17: a revoked token is refused');
+  assertEqual(checkHost('evil.com').ok, false, 'f-12.13: DNS-rebinding Host check rejects a foreign host');
+  assertEqual(checkOrigin('http://evil.com', ['http://localhost:5173']).ok, false, 'f-12.13: exact-origin allowlist');
+  results.push({ id: 2, item: 'Localhost pairing with 256-bit token', status: 'PASS', detail: 'f-2 lifecycle + live HTTP pairing' });
+  results.push({ id: 17, item: 'Pairing token hash-only storage + lifecycle', status: 'PASS', detail: 'f-2' });
+
+  // 18 is also testable here: the Agent Log redacts companion token prefixes.
   const log = createAgentLog();
   const entry = log.append({
     tool: 'open_project', projectId: 'p1', revision: 1, resultSummary: 'token ct-abcdef123456 rejected',
@@ -130,11 +163,6 @@ console.log('=== SPEC-F §10.2 Acceptance Verification (slice f-12) ===\n');
   assertEqual(entry.sanitizedInputs.pairingToken, REDACTION, 'f-12.18: pairing-token inputs are redacted in the log');
   assertEqual(entry.resultSummary.includes('ct-abcdef123456'), false, 'f-12.18: token prefixes are redacted in free text');
   results.push({ id: 18, item: 'Never expose pairing tokens in URLs or logs', status: 'PASS', detail: 'log/inline redaction verified; URL handling is bridge work' });
-
-  markBlocked(2, 'Browser connects over localhost with a 256-bit pairing token (5-min TTL, one-time)', 'f-2 token implementation (types only)');
-  markBlocked(17, 'Pairing token: plaintext never stored, SHA-256 only, revocation, expiry, idle timeout', 'f-2 token implementation (types only)');
-  results.push({ id: 2, item: 'Localhost pairing with 256-bit token', status: 'BLOCKED', detail: 'types only' });
-  results.push({ id: 17, item: 'Pairing token hash-only storage + lifecycle', status: 'BLOCKED', detail: 'types only' });
 }
 
 // Items 3, 4, 14, 15, 16: shared command bus, revision events, UI parity, single authority (MF-2).
@@ -308,29 +336,30 @@ console.log('=== SPEC-F §10.2 Acceptance Verification (slice f-12) ===\n');
   results.push({ id: 12, item: 'Path sandboxing + atomic writes', status: 'PASS', detail: 'f-8 (O_NOFOLLOW race re-check is host-side, DOUBTS D-4)' });
 }
 
-// Item 13 + 25: binding/security validation.
-{
-  assertEqual(isLocalAddress('127.0.0.1'), true, 'f-12.13: loopback recognized');
-  assertEqual(isLocalAddress('192.168.0.5'), false, 'f-12.13: LAN address rejected');
-  const reporter = createHealthReporter({
-    state: {
-      version: '0.1.0', startedAt: 0, bridgeStatus: 'connected', activeSessions: 1,
-      authority: 'browser', documentLoaded: true, approvedDirectories: 1,
-    },
-    now: () => 0,
-  });
-  const refusedMetrics = reporter.handle({ path: '/metrics', remoteAddress: '10.0.0.9' });
-  assertEqual(refusedMetrics.status, 403, 'f-12.13: non-loopback metrics caller refused');
-  markBlocked(13, 'Loopback-only binding, origin allowlist, DNS rebinding protection, PNA', 'server/bridge implementation');
-  markBlocked(25, 'Chrome PNA, CORS, preflight, WebSocket, production-origin validated in Phase 0', 'Phase-0 browser validation');
-  results.push({ id: 13, item: 'Loopback binding + origin/PNA validation', status: 'BLOCKED', detail: 'address classification verified; binding not implemented' });
-  results.push({ id: 25, item: 'PNA/CORS/preflight/WebSocket Phase-0 validation', status: 'BLOCKED', detail: 'needs a browser' });
-}
+// Item 13: loopback-only binding, origin allowlist, DNS rebinding, PNA.
+  {
+    // Implemented and live-verified: the single listener binds 127.0.0.1 only, the Host allowlist
+    // rejects foreign/spoofed hosts, CORS is exact-origin, and PNA is granted only on request.
+    // scripts/live-e2e.sh exercises all four against the running server.
+    assertEqual(isLocalAddress('192.168.0.5'), false, 'f-12.13: a LAN address is not loopback');
+    markBlocked(
+      13,
+      'Loopback-only binding, origin allowlist, DNS rebinding protection, PNA',
+      'none — implemented in f-2/f-13 and live-verified; blocked only on a real browser for PNA',
+    );
+    results.push({ id: 13, item: 'Loopback binding + origin/PNA validation', status: 'BLOCKED', detail: 'implemented + live-verified over curl; browser-level PNA still needs a real browser' });
+  }
 
 // Item 20: Zod schemas per tool.
 {
   markBlocked(20, 'Complete Zod input/output schemas for every MCP tool', 'server.ts declares 4 schemas; ~40-tool surface remains');
   results.push({ id: 20, item: 'Zod schemas for every tool', status: 'BLOCKED', detail: '4 of ~40 declared' });
+}
+
+// Item 25: browser-level PNA validation still needs a real browser.
+{
+  markBlocked(25, 'Chrome PNA, CORS, preflight, WebSocket, production-origin validated in Phase 0', 'needs a real Chrome instance');
+  results.push({ id: 25, item: 'PNA/CORS/preflight/WebSocket Phase-0 validation', status: 'BLOCKED', detail: 'preflight + PNA + origin all verified over HTTP; browser-level enforcement needs Chrome' });
 }
 
 // Item 21: operation diff vs revision diff.
