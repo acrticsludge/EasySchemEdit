@@ -112,15 +112,42 @@ export async function extractZipEntries(
 export async function extractAllAssets(
   jarBytes: Uint8Array,
 ): Promise<ExtractionResult> {
-  // We can't list all entries without parsing the central directory.
-  // Instead, extract known paths recursively using common patterns.
-  // This is a stub; full implementation walks the central directory.
   const wanted: string[] = [];
 
-  // Blockstates: all JSON files under assets/minecraft/blockstates/
-  // (We don't know exact filenames without central directory; this is a placeholder.)
-  // The real implementation would enumerate all entries from the central directory.
-  return extractZipEntries(jarBytes, wanted);
+  // First pass: walk all local file headers to collect candidate paths.
+  let offset = 0;
+  while (offset < jarBytes.length - 4) {
+    const sig = jarBytes[offset] | (jarBytes[offset + 1] << 8) | (jarBytes[offset + 2] << 16) | (jarBytes[offset + 3] << 24);
+    if (sig !== 0x04034b50) break;
+
+    const nameLength = jarBytes[offset + 26] | (jarBytes[offset + 27] << 8);
+    const extraLength = jarBytes[offset + 28] | (jarBytes[offset + 29] << 8);
+    const compressedSize =
+      jarBytes[offset + 18] |
+      (jarBytes[offset + 19] << 8) |
+      (jarBytes[offset + 20] << 16) |
+      (jarBytes[offset + 21] << 24);
+
+    const nameBytes = jarBytes.slice(offset + 30, offset + 30 + nameLength);
+    const name = new TextDecoder().decode(nameBytes);
+
+    if (
+      name.startsWith('assets/minecraft/blockstates/') ||
+      name.startsWith('assets/minecraft/models/') ||
+      name.startsWith('assets/minecraft/textures/') ||
+      name.endsWith('.mcmeta') ||
+      name.includes('atlas') ||
+      name.includes('colormap')
+    ) {
+      wanted.push(name);
+    }
+
+    offset += 30 + nameLength + extraLength + compressedSize;
+  }
+
+  // Second pass: extract the collected entries.
+  const result = await extractZipEntries(jarBytes, wanted);
+  return result;
 }
 
 // Minimal raw inflate (RFC 1951) for stored/deflated entries.

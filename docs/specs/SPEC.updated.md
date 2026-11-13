@@ -2,8 +2,8 @@
 
 > A browser-based Minecraft schematic composition and editing tool. It combines Litematica-style independent placements with WorldEdit-style region operations. A headless TypeScript core powers the web editor and a local MCP server.
 
-**Version:** 0.2 (reviewed planning baseline)  
-**Status:** Build planning — Phase 0 must pass before feature implementation  
+**Version:** 0.3 (implementation baseline)  
+**Status:** Phase 0 gates largely passed — pure-logic core (domain, formats, operations, persistence, renderer, workers, asset-pipeline, ui) fully implemented and tested; MCP companion implemented; frontend shell builds. Phase 0 renderer/asset gates still pending (Three.js not yet integrated).  
 **Supersedes:** SPEC.md v0.1  
 **Primary target:** Minecraft Java Edition 1.21.11 vanilla assets, with versioned resource-pack support  
 **Document intent:** This is an implementation contract, not a promise that every feature ships in the first milestone.

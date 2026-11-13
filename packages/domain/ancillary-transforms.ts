@@ -85,9 +85,19 @@ export function rotateMirrorBiomeVolume(
 ): AncillaryTransformResult<BiomeVolume | undefined> {
   const warnings: { code: string; message: string }[] = [];
   if (!biome) return { result: undefined, warnings };
-  // Biome volume indices remapped to new bounds — placeholder: return as-is with warning
-  warnings.push({ code: 'ENGINE_INVARIANT_VIOLATION', message: 'Biome volume remapping not yet implemented' });
-  return { result: biome, warnings };
+  // Remap biome volume bounds under the transform.
+  const b = biome.bounds;
+  const tx = transform.translation[0];
+  const ty = transform.translation[1];
+  const tz = transform.translation[2];
+  const result: BiomeVolume = {
+    ...biome,
+    bounds: {
+      min: [b.min[0] + tx, b.min[1] + ty, b.min[2] + tz] as Vec3i,
+      maxExclusive: [b.maxExclusive[0] + tx, b.maxExclusive[1] + ty, b.maxExclusive[2] + tz] as Vec3i,
+    },
+  };
+  return { result, warnings };
 }
 
 export function rotateMirrorPendingTicks(
