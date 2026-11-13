@@ -49,6 +49,18 @@ export type {
 } from './inspector.ts';
 
 export {
+  createConflictNavigator,
+} from './conflict-nav.ts';
+
+export type {
+  Camera,
+  Conflict,
+  ConflictNavigator,
+  ConflictSeverity,
+  FlyState,
+} from './conflict-nav.ts';
+
+export {
   createStatusBar,
 } from './statusbar.ts';
 
