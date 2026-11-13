@@ -134,3 +134,22 @@ export type {
   AgentLogSize,
   SanitizeOptions,
 } from './agent-log';
+
+export {
+  createHealthReporter,
+  isLocalAddress,
+  healthSummary,
+  HEALTH_PATHS,
+} from './health-report';
+
+export type {
+  HealthReporter,
+  HealthReporterDeps,
+  HealthStatus,
+  HealthRequest,
+  HealthResponse,
+  HealthRefusal,
+  CompanionState,
+  ReadyStatus,
+  MetricsReport,
+} from './health-report';
