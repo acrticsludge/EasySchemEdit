@@ -12,6 +12,7 @@ import {
   placementWorldBounds,
   worldPointToLocal,
   localBlockToWorld,
+  mapCellToWorld,
 } from '../../domain/coordinates.ts';
 import {
   getBlock,
@@ -36,6 +37,8 @@ export interface ConflictResult {
   category: ConflictCategory;
   entries: ConflictEntry[];
   hasConflicts: boolean;
+  hasSameState?: boolean;
+  hasStateConflict?: boolean;
   cleanPositions: Vec3i[];
   sameStatePositions: Vec3i[];
   stateConflictPositions: Vec3i[];
@@ -70,34 +73,50 @@ export class ConflictIndex {
   // Register a placement's blocks in the index.
   // Indexes all non-air blocks in the placement's volume.
   registerPlacement(placement: PlacementType): void {
-    const pb = placementWorldBounds(placement);
+    for (const chunk of placement.volume.chunks.values()) {
+      const parts = chunk.key.split(/[,_]/).map(Number);
+      if (parts.length !== 3 || parts.some(isNaN)) continue;
+      const [cx, cy, cz] = parts as [number, number, number];
+      const isAir = chunk.palette.map((s) => isAirLike(s.id, VANILLA_AIR_LIKE));
 
-    for (let y = pb.min[1]; y < pb.maxExclusive[1]; y++) {
-      for (let z = pb.min[2]; z < pb.maxExclusive[2]; z++) {
-        for (let x = pb.min[0]; x < pb.maxExclusive[0]; x++) {
-          const worldBlock: Vec3i = [x, y, z];
-          const localBlock = worldToLocalBlock(placement, worldBlock);
-          if (!localBlock) continue;
+      const lx0 = cx * 16;
+      const ly0 = cy * 16;
+      const lz0 = cz * 16;
+      const indices = chunk.indices;
 
-          const state = getBlock(placement.volume, localBlock);
-          if (isAirLike(state.id, VANILLA_AIR_LIKE)) continue;
+      for (let cyInChunk = 0; cyInChunk < 16; cyInChunk++) {
+        const ly = ly0 + cyInChunk;
+        for (let czInChunk = 0; czInChunk < 16; czInChunk++) {
+          const lz = lz0 + czInChunk;
+          const rowOffset = (cyInChunk * 16 + czInChunk) * 16;
+          for (let cxInChunk = 0; cxInChunk < 16; cxInChunk++) {
+            const pIdx = indices[rowOffset + cxInChunk]!;
+            if (isAir[pIdx]) continue;
 
-          const key = `${x},${y},${z}`;
-          let record = this.positions.get(key);
-          if (!record) {
-            record = {
-              position: worldBlock,
-              owners: [],
-              states: new Map(),
-            };
-            this.positions.set(key, record);
+            const lx = lx0 + cxInChunk;
+            const state = chunk.palette[pIdx]!;
+            try {
+              const worldBlock = localBlockToWorld(placement, [lx, ly, lz]);
+              const key = `${worldBlock[0]},${worldBlock[1]},${worldBlock[2]}`;
+              let record = this.positions.get(key);
+              if (!record) {
+                record = {
+                  position: worldBlock,
+                  owners: [],
+                  states: new Map(),
+                };
+                this.positions.set(key, record);
+              }
+
+              // Add owner in precedence order (later in array = higher priority for top-wins)
+              if (!record.owners.includes(placement.id)) {
+                record.owners.push(placement.id);
+              }
+              record.states.set(placement.id, state);
+            } catch {
+              // Off-grid block
+            }
           }
-
-          // Add owner in precedence order (later in array = higher priority for top-wins)
-          if (!record.owners.includes(placement.id)) {
-            record.owners.push(placement.id);
-          }
-          record.states.set(placement.id, state);
         }
       }
     }
@@ -336,21 +355,144 @@ export function detectConflicts(
   proposedState?: BlockStateId,
   overlapPolicy: 'top-wins' | 'bottom-wins' = 'top-wins',
 ): ConflictResult {
-  const index = new ConflictIndex({ overlapPolicy });
-
-  // Register all visible placements
-  for (const placement of project.placements) {
-    if (placement.visible) {
-      index.registerPlacement(placement);
+  // Collect visible placements (and if bounds is provided, filter to those intersecting bounds)
+  const visiblePlacements: Array<{ placement: PlacementType; aabb: Bounds3i }> = [];
+  for (const p of project.placements) {
+    if (!p.visible) continue;
+    const aabb = fastPlacementWorldBounds(p);
+    if (!bounds || boundsIntersect(aabb, bounds)) {
+      visiblePlacements.push({ placement: p, aabb });
     }
   }
 
-  return index.detectConflicts(project, bounds, proposedState);
+  // If !proposedState: check if any pair of visible placements have intersecting world AABBs
+  if (!proposedState) {
+    if (visiblePlacements.length < 2) {
+      return {
+        category: 'clean',
+        entries: [],
+        hasConflicts: false,
+        hasSameState: false,
+        hasStateConflict: false,
+        cleanPositions: [],
+        sameStatePositions: [],
+        stateConflictPositions: [],
+      };
+    }
+
+    const intersectingPlacements = new Set<PlacementType>();
+    for (let i = 0; i < visiblePlacements.length; i++) {
+      for (let j = i + 1; j < visiblePlacements.length; j++) {
+        if (boundsIntersect(visiblePlacements[i]!.aabb, visiblePlacements[j]!.aabb)) {
+          intersectingPlacements.add(visiblePlacements[i]!.placement);
+          intersectingPlacements.add(visiblePlacements[j]!.placement);
+        }
+      }
+    }
+
+    if (intersectingPlacements.size === 0) {
+      return {
+        category: 'clean',
+        entries: [],
+        hasConflicts: false,
+        hasSameState: false,
+        hasStateConflict: false,
+        cleanPositions: [],
+        sameStatePositions: [],
+        stateConflictPositions: [],
+      };
+    }
+
+    const index = new ConflictIndex({ overlapPolicy });
+    // Only register placements whose world AABB intersects at least one other visible placement
+    for (const { placement } of visiblePlacements) {
+      if (intersectingPlacements.has(placement)) {
+        index.registerPlacement(placement);
+      }
+    }
+
+    const res = index.detectConflicts(project, bounds, proposedState);
+    return {
+      ...res,
+      hasSameState: res.sameStatePositions.length > 0,
+      hasStateConflict: res.stateConflictPositions.length > 0,
+    };
+  }
+
+  // proposedState is provided: register all visible placements
+  const index = new ConflictIndex({ overlapPolicy });
+  for (const { placement } of visiblePlacements) {
+    index.registerPlacement(placement);
+  }
+
+  const res = index.detectConflicts(project, bounds, proposedState);
+  return {
+    ...res,
+    hasSameState: res.sameStatePositions.length > 0,
+    hasStateConflict: res.stateConflictPositions.length > 0,
+  };
 }
 
 // ============================================================================
 // Helper functions
 // ============================================================================
+
+function boundsIntersect(a: Bounds3i, b: Bounds3i): boolean {
+  return (
+    a.min[0] < b.maxExclusive[0] &&
+    a.maxExclusive[0] > b.min[0] &&
+    a.min[1] < b.maxExclusive[1] &&
+    a.maxExclusive[1] > b.min[1] &&
+    a.min[2] < b.maxExclusive[2] &&
+    a.maxExclusive[2] > b.min[2]
+  );
+}
+
+function fastPlacementWorldBounds(
+  placement: PlacementType,
+): Bounds3i {
+  const { transform, volume, origin } = placement;
+  const { min, maxExclusive } = volume.bounds;
+  if (min[0] >= maxExclusive[0] || min[1] >= maxExclusive[1] || min[2] >= maxExclusive[2]) {
+    return { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+  }
+
+  const corners: Vec3i[] = [
+    [min[0], min[1], min[2]],
+    [maxExclusive[0] - 1, min[1], min[2]],
+    [min[0], maxExclusive[1] - 1, min[2]],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, min[2]],
+    [min[0], min[1], maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, min[1], maxExclusive[2] - 1],
+    [min[0], maxExclusive[1] - 1, maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, maxExclusive[2] - 1],
+  ];
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  for (const c of corners) {
+    const res = mapCellToWorld(transform.translation, origin, transform.rotationY, transform.mirror, c);
+    if (res.valid && res.worldBlock) {
+      const [wx, wy, wz] = res.worldBlock;
+      if (wx < minX) minX = wx;
+      if (wy < minY) minY = wy;
+      if (wz < minZ) minZ = wz;
+      if (wx > maxX) maxX = wx;
+      if (wy > maxY) maxY = wy;
+      if (wz > maxZ) maxZ = wz;
+    }
+  }
+
+  if (minX === Infinity) {
+    return placementWorldBounds(placement);
+  }
+
+  return {
+    min: [minX, minY, minZ] as Vec3i,
+    maxExclusive: [maxX + 1, maxY + 1, maxZ + 1] as Vec3i,
+  };
+}
 
 // Map a world block coordinate to a local block coordinate for the placement.
 function worldToLocalBlock(

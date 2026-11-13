@@ -133,6 +133,14 @@ export type PlacementMirrorCommand = {
   mirror: 'none' | 'x' | 'z';
 };
 
+export type PlacementTransformCommand = {
+  type: 'placement:transform' | 'placement.transform' | 'placement_transform';
+  placementId: string;
+  translation?: Vec3i;
+  rotationY?: 0 | 90 | 180 | 270;
+  mirror?: 'none' | 'x' | 'z';
+};
+
 export type PlacementSetOriginCommand = {
   type:
     | 'placement:setOrigin'
@@ -328,6 +336,7 @@ export type Command =
   | PlacementMoveCommand
   | PlacementRotateCommand
   | PlacementMirrorCommand
+  | PlacementTransformCommand
   | PlacementSetOriginCommand
   | PlacementSetHiddenCommand
   | PlacementSetLockedCommand

@@ -28,6 +28,7 @@ import {
   applyRotation,
   applyMirror,
   placementWorldBounds,
+  mapCellToWorld,
 } from '../../domain/coordinates.ts';
 import { resolveBlockAt, type EffectiveBlockResult } from '../../domain/effective-block.ts';
 import { getBlock, setBlock } from '../../domain/volume-api.ts';
@@ -204,6 +205,52 @@ function cloneProject(proj: Project): Project {
   };
 }
 
+function cloneProjectShallow(proj: Project): Project {
+  return {
+    schemaVersion: proj.schemaVersion,
+    id: proj.id,
+    name: proj.name,
+    overlapPolicy: proj.overlapPolicy,
+    conflictOverlay: proj.conflictOverlay,
+    metadata: { ...proj.metadata },
+    revision: proj.revision,
+    importGroups: proj.importGroups.map((g) => ({
+      ...g,
+      placementIds: [...g.placementIds],
+    })),
+    placements: proj.placements.map(clonePlacementShallow),
+  };
+}
+
+function clonePlacementShallow(p: Placement): Placement {
+  return {
+    id: p.id,
+    name: p.name,
+    transform: {
+      translation: [...p.transform.translation] as Vec3i,
+      rotationY: p.transform.rotationY,
+      mirror: p.transform.mirror,
+    },
+    origin: [...p.origin] as Vec3Half,
+    ancillary: {
+      blockEntities: new Map(p.ancillary.blockEntities),
+      entities: p.ancillary.entities.map((e) => ({ ...e, position: [...e.position] })),
+      biomes: p.ancillary.biomes ? { ...p.ancillary.biomes } : undefined,
+      pendingBlockTicks: p.ancillary.pendingBlockTicks.map((t) => ({ ...t, position: [...t.position] })),
+      pendingFluidTicks: p.ancillary.pendingFluidTicks.map((t) => ({ ...t, position: [...t.position] })),
+      unknownTags: new Map(p.ancillary.unknownTags),
+    },
+    visible: p.visible,
+    locked: p.locked,
+    lockReason: p.lockReason,
+    color: p.color,
+    createdAt: p.createdAt,
+    source: { ...p.source },
+    eraseTombstones: new Set(p.eraseTombstones),
+    volume: p.volume,
+  };
+}
+
 function clonePlacement(p: Placement): Placement {
   return {
     id: p.id,
@@ -308,6 +355,52 @@ function arePalettesEqual(a: BlockStateId[], b: BlockStateId[]): boolean {
   return true;
 }
 
+function fastPlacementWorldBounds(
+  placement: Placement,
+): Bounds3i {
+  const { transform, volume, origin } = placement;
+  const { min, maxExclusive } = volume.bounds;
+  if (min[0] >= maxExclusive[0] || min[1] >= maxExclusive[1] || min[2] >= maxExclusive[2]) {
+    return { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+  }
+
+  const corners: Vec3i[] = [
+    [min[0], min[1], min[2]],
+    [maxExclusive[0] - 1, min[1], min[2]],
+    [min[0], maxExclusive[1] - 1, min[2]],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, min[2]],
+    [min[0], min[1], maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, min[1], maxExclusive[2] - 1],
+    [min[0], maxExclusive[1] - 1, maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, maxExclusive[2] - 1],
+  ];
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  for (const c of corners) {
+    const res = mapCellToWorld(transform.translation, origin, transform.rotationY, transform.mirror, c);
+    if (res.valid && res.worldBlock) {
+      const [wx, wy, wz] = res.worldBlock;
+      if (wx < minX) minX = wx;
+      if (wy < minY) minY = wy;
+      if (wz < minZ) minZ = wz;
+      if (wx > maxX) maxX = wx;
+      if (wy > maxY) maxY = wy;
+      if (wz > maxZ) maxZ = wz;
+    }
+  }
+
+  if (minX === Infinity) {
+    return placementWorldBounds(placement);
+  }
+
+  return {
+    min: [minX, minY, minZ] as Vec3i,
+    maxExclusive: [maxX + 1, maxY + 1, maxZ + 1] as Vec3i,
+  };
+}
+
 function getProjectBounds(project: Project): Bounds3i {
   if (project.placements.length === 0) {
     return { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
@@ -319,7 +412,7 @@ function getProjectBounds(project: Project): Bounds3i {
   let maxY = -Infinity;
   let maxZ = -Infinity;
   for (const p of project.placements) {
-    const pb = placementWorldBounds(p);
+    const pb = fastPlacementWorldBounds(p);
     minX = Math.min(minX, pb.min[0]);
     minY = Math.min(minY, pb.min[1]);
     minZ = Math.min(minZ, pb.min[2]);
@@ -332,6 +425,26 @@ function getProjectBounds(project: Project): Bounds3i {
 
 function normalizeType(type: string): string {
   return type.toLowerCase().replace(/[._]/g, ':');
+}
+
+function isNonVoxelMutatingCommand(type: string): boolean {
+  const norm = normalizeType(type);
+  if (norm.startsWith('placement:') || norm.startsWith('selection:') || norm.startsWith('group:')) {
+    return true;
+  }
+  if (
+    norm === 'overlap-policy' ||
+    norm === 'overlap:policy' ||
+    norm === 'overlap_policy' ||
+    norm === 'conflict-overlay' ||
+    norm === 'conflict:overlay' ||
+    norm === 'conflict_overlay' ||
+    norm === 'clipboard:copy' ||
+    norm === 'copy'
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function mapHistoryType(cmdType: string): HistoryEntryType {
@@ -461,7 +574,9 @@ export class EditorSession {
     }
 
     // 3. Snapshot before mutation for rollback atomicity & delta computation
-    const prevProject = cloneProject(this.project);
+    const prevProject = isNonVoxelMutatingCommand(cmd.type)
+      ? cloneProjectShallow(this.project)
+      : cloneProject(this.project);
     const selectionBefore = { ...this.selection };
 
     try {
@@ -860,7 +975,7 @@ export class EditorSession {
             : this.project.placements;
           const reportMap: Record<string, MaterialReport> = {};
           for (const placement of targetPlacements) {
-            const pb = placementWorldBounds(placement);
+            const pb = fastPlacementWorldBounds(placement);
             const singleProj: Project = {
               ...this.project,
               placements: [placement],
@@ -1057,6 +1172,39 @@ export class EditorSession {
         return lockedError(placement.id, 'mirror');
       }
       placement.transform.mirror = c.mirror;
+      return { ok: true, affectedPlacementIds: [placement.id] };
+    }
+
+    if (norm === 'placement:transform') {
+      const c = cmd as {
+        placementId: string;
+        translation?: Vec3i;
+        rotationY?: 0 | 90 | 180 | 270;
+        mirror?: 'none' | 'x' | 'z';
+      };
+      const placement = this.project.placements.find((p) => p.id === c.placementId);
+      if (!placement) {
+        return {
+          ok: false,
+          error: { code: 'NOT_FOUND', message: `Placement ${c.placementId} not found` },
+        };
+      }
+      if (placement.locked) {
+        return lockedError(placement.id, 'transform');
+      }
+      if (c.translation !== undefined) {
+        placement.transform.translation = [
+          Math.round(c.translation[0]),
+          Math.round(c.translation[1]),
+          Math.round(c.translation[2]),
+        ] as Vec3i;
+      }
+      if (c.rotationY !== undefined) {
+        placement.transform.rotationY = c.rotationY;
+      }
+      if (c.mirror !== undefined) {
+        placement.transform.mirror = c.mirror;
+      }
       return { ok: true, affectedPlacementIds: [placement.id] };
     }
 
@@ -1507,49 +1655,15 @@ export class EditorSession {
         changedPlacementIds.add(id);
       }
 
-      // Check chunk changes
+      // Check chunk changes (skip scanning chunks if volume references are identical)
       const chunkDeltas: ChunkDelta[] = [];
-      const prevChunks = prevP.volume.chunks;
-      const currChunks = currP.volume.chunks;
+      if (prevP.volume !== currP.volume) {
+        const prevChunks = prevP.volume.chunks;
+        const currChunks = currP.volume.chunks;
 
-      // Deleted chunks
-      for (const [k, pc] of prevChunks) {
-        if (!currChunks.has(k)) {
-          chunkDeltas.push({
-            key: k,
-            before: {
-              key: k,
-              palette: pc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
-              indices: pc.indices.slice(),
-            },
-            after: null,
-          });
-          changedChunkKeys.add(k);
-          changedPlacementIds.add(id);
-          computedCellDiffs += pc.indices.length;
-        }
-      }
-
-      // Added or modified chunks
-      for (const [k, cc] of currChunks) {
-        const pc = prevChunks.get(k);
-        if (!pc) {
-          chunkDeltas.push({
-            key: k,
-            before: null,
-            after: {
-              key: k,
-              palette: cc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
-              indices: cc.indices.slice(),
-            },
-          });
-          changedChunkKeys.add(k);
-          changedPlacementIds.add(id);
-          computedCellDiffs += cc.indices.length;
-        } else {
-          const indEq = areIndicesEqual(pc.indices, cc.indices);
-          const palEq = arePalettesEqual(pc.palette, cc.palette);
-          if (!indEq || !palEq) {
+        // Deleted chunks
+        for (const [k, pc] of prevChunks) {
+          if (!currChunks.has(k)) {
             chunkDeltas.push({
               key: k,
               before: {
@@ -1557,6 +1671,21 @@ export class EditorSession {
                 palette: pc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
                 indices: pc.indices.slice(),
               },
+              after: null,
+            });
+            changedChunkKeys.add(k);
+            changedPlacementIds.add(id);
+            computedCellDiffs += pc.indices.length;
+          }
+        }
+
+        // Added or modified chunks
+        for (const [k, cc] of currChunks) {
+          const pc = prevChunks.get(k);
+          if (!pc) {
+            chunkDeltas.push({
+              key: k,
+              before: null,
               after: {
                 key: k,
                 palette: cc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
@@ -1565,9 +1694,30 @@ export class EditorSession {
             });
             changedChunkKeys.add(k);
             changedPlacementIds.add(id);
-            // Count cell differences
-            for (let i = 0; i < pc.indices.length; i++) {
-              if (pc.indices[i] !== cc.indices[i]) computedCellDiffs++;
+            computedCellDiffs += cc.indices.length;
+          } else {
+            const indEq = areIndicesEqual(pc.indices, cc.indices);
+            const palEq = arePalettesEqual(pc.palette, cc.palette);
+            if (!indEq || !palEq) {
+              chunkDeltas.push({
+                key: k,
+                before: {
+                  key: k,
+                  palette: pc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
+                  indices: pc.indices.slice(),
+                },
+                after: {
+                  key: k,
+                  palette: cc.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
+                  indices: cc.indices.slice(),
+                },
+              });
+              changedChunkKeys.add(k);
+              changedPlacementIds.add(id);
+              // Count cell differences
+              for (let i = 0; i < pc.indices.length; i++) {
+                if (pc.indices[i] !== cc.indices[i]) computedCellDiffs++;
+              }
             }
           }
         }

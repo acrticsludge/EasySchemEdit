@@ -188,6 +188,7 @@ export type {
   PlacementMoveCommand,
   PlacementRotateCommand,
   PlacementMirrorCommand,
+  PlacementTransformCommand,
   PlacementSetOriginCommand,
   PlacementSetHiddenCommand,
   PlacementSetLockedCommand,
