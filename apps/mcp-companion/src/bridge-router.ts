@@ -18,10 +18,12 @@ import type { PairingAuthority, CorsPolicy } from './pairing-token.ts';
 import {
   CONFIRMATION_REQUIRED_TOOLS,
   IMMEDIATE_TOOLS,
+  READ_TOOLS,
   MCP_LIMITS,
   classificationSummary,
 } from './destructive-protocol.ts';
 import type { DestructiveProtocol } from './destructive-protocol.ts';
+import type { CommandBus } from './command-bus.ts';
 import type { AgentLog } from './agent-log.ts';
 import type { HealthReporter } from './health-report.ts';
 import type { McpExporter } from './mcp-export.ts';
@@ -62,6 +64,7 @@ export type BridgeDeps = {
   log: AgentLog;
   health: HealthReporter;
   exporter: McpExporter;
+  commandBus?: CommandBus;
   /** Bridge port; SPEC-F F2 fixes it at 43127. */
   port: number;
   allowedOrigins: string[];
@@ -302,6 +305,11 @@ export function createBridgeRouter(deps: BridgeDeps): BridgeRouter {
         classifyFailure('malformed_input', { message: 'expectedRevision is required (§6 rule 3)' }),
         cors,
       );
+    }
+    if (READ_TOOLS.has(call.tool)) {
+      const args = isRecord(call.args) ? call.args : {};
+      const result = deps.commandBus ? deps.commandBus.query(call.tool, args) : { tool: call.tool, status: 'stub' };
+      return json(200, { ok: true, tool: call.tool, result }, cors);
     }
     if (!CONFIRMATION_REQUIRED_TOOLS.has(call.tool) && !IMMEDIATE_TOOLS.has(call.tool)) {
       return errorResponse(

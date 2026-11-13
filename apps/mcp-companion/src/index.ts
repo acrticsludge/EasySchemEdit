@@ -193,3 +193,41 @@ export type {
   BudgetDecision,
   ExceededBudget,
 } from './failure-handling';
+
+export {
+  createCommandBus,
+  COMMAND_LIMITS,
+  tupleToBounds,
+  parseBlockState,
+  parseMatcher,
+  mapToolToCommands,
+} from './command-bus.ts';
+
+export type {
+  CommandBus,
+  CommandBusOptions,
+  CommandBusState,
+  CommandOperation,
+  CommandArgs,
+} from './command-bus.ts';
+
+export {
+  TOOL_NAMES,
+  TOOL_SCHEMAS,
+  getToolSchema,
+  CommonArgs,
+  WorldBounds,
+  PlacementId,
+} from './tool-schemas.ts';
+
+export {
+  createMcpCompanionServer,
+  getToolDescription,
+  zodObjectToJsonSchema,
+  TOOL_DESCRIPTIONS,
+} from './server.ts';
+
+export type {
+  McpCompanionServerDeps,
+} from './server.ts';
+

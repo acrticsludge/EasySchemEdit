@@ -192,6 +192,7 @@ const router = createBridgeRouter({
   log,
   health,
   exporter,
+  commandBus,
   port: PORT,
   allowedOrigins: ALLOWED_ORIGINS,
   hostAllowlist: ALLOWED_HOSTNAMES,
@@ -287,6 +288,22 @@ const httpServer = createServer((request, response) => {
 // ── Event channel (SPEC-F §3.1: WebSocket for events/progress) ─────────────
 
 const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+
+// Forward EditorSession change events over WebSocket to paired browser sessions (Item 4)
+commandBus.getSession().subscribe((event) => {
+  const msg = JSON.stringify({
+    type: 'revision',
+    revision: event.revision,
+    kind: event.kind,
+    placementIds: event.placementIds,
+    chunkKeys: event.chunkKeys,
+  });
+  for (const client of wss.clients) {
+    if (client.readyState === 1) {
+      client.send(msg);
+    }
+  }
+});
 
 wss.on('connection', (socket, upgradeRequest) => {
   // Origin validation on upgrade (§2.6: "WebSocket: origin validation on upgrade; no token in URL").
