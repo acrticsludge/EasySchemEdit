@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types __tests__/slice-g-0-layout.test.ts"
+    "test": "node --experimental-strip-types __tests__/slice-g-0-layout.test.ts && node --experimental-strip-types __tests__/slice-g-1-shortcuts.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

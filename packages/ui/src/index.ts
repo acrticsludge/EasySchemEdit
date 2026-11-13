@@ -33,3 +33,23 @@ export type {
   WindowSize,
   WorkspaceLayout,
 } from './layout-types.ts';
+
+export {
+  DEFAULT_BINDINGS,
+  G5_SHORTCUT_TABLE,
+  createShortcutRegistry,
+  displayKeys,
+  findConflicts,
+  normalizeKeys,
+  toKeyDescriptor,
+} from './shortcut-types.ts';
+
+export type {
+  KeyDescriptor,
+  ShortcutBinding,
+  ShortcutConflict,
+  ShortcutFailureReason,
+  ShortcutRegistry,
+  ShortcutRegistryApi,
+  ShortcutResolution,
+} from './shortcut-types.ts';
