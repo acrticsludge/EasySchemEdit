@@ -405,6 +405,99 @@ export default function EditorIsland() {
     selectedRef.current.clear();
   }, []);
 
+  const handleSave = useCallback(async () => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+
+    const blocks = blockGroup.children.map((m: any) => ({
+      x: m.position.x,
+      y: m.position.y,
+      z: m.position.z,
+      rotation: m.rotation.y,
+    }));
+
+    const data = JSON.stringify({ blocks, timestamp: Date.now() });
+    try {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('easyschemedit', 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      const tx = db.transaction('projects', 'readwrite');
+      const store = tx.objectStore('projects');
+      store.put({ id: 'current', data, savedAt: Date.now() });
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+      setStatus('Project saved to IndexedDB');
+    } catch (err) {
+      setStatus(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
+  const handleLoad = useCallback(async () => {
+    try {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('easyschemedit', 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('projects')) {
+            db.createObjectStore('projects', { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      const tx = db.transaction('projects', 'readonly');
+      const store = tx.objectStore('projects');
+      const req = store.get('current');
+      const record = await new Promise<any>((resolve, reject) => {
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+
+      if (!record) {
+        setStatus('No saved project found');
+        return;
+      }
+
+      const parsed = JSON.parse(record.data);
+      const scene = sceneRef.current;
+      if (!scene) return;
+
+      // Clear existing blocks
+      const oldBlocks = scene.getObjectByName('blocks');
+      if (oldBlocks) scene.remove(oldBlocks);
+      const blockGroup = new THREE.Group();
+      blockGroup.name = 'blocks';
+
+      parsed.blocks.forEach((b: any) => {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshLambertMaterial({ color: 0x7f7f7f });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(b.x, b.y, b.z);
+        mesh.rotation.y = b.rotation;
+        blockGroup.add(mesh);
+      });
+
+      scene.add(blockGroup);
+      setStatus(`Loaded project: ${parsed.blocks.length} blocks`);
+    } catch (err) {
+      setStatus(`Load failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, []);
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
@@ -435,6 +528,8 @@ export default function EditorIsland() {
           Open File
           <input type="file" accept=".schem,.litematic,.nbt" onChange={onFileInput} style={{ display: 'none' }} />
         </label>
+        <button onClick={handleSave} style={{ padding: '6px 12px', background: '#1a3a1a', border: '1px solid #555', color: '#66ff66', cursor: 'pointer', fontSize: '12px', borderRadius: '4px' }}>Save</button>
+        <button onClick={handleLoad} style={{ padding: '6px 12px', background: '#1a1a3a', border: '1px solid #555', color: '#6666ff', cursor: 'pointer', fontSize: '12px', borderRadius: '4px' }}>Load</button>
         <span style={{ fontSize: '13px', opacity: 0.7 }}>{status}</span>
         {fileName && <span style={{ fontSize: '12px', opacity: 0.5 }}>{fileName}</span>}
         {selectedCount > 0 && <span style={{ fontSize: '12px', color: '#ffcc00' }}>Selected: {selectedCount}</span>}
