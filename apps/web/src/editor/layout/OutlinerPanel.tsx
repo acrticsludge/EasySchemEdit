@@ -12,6 +12,7 @@ export interface OutlinerPanelProps {
   controllers?: WorkspaceControllers;
   onCollapse?: () => void;
   className?: string;
+  onSelectPlacement?: (id: string | null) => void;
 }
 
 export function OutlinerPanel({
@@ -19,6 +20,7 @@ export function OutlinerPanel({
   controllers,
   onCollapse,
   className = '',
+  onSelectPlacement,
 }: OutlinerPanelProps) {
   const [filterText, setFilterText] = useState('');
   const snapshot = store.getSnapshot();
@@ -36,6 +38,7 @@ export function OutlinerPanel({
   const handleSelectPlacement = (id: string) => {
     controllers?.selectPlacement(id);
     controllers?.outliner.select(id, 'replace');
+    onSelectPlacement?.(id);
   };
 
   const handleToggleVisibility = (e: React.MouseEvent, id: string) => {
@@ -77,14 +80,32 @@ export function OutlinerPanel({
       type: 'placement:delete',
       placementId: id,
     });
+    if (selectedPlacementId === id) {
+      controllers?.selectPlacement(null);
+      onSelectPlacement?.(null);
+    }
   };
 
-  const handleDuplicatePlacement = (e: React.MouseEvent, id: string) => {
+  const handleDuplicatePlacement = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    void store.execute({
+    const p = placements.find((x) => x.id === id);
+    if (!p || p.locked) return;
+    const minX = p.volume?.bounds?.min?.[0] ?? 0;
+    const maxX = p.volume?.bounds?.maxExclusive?.[0] ?? 1;
+    const width = Math.max(1, maxX - minX) + 1;
+    const res = await store.execute({
       type: 'placement:duplicate',
       placementId: id,
+      offset: [width, 0, 0],
     });
+    if (res.ok) {
+      const newId = (res as any).changed?.placementIds?.[0] ?? (res as any).data?.changed?.placementIds?.[0];
+      if (newId) {
+        controllers?.selectPlacement(newId);
+        controllers?.outliner.select(newId, 'replace');
+        onSelectPlacement?.(newId);
+      }
+    }
   };
 
   return (
@@ -293,8 +314,8 @@ export function OutlinerPanel({
                   <button
                     type="button"
                     onClick={(e) => handleDuplicatePlacement(e, placement.id)}
-                    title="Duplicate Placement"
-                    aria-label="Duplicate Placement"
+                    title="Duplicate Side-by-Side (Ctrl+D)"
+                    aria-label="Duplicate Side-by-Side (Ctrl+D)"
                     disabled={placement.locked}
                     style={{
                       ...iconButtonStyle,

@@ -57,6 +57,14 @@ export interface BakeControllerOptions {
   overlapPolicy?: OverlapPolicy;
 }
 
+export interface ConflictsPanelControllerOptions {
+  active?: boolean;
+}
+
+export interface MaterialListControllerOptions {
+  active?: boolean;
+}
+
 export interface IEditorSessionStore {
   query<T>(q: any): Promise<T>;
   execute(cmd: any, opts?: any): Promise<Result<any>>;
@@ -80,15 +88,49 @@ export class ConflictsPanelController {
   private cameraFlyCallback: ((pos: [number, number, number]) => void) | null = null;
   private listeners: Set<() => void> = new Set();
   private unsubscribeStore?: () => void;
+  private active: boolean = true;
+  private dirty: boolean = false;
+  private lastRevision: number = -1;
 
-  constructor(store: IEditorSessionStore, initialOverlayMode: OverlayMode = 'conflicts-only') {
+  constructor(
+    store: IEditorSessionStore,
+    initialOverlayMode: OverlayMode = 'conflicts-only',
+    options?: ConflictsPanelControllerOptions
+  ) {
     this.store = store;
     this.overlayMode = initialOverlayMode;
+    this.active = options?.active ?? true;
+    this.dirty = !this.active;
     this.navigator = createConflictNavigator();
 
     this.unsubscribeStore = this.store.subscribe(() => {
+      const snapshot = this.store.getSnapshot();
+      const revision = snapshot.revision ?? 0;
+      if (revision === this.lastRevision) {
+        return;
+      }
+      if (!this.active) {
+        this.dirty = true;
+        return;
+      }
       void this.refresh();
     });
+  }
+
+  public setActive(active: boolean): void {
+    if (this.active === active) return;
+    this.active = active;
+    if (active && (this.dirty || this.conflictResult === null)) {
+      void this.refresh();
+    }
+  }
+
+  public isActive(): boolean {
+    return this.active;
+  }
+
+  public isDirty(): boolean {
+    return this.dirty;
   }
 
   public getOverlayMode(): OverlayMode {
@@ -119,6 +161,27 @@ export class ConflictsPanelController {
   }
 
   public async refresh(): Promise<void> {
+    const snapshot = this.store.getSnapshot();
+    const revision = snapshot.revision ?? 0;
+    this.lastRevision = revision;
+    this.dirty = false;
+
+    const placements = snapshot.project?.placements ?? [];
+    const visiblePlacements = placements.filter((p) => p.visible !== false);
+    if (visiblePlacements.length <= 1) {
+      this.conflictResult = {
+        category: 'clean',
+        entries: [],
+        hasConflicts: false,
+        cleanPositions: [],
+        sameStatePositions: [],
+        stateConflictPositions: [],
+      };
+      this.rebuildNavigator();
+      this.notify();
+      return;
+    }
+
     try {
       const result = await this.store.query<ConflictResult>({
         type: 'detectConflicts',
@@ -480,12 +543,42 @@ export class MaterialListController {
   private totalTypes: number = 0;
   private listeners: Set<() => void> = new Set();
   private unsubscribeStore?: () => void;
+  private active: boolean = true;
+  private dirty: boolean = false;
+  private lastRevision: number = -1;
 
-  constructor(store: IEditorSessionStore) {
+  constructor(store: IEditorSessionStore, options?: MaterialListControllerOptions) {
     this.store = store;
+    this.active = options?.active ?? true;
+    this.dirty = !this.active;
     this.unsubscribeStore = this.store.subscribe(() => {
+      const snapshot = this.store.getSnapshot();
+      const revision = snapshot.revision ?? 0;
+      if (revision === this.lastRevision) {
+        return;
+      }
+      if (!this.active) {
+        this.dirty = true;
+        return;
+      }
       void this.refresh();
     });
+  }
+
+  public setActive(active: boolean): void {
+    if (this.active === active) return;
+    this.active = active;
+    if (active && (this.dirty || (this.items.length === 0 && this.totalBlocks === 0 && this.lastRevision === -1))) {
+      void this.refresh();
+    }
+  }
+
+  public isActive(): boolean {
+    return this.active;
+  }
+
+  public isDirty(): boolean {
+    return this.dirty;
   }
 
   public getMode(): MaterialListMode {
@@ -542,6 +635,20 @@ export class MaterialListController {
   }
 
   public async refresh(): Promise<void> {
+    const snapshot = this.store.getSnapshot();
+    const revision = snapshot.revision ?? 0;
+    this.lastRevision = revision;
+    this.dirty = false;
+
+    const placements = snapshot.project?.placements ?? [];
+    if (placements.length === 0) {
+      this.items = [];
+      this.totalBlocks = 0;
+      this.totalTypes = 0;
+      this.notify();
+      return;
+    }
+
     try {
       const report = await this.store.query<any>({
         type: 'materialList',

@@ -419,6 +419,91 @@ async function runTests() {
   }
 
   // ──────────────────────────────────────────────────────────────────────────
+  // Test Suite 4: Lazy Evaluation, Dirty Tracking & UI-only Update Filtering
+  // ──────────────────────────────────────────────────────────────────────────
+  console.log('\n--- Test Suite 4: Lazy Evaluation, Dirty Tracking & Filtering ---');
+  {
+    let queryCount = 0;
+    class SpyingSessionStore extends TestSessionStore {
+      public override async query<T>(q: any): Promise<T> {
+        queryCount++;
+        return super.query<T>(q);
+      }
+    }
+
+    const store = new SpyingSessionStore(createOverlappingProject());
+
+    // 1. Inactive controller does NOT query on revision change, only sets dirty
+    const lazyConflicts = new ConflictsPanelController(store, 'conflicts-only', { active: false });
+    assertEqual(lazyConflicts.isActive(), false, 'lazyConflicts is inactive initially');
+    assertEqual(lazyConflicts.isDirty(), true, 'lazyConflicts is dirty initially');
+
+    queryCount = 0;
+    // Mutate session revision
+    await store.execute({
+      type: 'region:delete',
+      bounds: { min: [0, 0, 0], maxExclusive: [1, 1, 1] },
+      placementId: 'p2',
+    });
+    assertEqual(queryCount, 0, 'No query executed while controller is inactive');
+    assertEqual(lazyConflicts.isDirty(), true, 'Controller marked dirty on revision change');
+
+    // Activating triggers refresh
+    lazyConflicts.setActive(true);
+    await new Promise((r) => setTimeout(r, 10));
+    assertEqual(queryCount, 1, 'Query executed when activated while dirty');
+    assertEqual(lazyConflicts.isDirty(), false, 'Dirty flag cleared after refresh');
+
+    // UI-only update (revision unchanged) does not query
+    queryCount = 0;
+    (store as any).listeners.forEach((l: () => void) => l());
+    assertEqual(queryCount, 0, 'UI-only update (same revision) did not trigger query');
+
+    lazyConflicts.dispose();
+
+    // 2. Short-circuit in ConflictsPanelController when visible placements <= 1
+    const singlePlacementProject: Project = {
+      ...createOverlappingProject(),
+      placements: [createTestPlacement('single', 'Single Placement', [
+        { pos: [0, 0, 0], block: { id: 'minecraft:stone', props: {} } },
+      ])],
+    };
+    const singleStore = new SpyingSessionStore(singlePlacementProject);
+    const singleController = new ConflictsPanelController(singleStore, 'all');
+    queryCount = 0;
+    await singleController.refresh();
+    assertEqual(queryCount, 0, 'Conflicts query short-circuited for <= 1 visible placement');
+    assertEqual(singleController.getStats().totalOverlaps, 0, '0 total overlaps on short-circuit');
+    assertEqual(singleController.getConflictList().length, 0, '0 conflicts on short-circuit');
+    singleController.dispose();
+
+    // 3. MaterialListController lazy & dirty behavior
+    const lazyMat = new MaterialListController(store, { active: false });
+    assertEqual(lazyMat.isActive(), false, 'lazyMat is inactive initially');
+    assertEqual(lazyMat.isDirty(), true, 'lazyMat is dirty initially');
+
+    queryCount = 0;
+    // Trigger store notification with same revision
+    (store as any).listeners.forEach((l: () => void) => l());
+    assertEqual(queryCount, 0, 'Same revision does not query or trigger lazyMat');
+
+    // Trigger revision change
+    await store.execute({
+      type: 'region:delete',
+      bounds: { min: [1, 0, 0], maxExclusive: [2, 1, 1] },
+      placementId: 'p2',
+    });
+    assertEqual(queryCount, 0, 'Inactive MaterialListController did not query on revision change');
+    assertEqual(lazyMat.isDirty(), true, 'MaterialListController marked dirty');
+
+    lazyMat.setActive(true);
+    await new Promise((r) => setTimeout(r, 10));
+    assertEqual(queryCount, 1, 'Activating dirty MaterialListController triggered query');
+    assertEqual(lazyMat.isDirty(), false, 'lazyMat dirty flag cleared');
+    lazyMat.dispose();
+  }
+
+  // ──────────────────────────────────────────────────────────────────────────
   // Summary
   // ──────────────────────────────────────────────────────────────────────────
   console.log(`\n=== Test Results: ${passed} passed, ${failed} failed ===`);

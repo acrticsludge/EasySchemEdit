@@ -145,7 +145,18 @@ export default function EditorIsland() {
     };
   }, [importState]);
 
-  const selectedPlacementId = runtime.workspace.inspector.context().selectedPlacementId;
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(
+    () => runtime.workspace.inspector.context().selectedPlacementId
+  );
+
+  const handleSelectPlacement = useCallback(
+    (id: string | null) => {
+      runtime.workspace.selectPlacement(id);
+      setSelectedPlacementId(id);
+    },
+    [runtime]
+  );
+
   const selectedPlacementIds = useMemo(
     () => (selectedPlacementId ? new Set([selectedPlacementId]) : undefined),
     [selectedPlacementId, sessionState.revision]
@@ -165,11 +176,11 @@ export default function EditorIsland() {
         runtime.selectionTool.setCorner1(hit.position);
       }
     } else if (['select', 'move', 'rotate'].includes(activeTool) && hit.placementId) {
-      runtime.workspace.selectPlacement(hit.placementId);
+      handleSelectPlacement(hit.placementId);
     } else {
       runtime.selectionTool.setCorner1(hit.position);
     }
-  }, [runtime]);
+  }, [runtime, handleSelectPlacement]);
 
   const handleVoxelHover = useCallback((hit: VoxelHit | null) => {
     if (!hit) {
@@ -193,6 +204,8 @@ export default function EditorIsland() {
       <WorkspaceShell
         store={runtime.store}
         controllers={runtime.workspace}
+        conflictsController={runtime.conflictsController}
+        materialListController={runtime.materialListController}
         onImport={() => setIsImportOpen(true)}
         onExport={() => setIsExportOpen(true)}
         onBake={() => setIsBakeOpen(true)}
@@ -206,6 +219,8 @@ export default function EditorIsland() {
               assetSource={assetSource}
               uvLookup={uvLookup}
               atlasTexture={atlasTexture}
+              selectedTool={sessionState.selectedTool}
+              onSelectPlacement={handleSelectPlacement}
               ghostPreview={ghostPreview}
               selectedPlacementIds={selectedPlacementIds}
               onVoxelClick={handleVoxelClick}

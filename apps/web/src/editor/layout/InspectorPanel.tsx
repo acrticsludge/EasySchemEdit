@@ -13,6 +13,7 @@ export interface InspectorPanelProps {
   hideHeader?: boolean;
   onCollapse?: () => void;
   className?: string;
+  onSelectPlacement?: (id: string | null) => void;
 }
 
 export function InspectorPanel({
@@ -21,6 +22,7 @@ export function InspectorPanel({
   hideHeader = false,
   onCollapse,
   className = '',
+  onSelectPlacement,
 }: InspectorPanelProps) {
   const snapshot = store.getSnapshot();
   const selectedPlacementId = controllers?.inspector.context().selectedPlacementId ?? null;
@@ -29,6 +31,7 @@ export function InspectorPanel({
   // Local state for name input
   const [nameInput, setNameInput] = useState(placement?.name ?? '');
   const [keepBlocksInPlace, setKeepBlocksInPlace] = useState(true);
+  const [nudgeStep, setNudgeStep] = useState<1 | 16>(1);
 
   useEffect(() => {
     setNameInput(placement?.name ?? '');
@@ -166,6 +169,62 @@ export function InspectorPanel({
     }
   };
 
+  const handleNudge = (axis: 'x' | 'y' | 'z', dir: 1 | -1) => {
+    if (!placement || placement.locked) return;
+    const offset: [number, number, number] = [
+      axis === 'x' ? dir * nudgeStep : 0,
+      axis === 'y' ? dir * nudgeStep : 0,
+      axis === 'z' ? dir * nudgeStep : 0,
+    ];
+    void store.execute({
+      type: 'placement:move',
+      placementId: placement.id,
+      offset,
+    });
+  };
+
+  const handleDuplicatePlacement = async () => {
+    if (!placement || placement.locked) return;
+    const minX = placement.volume?.bounds?.min?.[0] ?? 0;
+    const maxX = placement.volume?.bounds?.maxExclusive?.[0] ?? 1;
+    const width = Math.max(1, maxX - minX) + 1;
+    const res = await store.execute({
+      type: 'placement:duplicate',
+      placementId: placement.id,
+      offset: [width, 0, 0],
+    });
+    if (res.ok) {
+      const newId = (res as any).changed?.placementIds?.[0] ?? (res as any).data?.changed?.placementIds?.[0];
+      if (newId) {
+        controllers?.selectPlacement(newId);
+        onSelectPlacement?.(newId);
+      }
+    }
+  };
+
+  const handleToggleLock = () => {
+    if (!placement) return;
+    if (controllers) {
+      void controllers.togglePlacementLock(placement.id);
+    } else {
+      void store.execute({
+        type: 'placement:setLocked',
+        placementId: placement.id,
+        locked: !placement.locked,
+      });
+    }
+  };
+
+  const handleDeletePlacement = () => {
+    if (!placement || placement.locked) return;
+    void store.execute({
+      type: 'placement:delete',
+      placementId: placement.id,
+    });
+    controllers?.selectPlacement(null);
+    onSelectPlacement?.(null);
+  };
+
   return (
     <aside
       className={`editor-inspector-panel ${className}`}
@@ -229,6 +288,87 @@ export function InspectorPanel({
               disabled={placement.locked}
               onChange={(val) => handleUpdatePosition('z', val)}
             />
+          </div>
+
+          {/* Quick Nudge (±1 / ±16) Row */}
+          <div
+            style={{
+              marginTop: '6px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '4px',
+              backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+              padding: '4px 6px',
+              border: '1px solid #282828',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+              <span style={{ fontSize: '10px', color: 'var(--color-text-secondary, #888888)', marginRight: '2px' }}>
+                Nudge
+              </span>
+              <button
+                type="button"
+                onClick={() => setNudgeStep(1)}
+                title="Nudge step: 1 block"
+                style={{
+                  ...nudgeStepBtnStyle,
+                  backgroundColor: nudgeStep === 1 ? 'var(--color-accent, #4a9eff)' : '#1e1e26',
+                  color: nudgeStep === 1 ? '#ffffff' : '#888888',
+                  borderColor: nudgeStep === 1 ? 'var(--color-accent, #4a9eff)' : '#333333',
+                }}
+              >
+                ±1
+              </button>
+              <button
+                type="button"
+                onClick={() => setNudgeStep(16)}
+                title="Nudge step: 16 blocks (Chunk)"
+                style={{
+                  ...nudgeStepBtnStyle,
+                  backgroundColor: nudgeStep === 16 ? 'var(--color-accent, #4a9eff)' : '#1e1e26',
+                  color: nudgeStep === 16 ? '#ffffff' : '#888888',
+                  borderColor: nudgeStep === 16 ? 'var(--color-accent, #4a9eff)' : '#333333',
+                }}
+              >
+                ±16
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '2px' }}>
+              {(['x', 'y', 'z'] as const).map((axis) => (
+                <div key={axis} style={{ display: 'flex', gap: '1px' }}>
+                  <button
+                    type="button"
+                    disabled={placement.locked}
+                    onClick={() => handleNudge(axis, -1)}
+                    title={`Nudge -${nudgeStep} on ${axis.toUpperCase()}`}
+                    aria-label={`Nudge -${nudgeStep} on ${axis.toUpperCase()}`}
+                    style={{
+                      ...nudgeAxisBtnStyle,
+                      opacity: placement.locked ? 0.3 : 1,
+                      cursor: placement.locked ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    -{axis.toUpperCase()}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={placement.locked}
+                    onClick={() => handleNudge(axis, 1)}
+                    title={`Nudge +${nudgeStep} on ${axis.toUpperCase()}`}
+                    aria-label={`Nudge +${nudgeStep} on ${axis.toUpperCase()}`}
+                    style={{
+                      ...nudgeAxisBtnStyle,
+                      opacity: placement.locked ? 0.3 : 1,
+                      cursor: placement.locked ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    +{axis.toUpperCase()}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -355,6 +495,70 @@ export function InspectorPanel({
             <StatRow label="Non-Air Blocks" value={nonAirCount.toLocaleString()} />
             <StatRow label="Chunks" value={chunksCount.toString()} />
             <StatRow label="State" value={placement.locked ? 'Locked' : 'Unlocked'} />
+          </div>
+        </div>
+
+        <div style={{ height: '1px', backgroundColor: '#2a2a2a', margin: '14px 0' }} />
+
+        {/* Placement Actions: Duplicate Side-by-Side, Lock, Delete */}
+        <div style={{ marginBottom: '14px' }}>
+          <label style={{ ...labelStyle, marginBottom: '6px' }}>Actions</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={handleDuplicatePlacement}
+              disabled={placement.locked}
+              title="Duplicate Side-by-Side (Ctrl+D)"
+              aria-label="Duplicate Side-by-Side (Ctrl+D)"
+              style={{
+                ...actionButtonStyle,
+                padding: '6px 10px',
+                backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+                border: '1px solid #3b82f660',
+                color: '#93c5fd',
+                fontWeight: 500,
+                cursor: placement.locked ? 'not-allowed' : 'pointer',
+                opacity: placement.locked ? 0.4 : 1,
+              }}
+            >
+              ⎘ Duplicate Side-by-Side
+            </button>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={handleToggleLock}
+                title={placement.locked ? 'Unlock Placement' : 'Lock Placement'}
+                aria-label={placement.locked ? 'Unlock Placement' : 'Lock Placement'}
+                style={{
+                  ...actionButtonStyle,
+                  padding: '5px 8px',
+                  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+                  border: '1px solid #333333',
+                  color: placement.locked ? '#eab308' : '#eaeaea',
+                  cursor: 'pointer',
+                }}
+              >
+                {placement.locked ? '🔒 Unlock' : '🔓 Lock'}
+              </button>
+              <button
+                type="button"
+                onClick={handleDeletePlacement}
+                disabled={placement.locked}
+                title="Delete Placement"
+                aria-label="Delete Placement"
+                style={{
+                  ...actionButtonStyle,
+                  padding: '5px 8px',
+                  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+                  border: '1px solid #ef444440',
+                  color: '#ef4444',
+                  cursor: placement.locked ? 'not-allowed' : 'pointer',
+                  opacity: placement.locked ? 0.4 : 1,
+                }}
+              >
+                ✕ Delete
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -525,4 +729,34 @@ const iconButtonStyle: React.CSSProperties = {
   color: 'var(--color-text-secondary, #a8a8a8)',
   cursor: 'pointer',
   fontSize: '12px',
+};
+
+const nudgeStepBtnStyle: React.CSSProperties = {
+  padding: '2px 5px',
+  fontSize: '10px',
+  fontWeight: 600,
+  border: '1px solid',
+  cursor: 'pointer',
+  borderRadius: '0px',
+};
+
+const nudgeAxisBtnStyle: React.CSSProperties = {
+  padding: '2px 4px',
+  fontSize: '9px',
+  fontFamily: 'monospace',
+  backgroundColor: '#1e1e26',
+  border: '1px solid #333333',
+  color: '#cbd5e1',
+  borderRadius: '0px',
+  minWidth: '22px',
+  cursor: 'pointer',
+};
+
+const actionButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '11px',
+  borderRadius: '0px',
+  textAlign: 'center',
 };

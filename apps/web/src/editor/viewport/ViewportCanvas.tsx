@@ -3,6 +3,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { EditorSession, SessionChangeEvent } from '@easyschemedit/operations';
 import type { AssetSource, TextureUvInfo } from '@easyschemedit/renderer';
 import type { Bounds3i, Vec3i } from '@easyschemedit/domain';
@@ -63,6 +64,8 @@ export interface ViewportCanvasProps {
   assetSource?: AssetSource;
   uvLookup?: (tex: string) => TextureUvInfo | undefined;
   activeTool?: string;
+  selectedTool?: string;
+  onSelectPlacement?: (id: string | null) => void;
   ghostPreview?: GhostPreviewSpec | null;
   onVoxelClick?: (hit: VoxelHit, event: React.MouseEvent) => void;
   onVoxelHover?: (hit: VoxelHit | null) => void;
@@ -79,6 +82,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   assetSource,
   uvLookup,
   activeTool = 'select',
+  selectedTool,
+  onSelectPlacement,
   ghostPreview = null,
   onVoxelClick,
   onVoxelHover,
@@ -94,6 +99,22 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const chunkManagerRef = useRef<ChunkSceneManager | null>(null);
   const cameraCtrlRef = useRef<ViewportCameraController | null>(null);
+
+  // Transform gizmo refs
+  const transformCtrlRef = useRef<TransformControls | null>(null);
+  const gizmoProxyRef = useRef<THREE.Object3D | null>(null);
+  const isGizmoDraggingRef = useRef<boolean>(false);
+  const dragStartPlacementIdRef = useRef<string | null>(null);
+  const dragStartTranslationRef = useRef<[number, number, number]>([0, 0, 0]);
+  const dragStartRotationYRef = useRef<number>(0);
+  const dragStartGizmoPosRef = useRef<THREE.Vector3>(new THREE.Vector3());
+  const dragStartGizmoRotRef = useRef<number>(0);
+  const onSelectPlacementRef = useRef(onSelectPlacement);
+  onSelectPlacementRef.current = onSelectPlacement;
+  const selectedToolRef = useRef(selectedTool);
+  selectedToolRef.current = selectedTool;
+  const shiftKeyRef = useRef<boolean>(false);
+  const [sessionRevision, setSessionRevision] = useState<number>(() => session.peekProject().revision);
 
   // Overlay root groups
   const placementBoundsGroupRef = useRef<THREE.Group | null>(null);
@@ -393,6 +414,133 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     chunkManagerRef.current = chunkManager;
     scene.add(chunkManager.rootGroup);
 
+    // Transform Controls & Gizmo Proxy (Slice E3.2, three@0.187.0)
+    const transformCtrl = new TransformControls(camera, renderer.domElement);
+    transformCtrl.setTranslationSnap(1);
+    transformCtrl.setRotationSnap(Math.PI / 2);
+    scene.add(transformCtrl.getHelper());
+    transformCtrlRef.current = transformCtrl;
+
+    const gizmoProxy = new THREE.Object3D();
+    gizmoProxy.name = 'viewport-gizmo-proxy';
+    scene.add(gizmoProxy);
+    gizmoProxyRef.current = gizmoProxy;
+
+    transformCtrl.addEventListener('dragging-changed', (event: any) => {
+      const isDragging = Boolean(event.value);
+      isGizmoDraggingRef.current = isDragging;
+
+      if (isDragging) {
+        const selIds = selectedPlacementIdsRef.current;
+        if (selIds && selIds.size === 1) {
+          const pId = Array.from(selIds)[0]!;
+          const p = session.peekProject().placements.find((pl) => pl.id === pId);
+          if (p && !p.locked) {
+            dragStartPlacementIdRef.current = pId;
+            dragStartTranslationRef.current = [...p.transform.translation];
+            dragStartRotationYRef.current = p.transform.rotationY;
+            dragStartGizmoPosRef.current.copy(gizmoProxy.position);
+            dragStartGizmoRotRef.current = gizmoProxy.rotation.y;
+          }
+        }
+      } else {
+        const placementId = dragStartPlacementIdRef.current;
+        if (placementId) {
+          const p = session.peekProject().placements.find((pl) => pl.id === placementId);
+          if (p && !p.locked) {
+            const tool = selectedToolRef.current ?? 'move';
+            if (tool === 'rotate') {
+              const deltaRotRad = gizmoProxy.rotation.y - dragStartGizmoRotRef.current;
+              const deltaRotDeg = Math.round(((deltaRotRad * 180) / Math.PI) / 90) * 90;
+              let finalRotY = ((dragStartRotationYRef.current + deltaRotDeg) % 360 + 360) % 360;
+              finalRotY = (Math.round(finalRotY / 90) * 90) % 360;
+
+              if (finalRotY !== dragStartRotationYRef.current) {
+                session.execute({
+                  type: 'placement:transform',
+                  placementId,
+                  translation: dragStartTranslationRef.current,
+                  rotationY: finalRotY as 0 | 90 | 180 | 270,
+                });
+              } else {
+                chunkManager.previewPlacementTransform(
+                  placementId,
+                  dragStartTranslationRef.current,
+                  dragStartRotationYRef.current
+                );
+              }
+            } else {
+              const isShift =
+                shiftKeyRef.current ||
+                keysDownRef.current.has('ShiftLeft') ||
+                keysDownRef.current.has('ShiftRight');
+              const snap = isShift ? 16 : 1;
+              const rawDx = gizmoProxy.position.x - dragStartGizmoPosRef.current.x;
+              const rawDy = gizmoProxy.position.y - dragStartGizmoPosRef.current.y;
+              const rawDz = gizmoProxy.position.z - dragStartGizmoPosRef.current.z;
+
+              const dx = Math.round(rawDx / snap) * snap;
+              const dy = Math.round(rawDy / snap) * snap;
+              const dz = Math.round(rawDz / snap) * snap;
+
+              if (dx !== 0 || dy !== 0 || dz !== 0) {
+                const finalTranslation: [number, number, number] = [
+                  dragStartTranslationRef.current[0] + dx,
+                  dragStartTranslationRef.current[1] + dy,
+                  dragStartTranslationRef.current[2] + dz,
+                ];
+                session.execute({
+                  type: 'placement:transform',
+                  placementId,
+                  translation: finalTranslation,
+                  rotationY: dragStartRotationYRef.current as 0 | 90 | 180 | 270,
+                });
+              } else {
+                chunkManager.previewPlacementTransform(
+                  placementId,
+                  dragStartTranslationRef.current,
+                  dragStartRotationYRef.current
+                );
+              }
+            }
+          }
+          dragStartPlacementIdRef.current = null;
+        }
+      }
+    });
+
+    transformCtrl.addEventListener('objectChange', () => {
+      if (!isGizmoDraggingRef.current) return;
+      const placementId = dragStartPlacementIdRef.current;
+      if (!placementId) return;
+
+      const tool = selectedToolRef.current ?? 'move';
+      if (tool === 'rotate') {
+        const deltaRotRad = gizmoProxy.rotation.y - dragStartGizmoRotRef.current;
+        const deltaRotDeg = (deltaRotRad * 180) / Math.PI;
+        const previewRot = dragStartRotationYRef.current + deltaRotDeg;
+        chunkManager.previewPlacementTransform(
+          placementId,
+          dragStartTranslationRef.current,
+          previewRot
+        );
+      } else {
+        const dx = gizmoProxy.position.x - dragStartGizmoPosRef.current.x;
+        const dy = gizmoProxy.position.y - dragStartGizmoPosRef.current.y;
+        const dz = gizmoProxy.position.z - dragStartGizmoPosRef.current.z;
+        const previewPos: [number, number, number] = [
+          dragStartTranslationRef.current[0] + dx,
+          dragStartTranslationRef.current[1] + dy,
+          dragStartTranslationRef.current[2] + dz,
+        ];
+        chunkManager.previewPlacementTransform(
+          placementId,
+          previewPos,
+          dragStartRotationYRef.current
+        );
+      }
+    });
+
     // Initial project synchronization
     scheduleChunkSync();
     updateOverlays();
@@ -421,6 +569,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
     // Subscribe to session changes
     const unsubscribeSession = session.subscribe((event: SessionChangeEvent) => {
+      setSessionRevision(session.peekProject().revision);
       if (isTransformOrMetadataEvent(event.kind)) {
         chunkManager.updatePlacementTransforms(session.peekProject());
         updateOverlays();
@@ -505,15 +654,67 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       canvas.removeEventListener('webglcontextlost', handleContextLost);
       canvas.removeEventListener('webglcontextrestored', handleContextRestored);
 
+      if (transformCtrlRef.current) {
+        scene.remove(transformCtrlRef.current.getHelper());
+        transformCtrlRef.current.dispose();
+        transformCtrlRef.current = null;
+      }
+      if (gizmoProxyRef.current) {
+        scene.remove(gizmoProxyRef.current);
+        gizmoProxyRef.current = null;
+      }
+
       chunkManager.dispose();
       renderer.dispose();
     };
   }, [session]);
 
   // --------------------------------------------------------------------------
+  // Synchronize TransformControls attachment to single selected placement
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    const transformCtrl = transformCtrlRef.current;
+    const gizmoProxy = gizmoProxyRef.current;
+    if (!transformCtrl || !gizmoProxy) return;
+
+    if (isGizmoDraggingRef.current) return;
+
+    const tool = selectedTool ?? activeTool;
+    if (selectedPlacementIds?.size === 1 && (tool === 'move' || tool === 'rotate')) {
+      const pId = Array.from(selectedPlacementIds)[0]!;
+      const placement = session.peekProject().placements.find((p) => p.id === pId);
+      if (placement && !placement.locked) {
+        const [tx, ty, tz] = placement.transform.translation;
+        const { min, maxExclusive } = placement.volume.bounds;
+        const cx = tx + (min[0] + maxExclusive[0]) / 2;
+        const cy = ty + (min[1] + maxExclusive[1]) / 2;
+        const cz = tz + (min[2] + maxExclusive[2]) / 2;
+
+        gizmoProxy.position.set(cx, cy, cz);
+        gizmoProxy.rotation.set(0, (placement.transform.rotationY * Math.PI) / 180, 0);
+        gizmoProxy.scale.set(1, 1, 1);
+
+        transformCtrl.setMode(tool === 'rotate' ? 'rotate' : 'translate');
+        transformCtrl.showY = true;
+        transformCtrl.showX = true;
+        transformCtrl.showZ = true;
+        transformCtrl.attach(gizmoProxy);
+        return;
+      }
+    }
+
+    if (transformCtrl.object) {
+      transformCtrl.detach();
+    }
+  }, [selectedPlacementIds, selectedTool, activeTool, sessionRevision, session]);
+
+  // --------------------------------------------------------------------------
   // Mouse and Keyboard Event Handlers
   // --------------------------------------------------------------------------
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
+      return;
+    }
     isDraggingRef.current = true;
     dragButtonRef.current = e.button;
     lastMousePosRef.current = { x: e.clientX, y: e.clientY };
@@ -593,6 +794,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         cameraCtrl.lookFly(-dx * 0.004, -dy * 0.004);
       }
     } else {
+      if (transformCtrlRef.current && (transformCtrlRef.current as any).axis) {
+        setHoveredVoxel(null);
+        onVoxelHover?.(null);
+        return;
+      }
       // Hover raycasting
       const hit = performRaycast(e.clientX, e.clientY);
       setHoveredVoxel(hit);
@@ -623,6 +829,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
+      return;
+    }
     const dist = Math.hypot(
       e.clientX - pointerDownPosRef.current.x,
       e.clientY - pointerDownPosRef.current.y
@@ -635,13 +844,142 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
   };
 
-  // Keyboard handlers for Fly mode
+  // Keyboard handlers for Fly mode, placement nudging, deletion, and side-by-side duplication
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysDownRef.current.add(e.code);
+      shiftKeyRef.current = e.shiftKey;
+
+      const target = e.target as HTMLElement | null;
+      const tagName = target?.tagName?.toUpperCase();
+      if (
+        tagName === 'INPUT' ||
+        tagName === 'TEXTAREA' ||
+        tagName === 'SELECT' ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+
+      const selIds = selectedPlacementIdsRef.current;
+      if (!selIds || selIds.size !== 1) return;
+
+      const placementId = Array.from(selIds)[0]!;
+      const project = session.peekProject();
+      const placement = project.placements.find((p) => p.id === placementId);
+      if (!placement) return;
+
+      const step = e.shiftKey ? 16 : 1;
+      const [tx, ty, tz] = placement.transform.translation;
+
+      if (e.key === 'ArrowLeft') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx - step, ty, tz],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx + step, ty, tz],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx, ty, tz - step],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx, ty, tz + step],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'PageUp') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx, ty + step, tz],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'PageDown') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:transform',
+            placementId,
+            translation: [tx, ty - step, tz],
+          });
+        }
+        return;
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (!placement.locked) {
+          e.preventDefault();
+          session.execute({
+            type: 'placement:delete',
+            placementId,
+          });
+          onSelectPlacementRef.current?.(null);
+        }
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+        if (!placement.locked) {
+          e.preventDefault();
+          const width = placement.volume.bounds.maxExclusive[0] - placement.volume.bounds.min[0];
+          const offset: [number, number, number] = [Math.max(1, width) + 1, 0, 0];
+          const res = session.execute({
+            type: 'placement:duplicate',
+            placementId,
+            offset,
+          });
+          if (res.ok) {
+            const newPlacementId = res.changed?.placementIds?.[0];
+            if (newPlacementId) {
+              onSelectPlacementRef.current?.(newPlacementId);
+            }
+          }
+        }
+        return;
+      }
     };
+
     const handleKeyUp = (e: KeyboardEvent) => {
       keysDownRef.current.delete(e.code);
+      shiftKeyRef.current = e.shiftKey;
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -650,7 +988,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [session]);
 
   // Preset handler
   const handleApplyPreset = (preset: CameraPreset) => {

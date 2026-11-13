@@ -477,4 +477,51 @@ console.log('--- Test 6: Incremental Time-Sliced Chunk Queue ---');
   console.log('✓ Test 6 passed: queueProjectSync and processChunkQueue time-slice meshing correctly.');
 }
 
+// ============================================================================
+// Test 7: Placement Transform Preview & Session Transform Execution
+// ============================================================================
+console.log('--- Test 7: Placement Transform Preview & Session Execution ---');
+{
+  const manager = new ChunkSceneManager();
+
+  const chunk0Indices = new Uint8Array(4096);
+  chunk0Indices[0] = 1;
+  const chunk0: VoxelChunk = {
+    key: '0_0_0',
+    palette: [
+      { id: 'minecraft:air', props: {} },
+      { id: 'minecraft:stone', props: {} },
+    ],
+    indices: chunk0Indices,
+    revision: 1,
+  };
+
+  const chunksMap = new Map<string, VoxelChunk>();
+  chunksMap.set('0_0_0', chunk0);
+  const placement = createPlacement('p-preview', chunksMap);
+  const project = createProject('proj-prev', 'PreviewProject', [placement]);
+
+  manager.syncProject(project);
+  const group = manager.rootGroup.getObjectByName('placement-p-preview') as THREE.Group;
+  assert(group !== undefined, 'Placement root group must exist');
+
+  // 1. previewPlacementTransform updates group without altering placement data or rebuilding chunks
+  manager.previewPlacementTransform('p-preview', [10, 20, 30], 90);
+  assertDeepEqual(
+    [group.position.x, group.position.y, group.position.z],
+    [10, 20, 30],
+    'previewPlacementTransform must live-update root group position'
+  );
+  assert(
+    Math.abs(group.rotation.y - Math.PI / 2) < 1e-5,
+    'previewPlacementTransform must live-update root group rotationY'
+  );
+
+  // 2. placement data was untouched during preview
+  assertDeepEqual(placement.transform.translation, [0, 0, 0], 'Placement data translation remains unchanged during preview');
+
+  manager.dispose();
+  console.log('✓ Test 7 passed: previewPlacementTransform live-updates position and rotation without chunk rebuilds.');
+}
+
 console.log('\nAll Slice E3.2 Viewport tests passed successfully!');

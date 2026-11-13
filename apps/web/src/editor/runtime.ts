@@ -48,9 +48,9 @@ export function createEditorRuntime(options?: EditorRuntimeOptions): EditorRunti
   const placementOps = new PlacementOperationsController(store);
   const selectionTool = new SelectionToolController(store);
   const regionTools = new RegionToolsController(store, selectionTool);
-  const conflictsController = new ConflictsPanelController(store);
+  const conflictsController = new ConflictsPanelController(store, 'conflicts-only', { active: false });
   const bakeController = new BakeController(store);
-  const materialListController = new MaterialListController(store);
+  const materialListController = new MaterialListController(store, { active: false });
   const persistence = new ProjectPersistenceController(store);
   const mcpClient = new McpBridgeClient({ session: store.session });
 
@@ -83,6 +83,8 @@ export function createEditorRuntime(options?: EditorRuntimeOptions): EditorRunti
       unsubscribeStore();
       persistence.dispose();
       mcpClient.disconnect();
+      conflictsController.dispose();
+      materialListController.dispose();
     },
   };
 }

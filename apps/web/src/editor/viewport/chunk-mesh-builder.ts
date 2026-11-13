@@ -208,6 +208,22 @@ export class ChunkSceneManager {
   }
 
   /**
+   * Fast 60fps preview update of a placement's root group position and rotation during gizmo drag,
+   * without re-meshing or touching chunk geometries.
+   */
+  public previewPlacementTransform(
+    placementId: string,
+    translation: [number, number, number],
+    rotationY: number
+  ): void {
+    const groupEntry = this.placementGroups.get(placementId);
+    if (groupEntry) {
+      groupEntry.root.position.set(translation[0], translation[1], translation[2]);
+      groupEntry.root.rotation.y = (rotationY * Math.PI) / 180;
+    }
+  }
+
+  /**
    * Retrieves or creates the Three.js group hierarchy for a placement.
    */
   private getOrCreatePlacementGroup(placement: Placement): PlacementGroupEntry {

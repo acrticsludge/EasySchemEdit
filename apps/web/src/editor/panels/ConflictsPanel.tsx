@@ -26,9 +26,11 @@ export function ConflictsPanel({ controller, onOpenBake, className }: ConflictsP
   }, []);
 
   useEffect(() => {
+    controller.setActive(true);
     const unsub = controller.subscribe(forceUpdate);
     void controller.refresh();
     return () => {
+      controller.setActive(false);
       unsub();
     };
   }, [controller, forceUpdate]);

@@ -37,3 +37,8 @@ export {
   type ViewportCanvasProps,
   type GhostPreviewSpec,
 } from './ViewportCanvas.tsx';
+
+export {
+  SelectedPlacementBar,
+  type SelectedPlacementBarProps,
+} from './SelectedPlacementBar.tsx';

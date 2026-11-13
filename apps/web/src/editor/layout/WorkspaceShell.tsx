@@ -14,13 +14,17 @@ import { OutlinerPanel } from './OutlinerPanel.tsx';
 import { InspectorPanel } from './InspectorPanel.tsx';
 import { BottomDock } from './BottomDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
+import { SelectedPlacementBar } from '../viewport/SelectedPlacementBar.tsx';
 import type { BottomTabId, KeyDescriptor } from '@easyschemedit/ui';
+import type { ConflictsPanelController, MaterialListController } from '../panels/panels-controller.ts';
 
 export type RightDockTabId = 'inspector' | 'tools' | 'transform' | 'library';
 
 export interface WorkspaceShellProps {
   store: EditorSessionStore;
   controllers?: WorkspaceControllers;
+  conflictsController?: ConflictsPanelController;
+  materialListController?: MaterialListController;
   storage?: StorageLike;
   viewportSlot: React.ReactNode;
   tabSlots?: Partial<Record<BottomTabId, React.ReactNode>>;
@@ -44,6 +48,8 @@ export interface WorkspaceShellProps {
 export function WorkspaceShell({
   store,
   controllers: providedControllers,
+  conflictsController,
+  materialListController,
   storage,
   viewportSlot,
   tabSlots,
@@ -75,6 +81,25 @@ export function WorkspaceShell({
   const forceLayoutUpdate = useCallback(() => {
     setLayoutVersion((v) => v + 1);
   }, []);
+
+  const inspectorSelectedId = controllers?.inspector.context().selectedPlacementId ?? null;
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(inspectorSelectedId);
+
+  useEffect(() => {
+    setSelectedPlacementId(controllers?.inspector.context().selectedPlacementId ?? null);
+  }, [controllers, sessionSnap.revision]);
+
+  const activeSelectedId = selectedPlacementId ?? inspectorSelectedId;
+  const selectedPlacement = sessionSnap.project?.placements.find((p) => p.id === activeSelectedId);
+
+  const handleSelectPlacement = useCallback(
+    (id: string | null) => {
+      controllers.selectPlacement(id);
+      setSelectedPlacementId(id);
+      forceLayoutUpdate();
+    },
+    [controllers, forceLayoutUpdate]
+  );
 
   const layoutState = controllers.layout.state();
   const leftPanel = layoutState.panels.find((p) => p.id === 'hierarchy');
@@ -261,6 +286,7 @@ export function WorkspaceShell({
             <OutlinerPanel
               store={store}
               controllers={controllers}
+              onSelectPlacement={handleSelectPlacement}
               onCollapse={() => {
                 controllers.layout.collapsePanel('hierarchy');
                 forceLayoutUpdate();
@@ -301,6 +327,13 @@ export function WorkspaceShell({
           }}
         >
           {viewportSlot}
+          {selectedPlacement && (
+            <SelectedPlacementBar
+              store={store}
+              placement={selectedPlacement}
+              onSelectPlacement={(id) => handleSelectPlacement(id)}
+            />
+          )}
         </div>
 
         {/* Divider Right */}
@@ -394,6 +427,7 @@ export function WorkspaceShell({
                       controllers.layout.collapsePanel('inspector');
                       forceLayoutUpdate();
                     }}
+                    onSelectPlacement={handleSelectPlacement}
                   />
                 )}
                 {rightDockTab === 'tools' && rightDockSlots.tools}
@@ -409,6 +443,7 @@ export function WorkspaceShell({
                 controllers.layout.collapsePanel('inspector');
                 forceLayoutUpdate();
               }}
+              onSelectPlacement={handleSelectPlacement}
             />
           )}
         </div>
@@ -457,6 +492,8 @@ export function WorkspaceShell({
           <BottomDock
             store={store}
             controllers={controllers}
+            conflictsController={conflictsController}
+            materialListController={materialListController}
             tabSlots={tabSlots}
             onCollapse={() => {
               controllers.layout.collapsePanel('bottom-dock');

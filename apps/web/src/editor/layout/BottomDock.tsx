@@ -7,10 +7,13 @@ import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
 import type { BottomTabId } from '@easyschemedit/ui';
 import type { HistoryQueryResult } from '@easyschemedit/operations';
+import type { ConflictsPanelController, MaterialListController } from '../panels/panels-controller.ts';
 
 export interface BottomDockProps {
   store: EditorSessionStore;
   controllers?: WorkspaceControllers;
+  conflictsController?: ConflictsPanelController;
+  materialListController?: MaterialListController;
   tabSlots?: Partial<Record<BottomTabId, React.ReactNode>>;
   onCollapse?: () => void;
   className?: string;
@@ -33,6 +36,8 @@ const TABS: TabItem[] = [
 export function BottomDock({
   store,
   controllers,
+  conflictsController,
+  materialListController,
   tabSlots = {},
   onCollapse,
   className = '',
@@ -44,6 +49,16 @@ export function BottomDock({
     'assets';
 
   const [historyData, setHistoryData] = useState<HistoryQueryResult | null>(null);
+
+  // Sync active controllers to prevent eager scans when closed
+  useEffect(() => {
+    conflictsController?.setActive(activeTab === 'conflicts');
+    materialListController?.setActive(activeTab === 'materials');
+    return () => {
+      conflictsController?.setActive(false);
+      materialListController?.setActive(false);
+    };
+  }, [activeTab, conflictsController, materialListController]);
 
   // When History tab is active, query history stack
   useEffect(() => {
