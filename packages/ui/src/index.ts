@@ -49,6 +49,18 @@ export type {
 } from './inspector.ts';
 
 export {
+  createAccessibility,
+} from './accessibility.ts';
+
+export type {
+  Accessibility,
+  AccessibilityOptions,
+  AccessibilityState,
+  A11yContrastResult,
+  FocusTrap,
+} from './accessibility.ts';
+
+export {
   createViewportOverlays,
 } from './viewport-overlays.ts';
 
