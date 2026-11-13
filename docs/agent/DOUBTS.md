@@ -3,20 +3,16 @@
 Format: `D-<n>` — context, options, recommended default, evidence, severity.
 Items here are unresolved; nothing here may be implemented as a guess.
 
-## D-1: Destructive classification drift between slice f-1 and SPEC-F §6
+## D-1: Destructive classification drift between slice f-1 and SPEC-F §6 — **RESOLVED 2026-11-13**
 
-- **Context:** `apps/mcp-companion/src/mutation-envelope.ts` (slice f-1, commit `17fd227`) exports
+- **Context:** `apps/mcp-companion/src/mutation-envelope.ts` (slice f-1, commit `17fd227`) exported
   `DESTRUCTIVE_OPERATIONS` keyed by *verb*: `delete, replace, paste, cut, fill, hollow, walls, bake, stack, move, transform`.
   `docs/specs/subs/SUBSPEC-F_MCP_ADAPTER.md` §6 classifies *tool names*, and lists
   `paste_clipboard` under "Operations executing immediately (no confirmation)".
-- **Conflict:** the verb set gates `paste`; §6 says `paste_clipboard` needs no confirmation.
-- **Options:** (a) leave both, with `destructive-protocol.ts` (SPEC §6 tool names) authoritative — current
-  state, drift documented here; (b) delete the verb set from `mutation-envelope.ts` and re-export the
-  tool-name set; (c) keep verb set as a lowercase alias view of the tool set.
-- **Recommended default:** (b) after the user confirms — one name space only. Not applied unilaterally
-  because GOAL.md forbids silently changing an existing decision.
-- **Evidence:** SPEC-F §6 (both lists, quoted in `docs/research/subplan-f.md` decision F-6.1); `mutation-envelope.ts` lines 87-101.
-- **Severity:** Medium (misclassifies exactly one tool: `paste_clipboard`).
+- **Resolved by:** removing the verb-keyed set (it had no importers). `CONFIRMATION_REQUIRED_TOOLS`
+  in `destructive-protocol.ts` is now the single authority, matching SPEC-F §6 tool names. A comment
+  at the removal site records why.
+- **Severity was:** Medium.
 
 ## D-2: Confirmation-token revocation on authority handover
 
@@ -61,47 +57,28 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Severity:** Medium (a TOCTOU window exists between the containment check and the rename; it is
   exploitable only by a local attacker who can create symlinks inside an approved directory).
 
-## D-5: `MCP_LIMITS` and `LIMITS` duplicate the same six budget numbers
+## D-5: `MCP_LIMITS` and `LIMITS` duplicate the same six budget numbers — **RESOLVED 2026-11-13**
 
-- **Context:** `destructive-protocol.ts` exports `MCP_LIMITS`; `failure-handling.ts` exports `LIMITS`
-  with identical values, because a value import between the two files fails TS5097 (see D-6).
-  Slice f-11's test asserts them in lockstep, which catches drift only when the test runs.
-- **Options:** (a) move the constants into a module both re-export through `index.ts`; (b) set
-  `allowImportingTsExtensions` + `noEmit` in the package tsconfig so f-11 can import f-7's values;
-  (c) leave the duplication and rely on the lockstep test.
-- **Recommended default:** (b) — it also removes the constraint that forced injection in slice f-10.
-  (a) is the workaround if the tsconfig change is undesirable.
-- **Evidence:** `docs/audits/subplan-f-round-2.md` PF-4.
-- **Severity:** Medium (silent divergence in budget enforcement is a correctness risk, not a crash).
+- **Resolved by:** `failure-handling.ts` now imports `MCP_LIMITS` from `destructive-protocol.ts` and
+  re-exports it as `LIMITS`, so there is one definition. The lockstep test in f-11 still asserts the
+  six values, now against the single source.
+- **Severity was:** Medium.
 
-## D-6: Package tsconfigs disagree about `.ts` import specifiers, and `build` scripts disagree with them
+## D-6: Package tsconfigs disagree about `.ts` import specifiers, and `build` scripts disagree with them — **RESOLVED 2026-11-13**
 
-- **Context:** `apps/mcp-companion/tsconfig.json` does NOT set `allowImportingTsExtensions`, so
-  type-only `.ts` imports compile (elided) while value imports fail TS5097 — this forced the
-  injected-sanitizer design in slice f-10. `packages/domain` and `packages/formats` DO set the flag,
-  but the flag is only legal with `noEmit`/`emitDeclarationOnly`, and their `build: tsc` scripts pass
-  neither, so a plain package build fails TS5096 while `tsc --noEmit` passes.
-- **Options:** (a) set `allowImportingTsExtensions` + `noEmit` (or `emitDeclarationOnly`) everywhere
-  and make the build scripts emit declarations only, bundling separately; (b) drop the flag
-  everywhere and write extensionless imports; (c) leave as-is and keep injecting collaborators.
-- **Recommended default:** (a) — one rule for all packages, and it matches how the tests already run
-  (`node --experimental-strip-types` consumes `.ts` directly, so no emit is needed for tests).
-- **Evidence:** `docs/audits/subplan-f-round-2.md` PF-5; `packages/domain/tsconfig.json` line 21 and
-  `packages/domain/package.json` `build: tsc`.
-- **Severity:** Medium (the current state means `pnpm build` is broken for two packages while
-  `tsc --noEmit` is green — a confusing signal for anyone picking the repo up).
+- **Resolved by:** one rule everywhere — `allowImportingTsExtensions: true` + `noEmit: true` in all
+  seven packages and `apps/mcp-companion`; `build` and `typecheck` both run `tsc --noEmit`; package
+  entrypoints point at `src/index.ts` because no consumer imports `dist/` (verified: every
+  cross-package import is a relative `.ts` path). All eight packages now pass the same command.
+- **Consequence:** value imports across `src/` are legal again, which is what let D-5 collapse.
+- **Severity was:** Medium.
 
-## D-7: Bridge port conflict — implementation 8765/8766 vs SPEC-F F2's 43127
+## D-7: Bridge port conflict — implementation 8765/8766 vs SPEC-F F2's 43127 — **RESOLVED 2026-11-13**
 
-- **Context:** SPEC-F F2 fixes the browser bridge at `127.0.0.1:43127` (configurable).
-  `src/bridge.ts` listens on 8765 and `src/health.ts` on 8766, both written in Phase 2 before SPEC-F
-  was reconciled.
-- **Options:** (a) move both to 43127 (one port, `/healthz` served by the bridge); (b) bridge on
-  43127 and health on 43128; (c) keep the current ports and amend SPEC-F F2.
-- **Recommended default:** (a) — SPEC-F F2 is a locked decision; one port keeps CORS/origin policy
-  in one place.
-- **Evidence:** `docs/specs/subs/SUBSPEC-F_MCP_ADAPTER.md` F2 and §3.1; `src/bridge.ts:7`,
-  `src/health.ts:7`; `docs/audits/subplan-f-round-2.md` PF-2.
-- **Severity:** Low (nothing depends on the ports yet; both listeners are stubs).
+- **Resolved by:** `src/bridge.ts` and `src/health.ts` (the two Phase-2 stubs) were deleted and
+  replaced by one listener on `127.0.0.1:43127` (`src/listener.ts` → `src/bridge-router.ts`), which
+  serves the tool routes, `/healthz`, `/readyz`, `/metrics` and the `/ws` event channel.
+  Verified live: 27/27 end-to-end checks in `apps/mcp-companion/scripts/live-e2e.sh`.
+- **Severity was:** Low.
 
 

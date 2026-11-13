@@ -294,6 +294,19 @@ export type DestructiveProtocol = {
     expectedRevision: number,
     options?: ApplyOptions,
   ): ApplyResult;
+  /**
+   * Execute an immediate (non-destructive) operation — SPEC-F §6 rule 3: "Non-destructive mutations
+   * still require `expectedRevision` and `requestId`." No confirmation token and no dry-run are
+   * involved, so this is a separate entry point rather than a special case of `apply()`.
+   */
+  executeImmediate(
+    projectId: string,
+    operation: string,
+    args: Record<string, unknown>,
+    expectedRevision: number,
+    requestId?: string,
+    options?: DryRunOptions,
+  ): ApplyResult;
   /** Outstanding (unused, unexpired) confirmation bindings. */
   outstandingTokenCount(): number;
   /** Revoke every outstanding confirmation token (authority handover — DOUBTS.md D-2). */
@@ -739,6 +752,91 @@ export function createDestructiveProtocol(
     return result;
   }
 
+  /**
+   * Immediate (non-destructive) execution — SPEC-F §6 rule 3. Still guards the revision and the
+   * §4.3 budgets, and still records the result for idempotent replay, but needs no confirmation
+   * token and no prior dry-run.
+   */
+  function executeImmediate(
+    projectId: string,
+    operation: string,
+    args: Record<string, unknown>,
+    expectedRevision: number,
+    requestId?: string,
+    executeOptions: DryRunOptions = {},
+  ): ApplyResult {
+    const nowMs = now();
+    prune(nowMs);
+
+    const normalized = normalizeArgs(args);
+    const id = requestId ?? generateToken();
+
+    // F10: completed-request cache first, exactly as in apply().
+    const cached = appliedCache.get(id);
+    if (cached) {
+      if (cached.normalizedArgs !== normalized) {
+        return errorApply(id, projectId, {
+          code: 'IDEMPOTENCY_ARGS_MISMATCH',
+          message: `requestId ${id} was already used with different arguments`,
+        });
+      }
+      return { ...cached.result };
+    }
+
+    if (isDestructive(operation)) {
+      return errorApply(id, projectId, {
+        code: 'DRY_RUN_REQUIRED',
+        message: `${operation} is confirmation-required and cannot run through executeImmediate`,
+        suggestedAction: 'call dry-run first and apply with its confirmation token',
+      });
+    }
+
+    const currentRevision = services.getRevision(projectId);
+    if (currentRevision !== expectedRevision) {
+      return errorApply(id, projectId, {
+        code: 'STALE_REVISION',
+        message: `expected revision ${expectedRevision} but the project is at ${currentRevision}`,
+        currentRevision,
+        suggestedAction: 're-read the project and retry at the current revision',
+      });
+    }
+
+    const preview = services.preview(projectId, operation, args, expectedRevision);
+    const bound = budgetError(preview, executeOptions.allowLimitIncrease === true);
+    if (bound) return errorApply(id, projectId, bound, [...preview.warnings]);
+
+    const execution = services.execute(projectId, operation, args);
+    if (!execution.success) {
+      return errorApply(
+        id,
+        projectId,
+        {
+          code: execution.errorCode ?? 'EXECUTION_FAILED',
+          message: execution.errorMessage ?? 'command bus rejected the operation',
+          currentRevision,
+        },
+        execution.warnings,
+      );
+    }
+
+    const result: ApplyResult = {
+      requestId: id,
+      projectId,
+      success: true,
+      applied: true,
+      revision: execution.revision,
+      changedCells: execution.changedCells,
+      changedPlacements: execution.changedPlacements,
+      warnings: [...preview.warnings, ...execution.warnings],
+    };
+    appliedCache.set(id, {
+      result,
+      normalizedArgs: normalized,
+      expiresAt: nowMs + retentionMs,
+    });
+    return result;
+  }
+
   function outstandingTokenCount(): number {
     const nowMs = now();
     prune(nowMs);
@@ -758,6 +856,7 @@ export function createDestructiveProtocol(
     requiresConfirmation,
     dryRun,
     apply,
+    executeImmediate,
     outstandingTokenCount,
     revokeAll,
   };

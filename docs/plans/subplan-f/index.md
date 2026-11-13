@@ -27,6 +27,7 @@ Build in thin vertical slices per the incremental-implementation skill:
 | `slice-f-10.md` | Health endpoint: /healthz, /readyz, /metrics | `apps/mcp-companion/src/health.ts` | Health status, bridge status, uptime |
 | `slice-f-11.md` | Failure handling: error codes, stale revision, duplicate requestId, over-limit, locked placement | `apps/mcp-companion/src/failure-handling.ts` | Error codes, rejection paths |
 | `slice-f-12.md` | Acceptance criteria verification | `apps/mcp-companion/__tests__/` | All 25 SUBSPEC-F acceptance items — 12 PASS / 13 BLOCKED, 54 assertions, exit 0 |
+| `slice-f-13.md` | Single-port bridge router on 43127: security pipeline, auth, tool dispatch, export | `apps/mcp-companion/src/bridge-router.ts`, `src/listener.ts` | 60 unit assertions + 27 live HTTP checks (see `scripts/live-e2e.sh`) |
 
 ## Acceptance Criteria (from SUBSPEC-F §10.2, revised)
 

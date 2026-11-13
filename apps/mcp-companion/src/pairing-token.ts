@@ -180,6 +180,12 @@ export type PairingAuthority = {
   generate(projectId?: string): { token: string; record: PairingTokenRecord };
   /** Validates and consumes a token, minting a session on success. */
   connect(input: { token: string; projectId?: string; clientId?: string }): ConnectResult;
+  /**
+   * Authenticate a request from an ALREADY-PAIRED client. A pairing token is one-time use (F1), so
+   * subsequent requests cannot re-present it; instead the client presents the session id it was
+   * given and this refreshes the idle deadline. Returns the session's project binding.
+   */
+  authenticateSession(sessionId: string): { ok: true; projectId: string | null } | { ok: false; reason: 'NOT_FOUND' | 'EXPIRED' };
   /** Records activity on a live session, refreshing its idle deadline. */
   touch(sessionId: string): boolean;
   /** Drops sessions idle past the timeout; returns the dropped session ids. */
@@ -552,6 +558,33 @@ export function createPairingAuthority(options: PairingAuthorityOptions): Pairin
     };
   }
 
+  /**
+   * Authenticate an already-paired client by session id. The session map is the authority; the
+   * idle deadline is refreshed on success so an active client is never swept mid-work.
+   */
+  function authenticateSession(
+    sessionId: string,
+  ): { ok: true; projectId: string | null } | { ok: false; reason: 'NOT_FOUND' | 'EXPIRED' } {
+    const session = sessions.get(sessionId);
+    if (!session) return { ok: false, reason: 'NOT_FOUND' };
+    const now = services.now();
+    if (now > session.idleDeadline) {
+      sessions.delete(sessionId);
+      return { ok: false, reason: 'EXPIRED' };
+    }
+    session.idleDeadline = now + idleTimeoutMs;
+
+    let projectId: string | null = null;
+    for (const record of recordsByHash.values()) {
+      if (record.sessionId === sessionId) {
+        record.idleDeadline = session.idleDeadline;
+        projectId = record.projectId;
+        break;
+      }
+    }
+    return { ok: true, projectId };
+  }
+
   function touch(sessionId: string): boolean {
     const session = sessions.get(sessionId);
     if (!session) return false;
@@ -613,6 +646,7 @@ export function createPairingAuthority(options: PairingAuthorityOptions): Pairin
   return {
     generate,
     connect,
+    authenticateSession,
     touch,
     sweepIdle,
     revoke,

@@ -59,6 +59,7 @@ console.log('--- Slice f-11: error code registry (§9) ---');
     ['worker_crash', MCP_ERROR_CODES.WORKER_CRASH],
     ['browser_disconnect', MCP_ERROR_CODES.BROWSER_DISCONNECTED],
     ['document_unavailable', MCP_ERROR_CODES.DOCUMENT_UNAVAILABLE],
+    ['rate_limited', MCP_ERROR_CODES.RATE_LIMITED],
     ['cancelled', MCP_ERROR_CODES.CANCELLED],
     ['malformed_input', MCP_ERROR_CODES.VALIDATION_FAILED],
   ];

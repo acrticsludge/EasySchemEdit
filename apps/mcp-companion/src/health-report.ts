@@ -7,9 +7,10 @@
 // H-foundation decision is not silently replaced; wiring is an explicit follow-up.
 //
 // Error text is sanitized before it enters a payload, so health output cannot leak a token or path.
-// The sanitizer is INJECTED rather than imported: a value import of `./agent-log.ts` inside `src/`
-// fails TS5097 under this package's tsconfig (`.ts` specifiers are only legal for type-only imports,
-// which are elided). Injection is also this codebase's established style for collaborators.
+// The sanitizer is injected with the slice f-9 `sanitizeText` as the production default: the value
+// import is legal now that the package tsconfig sets `allowImportingTsExtensions` (DOUBTS D-6), and
+// injection kept so a caller can substitute a stricter sanitizer.
+import { sanitizeText } from './agent-log.ts';
 
 // ============================================================================
 // Paths (SPEC-F §4.7)
@@ -129,7 +130,8 @@ export function isLocalAddress(address: string): boolean {
 export function createHealthReporter(deps: HealthReporterDeps): HealthReporter {
   const now = deps.now ?? (() => Date.now());
   const sanitizeOptions = { username: deps.username, machineName: deps.machineName };
-  const sanitize = deps.sanitize ?? ((text: string) => text);
+  const sanitize = deps.sanitize ?? ((text: string, opts?: { username?: string; machineName?: string }) =>
+    sanitizeText(text, opts));
 
   let state: CompanionState = { ...deps.state };
   let lastError: string | undefined;

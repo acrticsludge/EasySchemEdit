@@ -97,20 +97,11 @@ export type MutationProtocol = {
   isDestructive(operation: string): boolean;
 };
 
-// Destructive operations that require confirmation token
-export const DESTRUCTIVE_OPERATIONS: ReadonlySet<string> = new Set([
-  'delete',
-  'replace',
-  'paste',
-  'cut',
-  'fill',
-  'hollow',
-  'walls',
-  'bake',
-  'stack',
-  'move',
-  'transform',
-]);
+// Confirmation authority: SUBSPEC-F §6 classifies *tool names*, and the single source of truth is
+// `CONFIRMATION_REQUIRED_TOOLS` in ./destructive-protocol.ts. The verb-keyed set that stood here
+// (`{delete, replace, paste, cut, fill, hollow, walls, bake, stack, move, transform}`) was removed
+// under DOUBTS D-1: it disagreed with §6 on `paste` vs `paste_clipboard` (which §6 lists as
+// immediate) and it had no importers. Use `createDestructiveProtocol(...).isDestructive(toolName)`.
 
 // Default confirmation token TTL: 60 seconds
 export const DEFAULT_CONFIRMATION_TOKEN_TTL_MS = 60000;

@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "IndexedDB persistence layer for EasySchemEdit — project storage, chunk binaries, autosave, recovery",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "description": "IndexedDB persistence layer for EasySchemEdit \u2014 project storage, chunk binaries, autosave, recovery",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "test": "echo \"No tests yet — IndexedDB requires browser environment\""
+    "build": "tsc --noEmit",
+    "test": "echo \"No tests yet \u2014 IndexedDB requires browser environment\"",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

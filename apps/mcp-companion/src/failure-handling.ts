@@ -33,6 +33,7 @@ export const MCP_ERROR_CODES = {
   DOCUMENT_UNAVAILABLE: 'DOCUMENT_UNAVAILABLE',
   VALIDATION_FAILED: 'VALIDATION_FAILED',
   EXECUTION_FAILED: 'EXECUTION_FAILED',
+  RATE_LIMITED: 'RATE_LIMITED',
   WORKER_CRASH: 'WORKER_CRASH',
   BROWSER_DISCONNECTED: 'BROWSER_DISCONNECTED',
   CANCELLED: 'CANCELLED',
@@ -48,15 +49,15 @@ export type McpError = {
   details?: Record<string, unknown>;
 };
 
-/** SPEC-F §4.3 block-count limits, mirroring slice f-7 `MCP_LIMITS` (asserted in lockstep). */
-export const LIMITS = {
-  maxCandidateCells: 1_000_000,
-  maxChangedCells: 250_000,
-  maxRuntimeMs: 5_000,
-  maxMemoryBytes: 256 * 1024 * 1024,
-  configurableChangedLimit: 1_000_000,
-  absoluteSafetyLimit: 5_000_000,
-} as const;
+/**
+ * SPEC-F §4.3 block-count limits — the single source of truth is slice f-7's `MCP_LIMITS`
+ * (DOUBTS D-5). Imported directly rather than duplicated: the package tsconfig sets
+ * `allowImportingTsExtensions`, so value imports across `src/` are legal (D-6).
+ */
+import { MCP_LIMITS } from './destructive-protocol.ts';
+export { MCP_LIMITS as LIMITS };
+
+const LIMITS = MCP_LIMITS;
 
 /** Undo record size: position (3 ints) + previous and next block states. */
 export const BYTES_PER_CHANGED_CELL = 32;
@@ -95,6 +96,7 @@ export type FailureCondition =
   | 'worker_crash'
   | 'browser_disconnect'
   | 'document_unavailable'
+  | 'rate_limited'
   | 'cancelled'
   | 'malformed_input';
 
@@ -266,6 +268,13 @@ export function classifyFailure(condition: FailureCondition, context: FailureCon
         MCP_ERROR_CODES.DOCUMENT_UNAVAILABLE,
         'no document is available to this session (no browser attached and the companion holds none)',
         { suggestedAction: 'open a project in the editor and reconnect, or load a document headlessly' },
+      );
+
+    case 'rate_limited':
+      return makeMcpError(
+        MCP_ERROR_CODES.RATE_LIMITED,
+        'too many failed pairing attempts; this client is temporarily blocked',
+        { suggestedAction: 'wait for the block to expire, then request a new pairing token' },
       );
 
     case 'cancelled':

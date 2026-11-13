@@ -168,12 +168,23 @@ export function isContained(root: string, candidate: string): boolean {
   return true;
 }
 
+/**
+ * Join an approved root with a validated relative path, preserving the root's own separator style.
+ * The root is whatever the host supplied (POSIX `/srv/exports` or Windows `C:/exports`); the result
+ * must be a path that host's filesystem layer accepts, so a drive-qualified root keeps its drive and
+ * a POSIX root keeps its leading slash. Forcing POSIX always produced `/c:/...` on Windows, which
+ * `node:fs` rejects with ENOENT (caught by the live end-to-end run, not by the unit doubles).
+ */
 function posixJoin(...parts: string[]): string {
-  const joined = parts
-    .filter((p) => p.length > 0)
+  const [first, ...rest] = parts.filter((p) => p.length > 0);
+  if (first === undefined) return '/';
+  const trimmed = first.replace(/[\\/]+$/, '');
+  const joined = rest
     .map((p) => p.replace(/[\\/]+$/, ''))
-    .join('/');
-  return joined.startsWith('/') ? joined : `/${joined}`;
+    .reduce((acc, p) => `${acc}/${p.replace(/^[\\/]+/, '')}`, trimmed);
+  // Drive-qualified (C:/… or C:\…) or already absolute: keep as-is; otherwise anchor at root.
+  if (/^[A-Za-z]:[\\/]/.test(joined) || joined.startsWith('/')) return joined;
+  return `/${joined}`;
 }
 
 // ============================================================================

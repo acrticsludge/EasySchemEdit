@@ -3,14 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Local MCP companion server for EasySchemEdit — stdio MCP server + localhost HTTP/WebSocket bridge",
-  "main": "dist/server.js",
-  "types": "dist/server.d.ts",
+  "description": "Local MCP companion server for EasySchemEdit \u2014 stdio MCP server + localhost HTTP/WebSocket bridge",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/server.js",
+    "build": "tsc --noEmit",
+    "start": "node --experimental-strip-types src/server.ts",
     "dev": "tsx src/server.ts",
-    "test": "node --experimental-strip-types __tests__/slice-f-2-pairing-token.test.ts && node --experimental-strip-types __tests__/slice-f-7-destructive-protocol.test.ts && node --experimental-strip-types __tests__/slice-f-8-mcp-export.test.ts && node --experimental-strip-types __tests__/slice-f-9-agent-log.test.ts && node --experimental-strip-types __tests__/slice-f-10-health.test.ts && node --experimental-strip-types __tests__/slice-f-11-failure-handling.test.ts && node --experimental-strip-types __tests__/slice-f-12-acceptance.test.ts"
+    "test": "node --experimental-strip-types __tests__/slice-f-2-pairing-token.test.ts && node --experimental-strip-types __tests__/slice-f-7-destructive-protocol.test.ts && node --experimental-strip-types __tests__/slice-f-8-mcp-export.test.ts && node --experimental-strip-types __tests__/slice-f-9-agent-log.test.ts && node --experimental-strip-types __tests__/slice-f-10-health.test.ts && node --experimental-strip-types __tests__/slice-f-11-failure-handling.test.ts && node --experimental-strip-types __tests__/slice-f-12-acceptance.test.ts && node --experimental-strip-types __tests__/slice-f-13-bridge-router.test.ts",
+    "test:live": "bash scripts/live-e2e.sh",
+    "start:bridge": "node --experimental-strip-types src/listener.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
