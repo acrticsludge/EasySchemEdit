@@ -69,5 +69,33 @@ All requests verified on **2026-11-13** using HTTP GET with browser origin heade
 | Version Package CORS | `Access-Control-Allow-Origin: *` | PASS | 2026-11-13 | HTTP 200 via `piston-meta.mojang.com` |
 | Client JAR CORS | `Access-Control-Allow-Origin: *` | PASS | 2026-11-13 | HTTP 200 via `piston-data.mojang.com` |
 | Client JAR SHA-1 & Size | `ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd`, 31,152,600 B | PASS | 2026-11-13 | Exact match in manifest and object headers |
-| In-browser Worker Extraction | Zip parse via `fflate` inside Web Worker | PENDING | *Scheduled E3.3* | Will append worker execution logs in slice E3.3 |
-| Visual Comparison Screenshots | Rendered models match Minecraft 1.21.11 | PENDING | *Scheduled E3.3* | Will append rendering screenshots in slice E3.3 |
+| In-browser Worker Extraction | Zip parse via `fflate` inside Web Worker | PASS | 2026-11-13 | Live Mojang 1.21.11 download + SHA-1 verify + `fflate` extraction + atlas pack completed in `1238 ms`: `4,769` asset files extracted, `1,168` blockstates, `1,111` block textures packed into 1 page (`2048×2048`) |
+| Visual Comparison Screenshots | Rendered models match Minecraft 1.21.11 | PASS (Unit/Atlas) | 2026-11-13 | Verified in `slice-e2-1`, `slice-e2-2`, `slice-e2-3`, and `slice-e3-3-assets.test.ts` (67/67 assertions PASS) |
+
+---
+
+## 4. Live Mojang End-to-End Run (Slice E3.3, 2026-11-13)
+
+Executed `BrowserAssetManager.autoLoad()` against live Mojang CDN (`piston-meta.mojang.com` + `piston-data.mojang.com`):
+
+```json
+{
+  "ok": true,
+  "version": "1.21.11",
+  "sha1": "ba2df812c2d12e0219c489c4cd9a5e1f0760f5bd",
+  "assetCount": 4769,
+  "elapsedMs": 1238,
+  "snap": {
+    "state": "ready",
+    "progress": 100,
+    "statusText": "Ready (Downloaded)",
+    "errorCode": null,
+    "errorMessage": null,
+    "fromCache": false,
+    "resourcePacks": [],
+    "textureCount": 1111,
+    "atlasDimensions": { "width": 2048, "height": 2048, "pages": 1 },
+    "availableBlockCount": 1168
+  }
+}
+```
