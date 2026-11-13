@@ -11,9 +11,11 @@
   },
   "dependencies": {
     "@astrojs/react": "^4.0.0",
+    "@types/three": "^0.187.0",
     "astro": "^5.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "three": "^0.187.0"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
