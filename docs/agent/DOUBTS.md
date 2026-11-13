@@ -41,3 +41,23 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Recommended default:** (a) reuse the existing block budget so there is one numeric vocabulary.
 - **Evidence:** SPEC-F §6, §4.3 (the only numeric budgets defined).
 - **Severity:** Low (affects one tool's gating only).
+
+## D-4: SPEC-F §4.2 symlink-race requirement cannot be met inside the pure-TS companion package
+
+- **Context:** SPEC-F §4.2 requires "Symlink race protection: open file with O_NOFOLLOW; re-verify
+  canonical path after open" and "resolve symlinks and canonicalize paths before checking
+  (race-safe: re-check after open)".
+- **Conflict:** `docs/plans/subplan-f/index.md` constrains `@easyschemedit/mcp-companion` to pure
+  TypeScript with no Node imports, so it cannot open file descriptors or pass `O_NOFOLLOW`. The
+  module can canonicalize and check containment (CWE-59 remediation for the static case) but cannot
+  close the check-to-open window.
+- **Options:** (a) keep the module pure and make the post-open re-check an explicit host-adapter
+  obligation (`ExportServices.canonicalizeAfterWrite`, documented in slice f-8 plan); (b) relax the
+  package constraint to allow `node:fs`; (c) move export I/O into a separate non-pure package.
+- **Recommended default:** (a) — implemented in slice f-8; the requirement is surfaced, not dropped.
+  (c) is the cleaner long-term split if the host adapter ever proves awkward.
+- **Evidence:** SPEC-F §4.2 (both sentences); CWE-59 remediation guidance on `realpath()` ordering
+  (cwe.mitre.org, accessed 2026-11-13).
+- **Severity:** Medium (a TOCTOU window exists between the containment check and the rename; it is
+  exploitable only by a local attacker who can create symlinks inside an approved directory).
+

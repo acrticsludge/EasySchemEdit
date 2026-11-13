@@ -91,3 +91,23 @@ export type {
   ApplyResult,
   ProtocolError,
 } from './destructive-protocol';
+
+export {
+  createMcpExporter,
+  effectiveRoots,
+  isContained,
+  normalizePathSegments,
+} from './mcp-export';
+
+export type {
+  McpExporter,
+  McpExporterOptions,
+  ExportServices,
+  ExportRequest,
+  ExportArtifact,
+  ExportResult,
+  ExportRefusal,
+  ExportErrorCode,
+  ExportPathErrorCode,
+  ResolvedPath,
+} from './mcp-export';
