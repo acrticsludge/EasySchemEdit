@@ -375,8 +375,16 @@ export function createDestructiveProtocol(
     args: Record<string, unknown>,
     changedCells: number,
   ): boolean {
-    void args;
     if (CONDITIONAL_CONFIRMATION_TOOLS.has(operation)) {
+      // D-3: export_schematic requires confirmation when it would overwrite an
+      // existing file, is lossy (confirmLossy), or the exported non-air block
+      // count exceeds 250,000 (MCP_LIMITS.maxChangedCells).
+      if (operation === 'export_schematic') {
+        if (args.overwrite === true) return true;
+        if (args.confirmLossy === true) return true;
+        if (changedCells > MCP_LIMITS.maxChangedCells) return true;
+        return false;
+      }
       return changedCells > MCP_LIMITS.maxChangedCells;
     }
     return isDestructive(operation);

@@ -11,7 +11,10 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
+  openSync,
+  closeSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -143,9 +146,16 @@ const exporter = createMcpExporter({
     },
     exists: (path: string) => existsSync(path),
     writeTemp: (targetPath: string, data: ArrayBuffer) => {
+      const parent = dirname(targetPath);
+      mkdirSync(parent, { recursive: true });
+      // D-4: write to a temp sibling with O_EXCL (atomic creation, no clobber).
       const temp = `${targetPath}.tmp-${randomBytes(6).toString('hex')}`;
-      mkdirSync(dirname(targetPath), { recursive: true });
-      writeFileSync(temp, Buffer.from(data));
+      const fd = openSync(temp, 'wx'); // 'wx' = O_WRONLY | O_CREAT | O_EXCL
+      try {
+        writeFileSync(fd, Buffer.from(data));
+      } finally {
+        closeSync(fd);
+      }
       return temp;
     },
     readTemp: (tempPath: string) => {
@@ -161,7 +171,17 @@ const exporter = createMcpExporter({
       }
     },
     sha256: (data: ArrayBuffer) => createHash('sha256').update(Buffer.from(data)).digest('hex'),
-    canonicalizeAfterWrite: (path: string) => realpathSync(path),
+    canonicalizeAfterWrite: (path: string) => {
+      // D-4: lstat before and after + realpath comparison (Windows has no O_NOFOLLOW).
+      const before = lstatSync(path);
+      const real = realpathSync(path);
+      const after = lstatSync(path);
+      // Verify the inode didn't change (symlink swap detection).
+      if (before.ino !== after.ino || before.dev !== after.dev) {
+        throw new Error('symlink swap detected during write');
+      }
+      return real;
+    },
     maxExportBytes: 256 * 1024 * 1024,
   },
 });

@@ -443,7 +443,7 @@ All tools call the same domain queries and commands as the UI. No separate MCP-o
 - `delete_placement`, `bake_placements`
 - `fill_selection`, `replace_selection`, `delete_selection`
 - `cut_selection`, `hollow_selection`, `walls_selection`, `move_selection`
-- `export_schematic` (large exports)
+- `export_schematic` (when it would overwrite an existing file, is lossy (`confirmLossy`), or the exported non-air block count exceeds 250,000). Dry-run is always allowed.
 
 **Operations executing immediately (no confirmation):**
 - `transform_placement`, `transform_placements`

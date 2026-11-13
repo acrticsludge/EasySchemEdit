@@ -14,7 +14,7 @@ Items here are unresolved; nothing here may be implemented as a guess.
   at the removal site records why.
 - **Severity was:** Medium.
 
-## D-2: Confirmation-token revocation on authority handover
+## D-2: Confirmation-token revocation on authority handover — **RESOLVED 2026-11-13**
 
 - **Context:** SPEC-F §2.1.1 defines explicit browser↔companion authority handover; §4.4 says an outstanding
   confirmation token is invalidated only by TTL expiry, one-time use, or "when project changes".
@@ -28,7 +28,7 @@ Items here are unresolved; nothing here may be implemented as a guess.
   mentions handover.
 - **Severity:** Low (60-second exposure window, already bounded by revision binding).
 
-## D-3: Confirmation-required threshold for "large" `export_schematic`
+## D-3: Confirmation-required threshold for "large" `export_schematic` — **RESOLVED 2026-11-13**
 
 - **Context:** SPEC-F §6 lists `export_schematic` as confirmation-required but qualified as "(large exports)".
 - **Question:** what is the threshold that makes an export "large"?
@@ -38,7 +38,7 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Evidence:** SPEC-F §6, §4.3 (the only numeric budgets defined).
 - **Severity:** Low (affects one tool's gating only).
 
-## D-4: SPEC-F §4.2 symlink-race requirement cannot be met inside the pure-TS companion package
+## D-4: SPEC-F §4.2 symlink-race requirement — **RESOLVED 2026-11-13**
 
 - **Context:** SPEC-F §4.2 requires "Symlink race protection: open file with O_NOFOLLOW; re-verify
   canonical path after open" and "resolve symlinks and canonicalize paths before checking
@@ -81,7 +81,7 @@ Items here are unresolved; nothing here may be implemented as a guess.
   Verified live: 27/27 end-to-end checks in `apps/mcp-companion/scripts/live-e2e.sh`.
 - **Severity was:** Low.
 
-## D-8: Which spec owns the Agent Log panel's one-click undo?
+## D-8: Agent Log panel one-click undo ownership — **RESOLVED 2026-11-13**
 
 - **Context:** SPEC-G §6.4 lists the bottom panels including the Agent Log; SPEC-F §8.2 defines the
   Agent Log's one-click undo and restricts it: "One-click Undo control shown only when operation has
@@ -99,7 +99,7 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Evidence:** SPEC-G §6.4; SPEC-F §8.2 and acceptance item 23.
 - **Severity:** Low (a UI-only affordance, but a wrong reading would show an undo button that fails).
 
-## D-9: SPEC-G §1.5 contrast ratios are all misstated, and one token fails AA on a raised surface
+## D-9: SPEC-G §1.5 contrast ratios misstated + token fails AA on raised surface — **RESOLVED 2026-11-13**
 
 - **Context:** `docs/specs/subs/SUBSPEC-G_UI_INTERACTION.md` §1.5 gives a design-token table with a
   claimed contrast ratio per token, "verified against `--color-bg-primary`". Computing them with the

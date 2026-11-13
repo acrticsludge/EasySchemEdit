@@ -94,7 +94,8 @@ All text meets WCAG 2.2 AA (4.5:1 normal text, 3:1 large text and UI components)
 --color-text-muted: #b3b3b3;          /* decorative only; not used to convey information alone */
 --color-accent: #4a9eff;              /* ~4.7:1 on bg-primary (≥ 3:1 components) */
 --color-accent-hover: #6ab0ff;
---color-error: #ef4444;               /* ~7.4:1 on bg-primary */
+--color-error: #ef4444;               /* 5.16:1 on bg-primary (3:1 components, 4.5:1 if used as text) */
+--color-error-text: #f94e4e;          /* 5.76:1 on bg-primary, 4.55:1 on bg-tertiary (text-safe) */
 --color-warning: #eab308;             /* ~10.7:1 on bg-primary */
 --color-success: #22c55e;             /* ~10.2:1 on bg-primary */
 --color-conflict-clean: #22c55e;
@@ -108,18 +109,20 @@ All text meets WCAG 2.2 AA (4.5:1 normal text, 3:1 large text and UI components)
 --spacing-xxl: 32px;
 ```
 
-Contrast verification (WCAG 2.2 AA, against `--color-bg-primary` = `#0d0d0d`):
+Contrast verification (WCAG 2.2 AA, measured against `--color-bg-primary` = `#0d0d0d`, `--color-bg-secondary` = `#1a1a1a`, `--color-bg-tertiary` = `#252525`):
 
-| Use | Color | Ratio vs bg-primary | Requirement | Pass |
-|---|---|---|---|---|
-| Text – primary | `#eaeaea` | ~14:1 | 4.5:1 | Yes |
-| Text – secondary | `#a8a8a8` | ~5.6:1 | 4.5:1 | Yes |
-| Border | `#999999` | ~4.6:1 | 3:1 | Yes |
-| Border hover | `#b3b3b3` | ~5.8:1 | 3:1 | Yes |
-| Accent | `#4a9eff` | ~4.7:1 | 3:1 | Yes |
-| Error / conflict-state | `#ef4444` | ~7.4:1 | 3:1 (4.5:1 if used as text) | Yes |
-| Warning / conflict-same-state | `#eab308` | ~10.7:1 | 3:1 | Yes |
-| Success / conflict-clean | `#22c55e` | ~10.2:1 | 3:1 | Yes |
+| Use | Color | Ratio vs bg-primary | Ratio vs bg-secondary | Ratio vs bg-tertiary | Requirement | Pass |
+|---|---|---|---|---|---|---|
+| Text – primary | `#eaeaea` | 16.16:1 | 12.96:1 | 10.89:1 | 4.5:1 | Yes |
+| Text – secondary | `#a8a8a8` | 8.17:1 | 6.55:1 | 5.51:1 | 4.5:1 | Yes |
+| Text – muted (decorative) | `#b3b3b3` | 9.27:1 | 7.43:1 | 6.25:1 | 4.5:1 | Yes |
+| Border | `#999999` | 6.82:1 | 5.47:1 | 4.59:1 | 3:1 | Yes |
+| Border hover | `#b3b3b3` | 9.27:1 | 7.43:1 | 6.25:1 | 3:1 | Yes |
+| Accent | `#4a9eff` | 7.06:1 | 5.66:1 | 4.75:1 | 3:1 | Yes |
+| Error (component) | `#ef4444` | 5.16:1 | 4.14:1 | 3.48:1 | 3:1 | Yes |
+| Error (text on raised) | `#f94e4e` | 5.76:1 | 4.62:1 | 4.55:1 | 4.5:1 | Yes |
+| Warning | `#eab308` | 10.13:1 | 8.12:1 | 6.82:1 | 3:1 | Yes |
+| Success | `#22c55e` | 8.53:1 | 6.84:1 | 5.75:1 | 3:1 | Yes |
 
 `--color-text-muted` is decorative only and is never the sole carrier of information; conflict status always uses icons, labels, and patterns in addition to color (color-blind-safe alternative palette included in v1).
 
