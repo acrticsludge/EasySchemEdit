@@ -23,6 +23,15 @@ export {
   validateLayout,
 } from './layout-types.ts';
 
+export {
+  createLayoutController,
+} from './layout.ts';
+
+export type {
+  LayoutController,
+  LayoutControllerOptions,
+} from './layout.ts';
+
 export type {
   LayoutValidation,
   PanelConfig,
