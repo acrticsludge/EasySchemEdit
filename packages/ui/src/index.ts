@@ -49,6 +49,16 @@ export type {
 } from './inspector.ts';
 
 export {
+  createViewportOverlays,
+} from './viewport-overlays.ts';
+
+export type {
+  OverlayState,
+  OverlayType,
+  ViewportOverlays,
+} from './viewport-overlays.ts';
+
+export {
   createAssetLoadPanel,
 } from './asset-load-panel.ts';
 
