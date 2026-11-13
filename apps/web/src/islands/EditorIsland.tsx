@@ -279,7 +279,24 @@ export default function EditorIsland() {
     }
   }, []);
 
+  const undoStack = useRef<any[]>([]);
+  const redoStack = useRef<any[]>([]);
+
+  const saveUndoState = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+    const state = blockGroup.children.map((m: any) => ({
+      position: [m.position.x, m.position.y, m.position.z],
+      rotation: m.rotation.y,
+    }));
+    undoStack.current.push(state);
+    redoStack.current = [];
+  }, []);
+
   const handleTransform = useCallback((type: 'rotateY' | 'mirrorX' | 'mirrorZ' | 'delete') => {
+    saveUndoState();
     const scene = sceneRef.current;
     if (!scene) return;
     const blockGroup = scene.getObjectByName('blocks');
@@ -327,6 +344,8 @@ export default function EditorIsland() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) { e.preventDefault(); handleUndo(); return; }
+      if (e.ctrlKey && e.key === 'z' && e.shiftKey) { e.preventDefault(); handleRedo(); return; }
       if (e.key === 'r' || e.key === 'R') handleTransform('rotateY');
       else if (e.key === 'x' || e.key === 'X') handleTransform('mirrorX');
       else if (e.key === 'z' || e.key === 'Z') handleTransform('mirrorZ');
@@ -335,6 +354,56 @@ export default function EditorIsland() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleTransform]);
+
+  const handleUndo = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene || undoStack.current.length === 0) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+
+    // Save current state for redo
+    const currentState = blockGroup.children.map((m: any) => ({
+      position: [m.position.x, m.position.y, m.position.z],
+      rotation: m.rotation.y,
+    }));
+    redoStack.current.push(currentState);
+
+    // Restore previous state
+    const prevState = undoStack.current.pop();
+    blockGroup.children.forEach((mesh: any, i: number) => {
+      if (prevState[i]) {
+        mesh.position.set(prevState[i].position[0], prevState[i].position[1], prevState[i].position[2]);
+        mesh.rotation.y = prevState[i].rotation;
+      }
+    });
+    setSelectedCount(0);
+    selectedRef.current.clear();
+  }, []);
+
+  const handleRedo = useCallback(() => {
+    const scene = sceneRef.current;
+    if (!scene || redoStack.current.length === 0) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+
+    // Save current state for undo
+    const currentState = blockGroup.children.map((m: any) => ({
+      position: [m.position.x, m.position.y, m.position.z],
+      rotation: m.rotation.y,
+    }));
+    undoStack.current.push(currentState);
+
+    // Restore redo state
+    const redoState = redoStack.current.pop();
+    blockGroup.children.forEach((mesh: any, i: number) => {
+      if (redoState[i]) {
+        mesh.position.set(redoState[i].position[0], redoState[i].position[1], redoState[i].position[2]);
+        mesh.rotation.y = redoState[i].rotation;
+      }
+    });
+    setSelectedCount(0);
+    selectedRef.current.clear();
+  }, []);
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -371,6 +440,8 @@ export default function EditorIsland() {
         {selectedCount > 0 && <span style={{ fontSize: '12px', color: '#ffcc00' }}>Selected: {selectedCount}</span>}
         {selectedCount > 0 && (
           <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+            <button onClick={handleUndo} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Undo (Ctrl+Z)</button>
+            <button onClick={handleRedo} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Redo (Ctrl+Shift+Z)</button>
             <button onClick={() => handleTransform('rotateY')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Rotate (R)</button>
             <button onClick={() => handleTransform('mirrorX')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror X (X)</button>
             <button onClick={() => handleTransform('mirrorZ')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror Z (Z)</button>
