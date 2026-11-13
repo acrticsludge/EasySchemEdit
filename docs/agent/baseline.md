@@ -24,3 +24,27 @@ Generated: 2026-11-12
 
 ## Uncommitted pre-existing changes
 None. All staged/committed changes are author's own work.
+
+---
+
+# 2026-11-13 E2E Rebuild Baseline (Slice E0.2)
+
+Recorded: 2026-11-13  
+Reference Plan: `docs/plans/e2e-rebuild/index.md`
+
+## Git state
+- **Branch**: `e2e-rebuild`
+- **Base commit**: `1ee816b` (`fix(web): TypeScript errors - types, paths, worker types`)
+- **Untracked files prior to rebuild work**:
+  - `AGENTS.md` (agent policy and instructions)
+  - `CLAUDE.md` (agent pointer import)
+  - `docs/plans/e2e-rebuild/index.md` (full E2E rebuild plan)
+  - `docs/agent/e2e-survey.md` (implementation-depth survey)
+  - `fixtures/real/README.md` (instructions for user-provided real fixtures)
+
+## Pre-rebuild test and build status
+- **Standalone test scripts**: 62 test files pass individually using `node --experimental-strip-types` across packages (`packages/domain`, `packages/formats`, `packages/operations`, `packages/persistence`, `packages/renderer`, `apps/mcp-companion`).
+- **Root `pnpm test`**: Broken prior to slice E0.1 due to missing `tsx` dependency in root and Windows shell glob expansion failure in `package.json` (`node --import tsx --test packages/**/__tests__/*.test.ts`). Fixed in slice E0.1 via custom ESM test runner script `scripts/run-tests.mjs`.
+- **`apps/web` build (`pnpm --filter @easyschemedit/web build`)**: Broken prior to slice E0.1 due to non-existent module alias `packages/domain/src/index.ts` in `astro.config.mjs`, committed `.astro/` generated files causing Windows file lock / EPERM errors, and unlinked package imports. Fixed in slice E0.1.
+- **Root `pnpm typecheck`**: Incomplete prior to slice E0.1; skipped `operations`, `renderer`, `mcp-companion`, and `web`. Fixed in slice E0.1 to cover all 10 monorepo packages.
+
