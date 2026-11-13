@@ -81,4 +81,22 @@ Items here are unresolved; nothing here may be implemented as a guess.
   Verified live: 27/27 end-to-end checks in `apps/mcp-companion/scripts/live-e2e.sh`.
 - **Severity was:** Low.
 
+## D-8: Which spec owns the Agent Log panel's one-click undo?
+
+- **Context:** SPEC-G §6.4 lists the bottom panels including the Agent Log; SPEC-F §8.2 defines the
+  Agent Log's one-click undo and restricts it: "One-click Undo control shown only when operation has
+  valid undo entry, project revision still permits it, AND the associated operation is the latest
+  undoable action". SPEC-G does not restate that restriction.
+- **Question:** is the button a UI concern (SPEC-G renders it) or an MCP-companion concern (SPEC-F
+  decides when it is enabled), and which side enforces the rule?
+- **Options:** (a) SPEC-F is authoritative: the panel asks the companion's
+  `agent-log.isUndoAvailable(entryId, currentRevision)` and hides the control when false; (b) the UI
+  re-derives the rule locally from the log entry and the current revision; (c) both, with the UI
+  hiding it and the companion rejecting a stale undo.
+- **Recommended default:** (a) plus (c)'s defence in depth — the companion is the authority, and the
+  button is only rendered from its answer. Slice g-0 already exports
+  `AGENT_LOG_PANEL_UNDO_SOURCE` pointing at `agent-log.isUndoAvailable`.
+- **Evidence:** SPEC-G §6.4; SPEC-F §8.2 and acceptance item 23.
+- **Severity:** Low (a UI-only affordance, but a wrong reading would show an undo button that fails).
+
 
