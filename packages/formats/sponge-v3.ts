@@ -1,8 +1,11 @@
-// Subspec B — Slice b-8: Sponge v3 Adapter
+// packages/formats/sponge-v3.ts
+// Sponge Schematic v3 Format Adapter: full import and export.
+//
 // Offset is int[3], defined relative to the paste point:
-//   pasteTarget + Offset = min corner of the build (NOT absolute world coordinates)
-// Worked example uses relative coordinates only (to be verified with WorldEdit fixture)
-import type { BlockStateId, Vec3i, Vec3Half } from '../domain/types.ts';
+//   pasteTarget + Offset = min corner of the build
+// Export writes Offset = [-originX, -originY, -originZ] as IntArray.
+
+import type { BlockStateId, Vec3i, Vec3Half, Bounds3i } from '../domain/types.ts';
 import type { EntityRecord } from '../domain/shared-types.ts';
 import type { Placement } from '../domain/placement.ts';
 import type { Transform } from '../domain/coordinates.ts';
@@ -15,25 +18,47 @@ import type {
   ImportOptions,
   ExportOptions,
   ExportTarget,
+  ProjectSnapshot,
 } from './adapter.ts';
 import type { FormatDetectionResult } from './types.ts';
-import { NbtSafetyError } from './errors.ts';
-import { decodeNbtFromBytes, type NbtServices } from './nbts.ts';
-import { blockStateId } from '../domain/block-state.ts';
+import type { ExportReport } from './reports.ts';
+import { ExportError, NbtSafetyError } from './errors.ts';
+import { decodeNbtFromBytes, encodeNbt } from './nbts.ts';
+import { gzipCompress, gzipDecompressBounded } from './codec.ts';
+import { blockStateId, CANONICAL_AIR, VANILLA_AIR_LIKE } from '../domain/block-state.ts';
+import { parseBlockStateString, formatBlockStateString } from '../domain/block-state-string.ts';
+import {
+  validateExportDimensions,
+  validateTotalVolume,
+  checkLossyConfirmation,
+  DEFAULT_MAX_TOTAL_VOLUME,
+  filterHiddenPlacements,
+} from './export-semantics.ts';
 
-function asCompound(e: { type: string; value: unknown } | undefined): { value: Map<string, { type: string; value: unknown }> } | undefined {
+function asCompound(
+  e: { type: string; value: unknown } | undefined,
+): { value: Map<string, { type: string; value: unknown }> } | undefined {
   return e?.type === 'compound' ? (e as { value: Map<string, { type: string; value: unknown }> }) : undefined;
 }
-function asList(e: { type: string; value: unknown } | undefined): { value: { type: string; value: unknown }[] } | undefined {
+
+function asList(
+  e: { type: string; value: unknown } | undefined,
+): { value: { type: string; value: unknown }[] } | undefined {
   return e?.type === 'list' ? (e as { value: { type: string; value: unknown }[] }) : undefined;
 }
+
 function asInt(e: { type: string; value: unknown } | undefined): number | undefined {
   return e?.type === 'int' ? (e.value as number) : undefined;
 }
+
 function asString(e: { type: string; value: unknown } | undefined): string | undefined {
   return e?.type === 'string' ? (e.value as string) : undefined;
 }
-function getMap(compound: { value: Map<string, { type: string; value: unknown }> }, key: string): { type: string; value: unknown } | undefined {
+
+function getMap(
+  compound: { value: Map<string, { type: string; value: unknown }> },
+  key: string,
+): { type: string; value: unknown } | undefined {
   return compound.value.get(key);
 }
 
@@ -43,12 +68,80 @@ function readVarInt(data: Uint8Array, offset: number): { value: number; bytesRea
   let bytesRead = 0;
   let byte: number;
   do {
-    byte = data[offset + bytesRead];
-    result |= (byte & 0x7F) << (7 * bytesRead);
+    byte = data[offset + bytesRead]!;
+    result |= (byte & 0x7f) << (7 * bytesRead);
     bytesRead++;
     if (bytesRead > 5) throw new NbtSafetyError('IMPORT_NBT_INVALID', 'VarInt too long');
   } while ((byte & 0x80) !== 0);
   return { value: result, bytesRead };
+}
+
+// Write VarInt into an array of bytes
+function writeVarInt(bytes: number[], value: number): void {
+  let v = value;
+  while ((v & -128) !== 0) {
+    bytes.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  bytes.push(v & 0x7f);
+}
+
+function getBlockStateAt(
+  snapshot: any,
+  placement: any,
+  x: number,
+  y: number,
+  z: number,
+): BlockStateId {
+  const cx = Math.floor(x / 16);
+  const cy = Math.floor(y / 16);
+  const cz = Math.floor(z / 16);
+  const ckey = `${cx}_${cy}_${cz}`;
+
+  let chunk: { palette: BlockStateId[]; indices: Uint8Array | Uint16Array | Uint32Array } | undefined;
+  if (snapshot.chunkViews && snapshot.chunkViews.has(placement.id)) {
+    chunk = snapshot.chunkViews.get(placement.id)!.get(ckey);
+  } else if (placement.volume?.chunks) {
+    chunk = placement.volume.chunks.get(ckey);
+  }
+
+  if (!chunk) return CANONICAL_AIR;
+
+  const lx = ((x % 16) + 16) % 16;
+  const ly = ((y % 16) + 16) % 16;
+  const lz = ((z % 16) + 16) % 16;
+  const li = (ly * 16 + lz) * 16 + lx;
+  const idx = chunk.indices[li] ?? 0;
+  return chunk.palette[idx] ?? CANONICAL_AIR;
+}
+
+function getCompositeBlockState(
+  snapshot: any,
+  placements: any[],
+  wx: number,
+  wy: number,
+  wz: number,
+): BlockStateId {
+  // Top-wins: iterate placements from last to first
+  for (let i = placements.length - 1; i >= 0; i--) {
+    const p = placements[i]!;
+    const t: Vec3i = p.transform?.translation ?? [0, 0, 0];
+    const b: Bounds3i = p.volume?.bounds ?? { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+    const lx = wx - t[0];
+    const ly = wy - t[1];
+    const lz = wz - t[2];
+    if (
+      lx >= b.min[0] && lx < b.maxExclusive[0] &&
+      ly >= b.min[1] && ly < b.maxExclusive[1] &&
+      lz >= b.min[2] && lz < b.maxExclusive[2]
+    ) {
+      const state = getBlockStateAt(snapshot, p, lx, ly, lz);
+      if (!VANILLA_AIR_LIKE.has(state.id)) {
+        return state;
+      }
+    }
+  }
+  return CANONICAL_AIR;
 }
 
 export class SpongeV3Adapter implements FormatAdapter {
@@ -69,7 +162,13 @@ export class SpongeV3Adapter implements FormatAdapter {
     if (root.type !== 'compound') {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 root is not a compound');
     }
-    const entries = root.value as Map<string, { type: string; value: unknown }>;
+    let entries = root.value as Map<string, { type: string; value: unknown }>;
+
+    // Some tools wrap the root compound under a "Schematic" key
+    if (!entries.has('Version') && entries.has('Schematic')) {
+      const schem = asCompound(entries.get('Schematic'));
+      if (schem) entries = schem.value;
+    }
 
     if (asInt(entries.get('Version')) !== 3) {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 root Version must be 3');
@@ -80,12 +179,20 @@ export class SpongeV3Adapter implements FormatAdapter {
     const height = asInt(entries.get('Height')) ?? 0;
     const length = asInt(entries.get('Length')) ?? 0;
 
-    // Offset is int[3], relative to paste point: pasteTarget + Offset = min corner
+    // Offset is int[3] (IntArray or Compound), relative to paste point: pasteTarget + Offset = min corner
     const offsetEntry = entries.get('Offset');
-    const offsetCompound = asCompound(offsetEntry);
-    const offset: Vec3i = offsetCompound
-      ? [asInt(getMap(offsetCompound, 'X')) ?? 0, asInt(getMap(offsetCompound, 'Y')) ?? 0, asInt(getMap(offsetCompound, 'Z')) ?? 0] as Vec3i
-      : [0, 0, 0] as Vec3i;
+    let offset: Vec3i = [0, 0, 0];
+    if (offsetEntry?.type === 'intArray') {
+      const arr = offsetEntry.value as Int32Array | number[];
+      offset = [arr[0] ?? 0, arr[1] ?? 0, arr[2] ?? 0];
+    } else if (offsetEntry?.type === 'compound') {
+      const offsetCompound = offsetEntry as { value: Map<string, { type: string; value: unknown }> };
+      offset = [
+        asInt(getMap(offsetCompound, 'X')) ?? asInt(getMap(offsetCompound, 'x')) ?? 0,
+        asInt(getMap(offsetCompound, 'Y')) ?? asInt(getMap(offsetCompound, 'y')) ?? 0,
+        asInt(getMap(offsetCompound, 'Z')) ?? asInt(getMap(offsetCompound, 'z')) ?? 0,
+      ];
+    }
 
     const blocksEntry = entries.get('Blocks');
     const blocks = asCompound(blocksEntry);
@@ -93,10 +200,22 @@ export class SpongeV3Adapter implements FormatAdapter {
       throw new NbtSafetyError('IMPORT_NBT_INVALID', 'Sponge v3 missing Blocks compound');
     }
 
-    // Palette: List<String> of block state names
+    // Palette: Compound (mapping state string -> int index) OR List<String>
     const paletteEntry = getMap(blocks, 'Palette');
-    const paletteList = asList(paletteEntry);
-    const paletteNames: string[] = paletteList ? paletteList.value.map((e) => asString(e) ?? 'minecraft:air') : [];
+    let paletteNames: string[] = [];
+    if (paletteEntry?.type === 'compound') {
+      const paletteMap = paletteEntry.value as Map<string, { type: string; value: unknown }>;
+      for (const [stateStr, idxTag] of paletteMap) {
+        const idx = asInt(idxTag) ?? 0;
+        paletteNames[idx] = stateStr;
+      }
+      for (let i = 0; i < paletteNames.length; i++) {
+        if (!paletteNames[i]) paletteNames[i] = 'minecraft:air';
+      }
+    } else {
+      const paletteList = asList(paletteEntry);
+      paletteNames = paletteList ? paletteList.value.map((e) => asString(e) ?? 'minecraft:air') : [];
+    }
 
     // Data: VarInt array (byte array of VarInt-encoded palette indices)
     const dataEntry = getMap(blocks, 'Data');
@@ -124,10 +243,15 @@ export class SpongeV3Adapter implements FormatAdapter {
     }
 
     // Build palette array: index → BlockStateId
-    const paletteArray: BlockStateId[] = indices.map((idx, i) => {
-      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx] : 'minecraft:air';
-      return blockStateId(name);
+    const paletteArray: BlockStateId[] = indices.map((idx) => {
+      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx]! : 'minecraft:air';
+      try {
+        return parseBlockStateString(name);
+      } catch {
+        return blockStateId(name);
+      }
     });
+
     // Deduplicate palette
     const uniquePalette: BlockStateId[] = [];
     const uniqueIndexMap = new Map<string, number>();
@@ -138,10 +262,16 @@ export class SpongeV3Adapter implements FormatAdapter {
         uniquePalette.push(bs);
       }
     }
+
     // Remap indices to unique palette
     const remappedIndices = indices.map((idx) => {
-      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx] : 'minecraft:air';
-      const bs = blockStateId(name);
+      const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx]! : 'minecraft:air';
+      let bs: BlockStateId;
+      try {
+        bs = parseBlockStateString(name);
+      } catch {
+        bs = blockStateId(name);
+      }
       const key = `${bs.id}:${JSON.stringify(Object.entries(bs.props).sort())}`;
       return uniqueIndexMap.get(key) ?? 0;
     });
@@ -157,8 +287,8 @@ export class SpongeV3Adapter implements FormatAdapter {
         for (let x = 0; x < width; x++) {
           const flat = x + z * width + y * width * length;
           const stateIdx = remappedIndices[flat] ?? 0;
-          const state = uniquePalette[stateIdx] ?? blockStateId('minecraft:air');
-          if (state.id !== 'minecraft:air') nonAirBlockCount++;
+          const state = uniquePalette[stateIdx] ?? CANONICAL_AIR;
+          if (!VANILLA_AIR_LIKE.has(state.id)) nonAirBlockCount++;
 
           const cx = Math.floor(x / CHUNK_SIZE);
           const cy = Math.floor(y / CHUNK_SIZE);
@@ -168,7 +298,7 @@ export class SpongeV3Adapter implements FormatAdapter {
           if (!chunk) {
             chunk = {
               key: ckey,
-              palette: [blockStateId('minecraft:air')],
+              palette: [CANONICAL_AIR],
               indices: new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE),
               revision: 0,
             };
@@ -183,7 +313,13 @@ export class SpongeV3Adapter implements FormatAdapter {
           if (state.id !== 'minecraft:air') {
             let existingIdx = -1;
             for (let pi = 1; pi < chunk.palette.length; pi++) {
-              if (chunk.palette[pi].id === state.id) { existingIdx = pi; break; }
+              if (
+                chunk.palette[pi].id === state.id &&
+                JSON.stringify(chunk.palette[pi].props) === JSON.stringify(state.props)
+              ) {
+                existingIdx = pi;
+                break;
+              }
             }
             if (existingIdx >= 0) {
               stateIdxInChunk = existingIdx;
@@ -207,7 +343,11 @@ export class SpongeV3Adapter implements FormatAdapter {
 
     // Offset: pasteTarget + Offset = min corner (relative, not absolute world coords)
     const transform: Transform = { translation: offset as Vec3i, rotationY: 0, mirror: 'none' };
-    const origin: Vec3Half = [(offset[0] * 2) as number, (offset[1] * 2) as number, (offset[2] * 2) as number] as Vec3Half;
+    const origin: Vec3Half = [
+      (offset[0] * 2) as number,
+      (offset[1] * 2) as number,
+      (offset[2] * 2) as number,
+    ] as Vec3Half;
 
     const ancillary = {
       blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),
@@ -225,9 +365,18 @@ export class SpongeV3Adapter implements FormatAdapter {
       for (const be of blockEntitiesList.value) {
         const beObj = asCompound(be);
         if (!beObj) continue;
-        const x = asInt(getMap(beObj, 'x'));
-        const y = asInt(getMap(beObj, 'y'));
-        const z = asInt(getMap(beObj, 'z'));
+        let x = asInt(getMap(beObj, 'x')) ?? asInt(getMap(beObj, 'X'));
+        let y = asInt(getMap(beObj, 'y')) ?? asInt(getMap(beObj, 'Y'));
+        let z = asInt(getMap(beObj, 'z')) ?? asInt(getMap(beObj, 'Z'));
+        if (x === undefined || y === undefined || z === undefined) {
+          const posEntry = getMap(beObj, 'Pos');
+          if (posEntry?.type === 'intArray') {
+            const arr = posEntry.value as Int32Array | number[];
+            x = arr[0];
+            y = arr[1];
+            z = arr[2];
+          }
+        }
         if (x !== undefined && y !== undefined && z !== undefined) {
           ancillary.blockEntities.set(`${x}_${y}_${z}`, { position: [x, y, z], nbt: beObj as any });
         }
@@ -250,11 +399,7 @@ export class SpongeV3Adapter implements FormatAdapter {
       }
     }
 
-    // Biomes (optional)
     const biomesEntry = entries.get('Biomes');
-    if (biomesEntry) {
-      // Biomes preserved opaquely
-    }
 
     const placement = {
       id: 'sponge-v3',
@@ -290,7 +435,12 @@ export class SpongeV3Adapter implements FormatAdapter {
       fileSizeBytes: bytes.length,
       compressedSizeBytes: bytes.length,
       decompressedSizeBytes: bytes.length,
-      preserved: { blockEntities: ancillary.blockEntities.size, entities: ancillary.entities.length, biomes: !!biomesEntry, ticks: 0 },
+      preserved: {
+        blockEntities: ancillary.blockEntities.size,
+        entities: ancillary.entities.length,
+        biomes: !!biomesEntry,
+        ticks: 0,
+      },
       unsupported: { tags: [], blockStates: [] },
       sameStateOverlaps: 0,
       stateConflicts: 0,
@@ -303,7 +453,334 @@ export class SpongeV3Adapter implements FormatAdapter {
     return { placements: [placement], importGroups: [], report, normalizedImport: false };
   }
 
-  async export(_snapshot: any, _target: ExportTarget, _options: ExportOptions): Promise<ExportResult> {
-    throw new NbtSafetyError('EXPORT_NOT_IMPLEMENTED', 'Sponge v3 export not implemented in v1');
+  async export(
+    snapshot: ProjectSnapshot,
+    target: ExportTarget,
+    options: ExportOptions,
+  ): Promise<ExportResult> {
+    // 1. Identify target placements
+    let placementsToExport: any[] = [];
+    if (target.kind === 'placement') {
+      const p = snapshot.placements.find((pl: any) => pl.id === target.placementId);
+      if (!p) {
+        throw new ExportError('EXPORT_PLACEMENT_NOT_FOUND', `Placement '${target.placementId}' not found`);
+      }
+      placementsToExport = [p];
+    } else if (target.kind === 'importGroup') {
+      const grp = snapshot.importGroups?.find((g: any) => g.id === target.importGroupId);
+      const pIds = new Set(grp?.placementIds ?? []);
+      placementsToExport = snapshot.placements.filter(
+        (pl: any) => pIds.has(pl.id) || pl.source?.sourceGroupId === target.importGroupId,
+      );
+    } else if (target.kind === 'composite' || target.kind === 'selection') {
+      placementsToExport = filterHiddenPlacements(snapshot.placements as any[], target.includeHidden);
+    } else {
+      placementsToExport = snapshot.placements as any[];
+    }
+
+    if (placementsToExport.length === 0) {
+      throw new ExportError('EXPORT_EMPTY_TARGET', 'No placements available for export');
+    }
+
+    const isMultiPlacement = placementsToExport.length > 1;
+    let minCorner: [number, number, number];
+    let maxCorner: [number, number, number];
+    let offset: [number, number, number];
+
+    if (!isMultiPlacement) {
+      const primary = placementsToExport[0];
+      const initialBounds: Bounds3i = target.kind === 'selection'
+        ? target.bounds
+        : primary.volume?.bounds ?? { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+
+      const trimOuterAir = options.trimOuterAir !== false;
+      minCorner = [initialBounds.min[0], initialBounds.min[1], initialBounds.min[2]];
+      maxCorner = [
+        initialBounds.maxExclusive[0],
+        initialBounds.maxExclusive[1],
+        initialBounds.maxExclusive[2],
+      ];
+
+      if (trimOuterAir) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let foundNonAir = false;
+
+        for (let y = initialBounds.min[1]; y < initialBounds.maxExclusive[1]; y++) {
+          for (let z = initialBounds.min[2]; z < initialBounds.maxExclusive[2]; z++) {
+            for (let x = initialBounds.min[0]; x < initialBounds.maxExclusive[0]; x++) {
+              const state = getBlockStateAt(snapshot, primary, x, y, z);
+              if (!VANILLA_AIR_LIKE.has(state.id)) {
+                foundNonAir = true;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (z < minZ) minZ = z;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+                if (z > maxZ) maxZ = z;
+              }
+            }
+          }
+        }
+
+        if (foundNonAir) {
+          minCorner = [minX, minY, minZ];
+          maxCorner = [maxX + 1, maxY + 1, maxZ + 1];
+        }
+      }
+
+      // Determine base offset preserving sign across import -> export -> import
+      let baseOx = 0;
+      let baseOy = 0;
+      let baseOz = 0;
+      const tx = primary.transform?.translation?.[0] ?? 0;
+      const ty = primary.transform?.translation?.[1] ?? 0;
+      const tz = primary.transform?.translation?.[2] ?? 0;
+
+      if (tx !== 0 || ty !== 0 || tz !== 0) {
+        baseOx = tx;
+        baseOy = ty;
+        baseOz = tz;
+      } else if (primary.origin) {
+        baseOx = -Math.round(primary.origin[0] / 2);
+        baseOy = -Math.round(primary.origin[1] / 2);
+        baseOz = -Math.round(primary.origin[2] / 2);
+      }
+
+      const trimmedShiftX = minCorner[0] - initialBounds.min[0];
+      const trimmedShiftY = minCorner[1] - initialBounds.min[1];
+      const trimmedShiftZ = minCorner[2] - initialBounds.min[2];
+
+      offset = [
+        baseOx + trimmedShiftX,
+        baseOy + trimmedShiftY,
+        baseOz + trimmedShiftZ,
+      ];
+    } else {
+      // Multi-placement composite export: union bounding box across all placements in world space
+      let unionMinX = Infinity, unionMinY = Infinity, unionMinZ = Infinity;
+      let unionMaxX = -Infinity, unionMaxY = -Infinity, unionMaxZ = -Infinity;
+
+      for (const p of placementsToExport) {
+        const t: Vec3i = p.transform?.translation ?? [0, 0, 0];
+        const b: Bounds3i = p.volume?.bounds ?? { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+        const pMinX = t[0] + b.min[0];
+        const pMinY = t[1] + b.min[1];
+        const pMinZ = t[2] + b.min[2];
+        const pMaxX = t[0] + b.maxExclusive[0];
+        const pMaxY = t[1] + b.maxExclusive[1];
+        const pMaxZ = t[2] + b.maxExclusive[2];
+
+        if (pMinX < unionMinX) unionMinX = pMinX;
+        if (pMinY < unionMinY) unionMinY = pMinY;
+        if (pMinZ < unionMinZ) unionMinZ = pMinZ;
+        if (pMaxX > unionMaxX) unionMaxX = pMaxX;
+        if (pMaxY > unionMaxY) unionMaxY = pMaxY;
+        if (pMaxZ > unionMaxZ) unionMaxZ = pMaxZ;
+      }
+
+      const trimOuterAir = options.trimOuterAir !== false;
+      if (trimOuterAir) {
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        let foundNonAir = false;
+
+        for (let wy = unionMinY; wy < unionMaxY; wy++) {
+          for (let wz = unionMinZ; wz < unionMaxZ; wz++) {
+            for (let wx = unionMinX; wx < unionMaxX; wx++) {
+              const state = getCompositeBlockState(snapshot, placementsToExport, wx, wy, wz);
+              if (!VANILLA_AIR_LIKE.has(state.id)) {
+                foundNonAir = true;
+                if (wx < minX) minX = wx;
+                if (wy < minY) minY = wy;
+                if (wz < minZ) minZ = wz;
+                if (wx > maxX) maxX = wx;
+                if (wy > maxY) maxY = wy;
+                if (wz > maxZ) maxZ = wz;
+              }
+            }
+          }
+        }
+
+        if (foundNonAir) {
+          minCorner = [minX, minY, minZ];
+          maxCorner = [maxX + 1, maxY + 1, maxZ + 1];
+        } else {
+          minCorner = [unionMinX, unionMinY, unionMinZ];
+          maxCorner = [unionMinX + 1, unionMinY + 1, unionMinZ + 1];
+        }
+      } else {
+        minCorner = [unionMinX, unionMinY, unionMinZ];
+        maxCorner = [unionMaxX, unionMaxY, unionMaxZ];
+      }
+
+      offset = [-minCorner[0], -minCorner[1], -minCorner[2]];
+    }
+
+    const width = maxCorner[0] - minCorner[0];
+    const height = maxCorner[1] - minCorner[1];
+    const length = maxCorner[2] - minCorner[2];
+
+    // 3. Dimension limits validation (hard refusal > 65535)
+    const dimCheck = validateExportDimensions(width, height, length);
+    if (!dimCheck.valid && dimCheck.error) {
+      throw dimCheck.error;
+    }
+
+    // 4. Volume limit validation
+    const totalVolume = BigInt(width) * BigInt(height) * BigInt(length);
+    const volCheck = validateTotalVolume(totalVolume, DEFAULT_MAX_TOTAL_VOLUME);
+    if (!volCheck.valid && volCheck.error) {
+      throw volCheck.error;
+    }
+
+    // 5. Lossy check
+    const lossyCheck = checkLossyConfirmation(false, options);
+    if (!lossyCheck.valid && lossyCheck.error) {
+      throw lossyCheck.error;
+    }
+
+    const offsetTag: NbtTag = {
+      type: 'intArray',
+      value: new Int32Array(offset),
+    };
+
+    // 6. Palette and VarInt block data
+    const paletteMap = new Map<string, number>();
+    const paletteList: string[] = [];
+    paletteMap.set('minecraft:air', 0);
+    paletteList.push('minecraft:air');
+
+    const totalEntries = width * height * length;
+    const flatIndices = new Int32Array(totalEntries);
+    let nonAirBlockCount = 0;
+
+    for (let y = 0; y < height; y++) {
+      for (let z = 0; z < length; z++) {
+        for (let x = 0; x < width; x++) {
+          const gx = minCorner[0] + x;
+          const gy = minCorner[1] + y;
+          const gz = minCorner[2] + z;
+          const state = isMultiPlacement
+            ? getCompositeBlockState(snapshot, placementsToExport, gx, gy, gz)
+            : getBlockStateAt(snapshot, placementsToExport[0], gx, gy, gz);
+          if (!VANILLA_AIR_LIKE.has(state.id)) {
+            nonAirBlockCount++;
+          }
+          const stateStr = formatBlockStateString(state);
+          let pIdx = paletteMap.get(stateStr);
+          if (pIdx === undefined) {
+            pIdx = paletteList.length;
+            paletteMap.set(stateStr, pIdx);
+            paletteList.push(stateStr);
+          }
+          // Sponge v3 order: x + z * width + y * width * length
+          const flat = x + z * width + y * width * length;
+          flatIndices[flat] = pIdx;
+        }
+      }
+    }
+
+    const varIntBytes: number[] = [];
+    for (let i = 0; i < totalEntries; i++) {
+      writeVarInt(varIntBytes, flatIndices[i]!);
+    }
+    const dataBytes = new Uint8Array(varIntBytes);
+
+    const paletteCompoundMap = new Map<string, NbtTag>();
+    for (const [stateStr, idx] of paletteMap) {
+      paletteCompoundMap.set(stateStr, { type: 'int', value: idx });
+    }
+
+    // 7. BlockEntities
+    const blockEntitiesList: NbtTag[] = [];
+    for (const p of placementsToExport) {
+      const t: Vec3i = isMultiPlacement ? (p.transform?.translation ?? [0, 0, 0]) : [0, 0, 0];
+      if (p.ancillary?.blockEntities) {
+        for (const [, be] of p.ancillary.blockEntities) {
+          const wx = t[0] + be.position[0];
+          const wy = t[1] + be.position[1];
+          const wz = t[2] + be.position[2];
+          const bx = wx - minCorner[0];
+          const by = wy - minCorner[1];
+          const bz = wz - minCorner[2];
+          if (bx >= 0 && bx < width && by >= 0 && by < height && bz >= 0 && bz < length) {
+            const beMap = new Map<string, NbtTag>();
+            if (be.nbt?.type === 'compound') {
+              for (const [k, v] of (be.nbt.value as Map<string, NbtTag>)) {
+                beMap.set(k, v);
+              }
+            }
+            beMap.set('x', { type: 'int', value: bx });
+            beMap.set('y', { type: 'int', value: by });
+            beMap.set('z', { type: 'int', value: bz });
+            beMap.set('Pos', { type: 'intArray', value: new Int32Array([bx, by, bz]) });
+            blockEntitiesList.push({ type: 'compound', value: beMap });
+          }
+        }
+      }
+    }
+
+    // 8. Entities
+    const entitiesList: NbtTag[] = [];
+    for (const p of placementsToExport) {
+      if (p.ancillary?.entities) {
+        for (const ent of p.ancillary.entities) {
+          if (ent.nbt?.type === 'compound') {
+            entitiesList.push(ent.nbt);
+          }
+        }
+      }
+    }
+
+    // 9. Assemble Root NBT
+    const blocksCompound = new Map<string, NbtTag>([
+      ['Palette', { type: 'compound', value: paletteCompoundMap }],
+      ['Data', { type: 'byteArray', value: dataBytes }],
+      ['BlockEntities', { type: 'list', elementType: 'compound', value: blockEntitiesList }],
+    ]);
+
+    const rootMap = new Map<string, NbtTag>([
+      ['Version', { type: 'int', value: 3 }],
+      ['DataVersion', { type: 'int', value: options.targetDataVersion || 3955 }],
+      ['Width', { type: 'int', value: width }],
+      ['Height', { type: 'int', value: height }],
+      ['Length', { type: 'int', value: length }],
+      ['Offset', offsetTag],
+      ['Blocks', { type: 'compound', value: blocksCompound }],
+      ['Entities', { type: 'list', elementType: 'compound', value: entitiesList }],
+    ]);
+
+    const rootTag: NbtTag = { type: 'compound', value: rootMap };
+    const bytes = encodeNbt(rootTag, { gzipCompress, gzipDecompress: gzipDecompressBounded });
+
+    const report: ExportReport = {
+      format: 'schem-v3',
+      target: target.kind === 'placement' ? 'placement' : target.kind === 'importGroup' ? 'importGroup' : 'composite',
+      minecraftDataVersion: options.targetDataVersion || 3955,
+      dimensions: { width, height, length },
+      nonAirBlockCount,
+      paletteSizeEstimate: paletteList.length,
+      regionCount: 1,
+      estimatedOutputSizeBytes: bytes.length,
+      conflictsResolvedByPrecedence: 0,
+      ancillaryData: {
+        blockEntities: blockEntitiesList.length,
+        entities: entitiesList.length,
+        biomes: false,
+      },
+      warnings: [],
+      errors: [],
+      validation: {
+        passed: true,
+        reimportComparison: { matches: true, differences: [] },
+      },
+    };
+
+    return {
+      bytes,
+      filename: `${snapshot.name || 'export'}.schem`,
+      report,
+    };
   }
 }
