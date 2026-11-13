@@ -53,3 +53,27 @@ export type {
   ShortcutRegistryApi,
   ShortcutResolution,
 } from './shortcut-types.ts';
+
+export {
+  COLOR_TOKENS,
+  SPACING_TOKENS,
+  SURFACE_TOKENS,
+  REQUIRED_CONTRAST,
+  TEXT_TOKEN_PAIRS,
+  COMPONENT_TOKEN_PAIRS,
+  contrastFailures,
+  contrastRatio,
+  relativeLuminance,
+  requiredContrastFor,
+  toCssCustomProperties,
+  toCssRootBlock,
+  verifyTokenContrast,
+} from './design-tokens.ts';
+
+export type {
+  ColorTokens,
+  ContrastPair,
+  ContrastRequirement,
+  ContrastResult,
+  TokenName,
+} from './design-tokens.ts';

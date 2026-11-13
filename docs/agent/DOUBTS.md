@@ -99,4 +99,30 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Evidence:** SPEC-G §6.4; SPEC-F §8.2 and acceptance item 23.
 - **Severity:** Low (a UI-only affordance, but a wrong reading would show an undo button that fails).
 
+## D-9: SPEC-G §1.5 contrast ratios are all misstated, and one token fails AA on a raised surface
+
+- **Context:** `docs/specs/subs/SUBSPEC-G_UI_INTERACTION.md` §1.5 gives a design-token table with a
+  claimed contrast ratio per token, "verified against `--color-bg-primary`". Computing them with the
+  WCAG 2.2 relative-luminance formula (the implementation in `packages/ui/src/design-tokens.ts`)
+  disagrees with **every** stated figure:
+  text-primary claimed ~14:1 → **16.16:1**; text-secondary ~5.6 → **8.17**; border ~4.6 → **6.82**;
+  border-hover ~5.8 → **9.27**; accent ~4.7 → **7.06**; error ~7.4 → **5.16**; warning ~10.7 → **10.13**;
+  success ~10.2 → **8.53**. The stated bg-primary luminance (~0.018) measures **0.004**.
+  No token fails because of this — the errors are conservative in direction — but the table cannot be
+  trusted as a verification record.
+- **Second, material:** §1.5 verifies only against `--color-bg-primary`, yet the UI has three
+  surfaces. `--color-error` (`#ef4444`) used as **text** on `--color-bg-tertiary` (`#252525`, the
+  hovered/active surface) measures **4.07:1**, below the 4.5:1 normal-text requirement. This is a real
+  AA failure in a common state (error text on a hovered row).
+- **Question for the spec owner:** (a) correct the §1.5 ratio column to the computed values and add
+  the missing surface pairs; (b) additionally adopt a text-safe error token for raised surfaces.
+- **What was implemented without waiting:** (b) only, additively. `--color-error` keeps its locked
+  value and its 3:1 component use; the slice adds `--color-error-text: #f94e4e` (minimal lightening of
+  the same hue, **4.55:1** on bg-tertiary, 5.76:1 on bg-primary) for error text. The spec table itself
+  is untouched, and the failing pair is asserted as failing so it stays visible.
+- **Evidence:** SPEC-G §1.5 (token table and its ratio column); computed with
+  `relativeLuminance`/`contrastRatio` in `packages/ui/src/design-tokens.ts`; test
+  `slice-g-3-design-tokens.test.ts` pins every measured value.
+- **Severity:** Medium (a genuine AA failure in a normal interaction state).
+
 
