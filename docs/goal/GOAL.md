@@ -86,7 +86,8 @@ Keep progress.md current (done, next, blockers). Short status updates, no paddin
 - Coordinate transform fixes: origin now used in localBlockToWorld/placementWorldBounds/localPointToLocal; rotateAboutPoint math corrected; all tests pass
 - Phase 2 (H foundation): COMPLETE — all 7 slices done (h-0 pnpm workspaces, h-1 Astro shell, h-2 Cloudflare Workers, h-3 MCP companion, h-4 asset pipeline, h-5 IndexedDB persistence, h-6 Web Workers, h-7 CI/CD pipeline)
 - Phase 2 (subplan-c planning): research gate + index.md complete; slices c-0 through c-10 COMPLETE (packages/persistence, 10/10 slices, acceptance tests pass)
-- Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c COMPLETE, subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15), subplan-f f-0..f-7 complete (f-7 destructive protocol: 89 assertions PASS, tsc clean); subplan-f f-8..f-12 pending
-- Subplan-C..G planning: COMPLETE — subplan-c (11 slices), subplan-d (13 slices), subplan-e (15 slices), subplan-f (13 slices), subplan-g (16 slices) all have research gates + index + slice-0 specs
-- Phase 3 audits: COMPLETE — subplan-a Green, subplan-b Yellow, subplan-c through h Red (docs/audits/subplan-a-round-1.md through subplan-h-round-1.md)
-- Git: master @ 6b75123, pushed to origin/master, working tree clean on entry (uncommitted f-7 draft files: `apps/mcp-companion/src/destructive-protocol.ts` stub, `docs/plans/subplan-f/slice-f-7.md`)
+- Phase 4: implement incrementally (H foundation done, then A..G domain/formats/operations/renderer, then H release/deployment) — IN PROGRESS: subplan-c COMPLETE, subplan-d COMPLETE (14/14), subplan-e COMPLETE (15/15), subplan-f implemented (f-0..f-13: 639 unit assertions + 27 live HTTP checks, acceptance 15/25 PASS / 10 BLOCKED); subplan-g pending planning
+- Phase 4 build hygiene: all 8 packages now pass `tsc --noEmit` via one tsconfig rule (`allowImportingTsExtensions` + `noEmit`); `build`/`typecheck` scripts made consistent (was: every package failed its own `build` with TS5096)
+- Subplan-C..G planning: COMPLETE per index — subplan-c (11), d (13), e (15), f (14), g (16) — BUT only `slice-g-0.md` exists for subplan-g; the other 15 g-slices were never written, so g-planning must be re-done
+- Phase 3 audits: COMPLETE round 1 (a Green, b Yellow, c-h Red) + subplan-f round 2 (Yellow: PF-1 partial, PF-2 closed by f-13, PF-3/4/5 closed)
+- Git: master @ 6790219, working tree clean
