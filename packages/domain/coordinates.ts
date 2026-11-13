@@ -139,30 +139,45 @@ export function placementWorldBounds(
   const { transform, volume, origin } = placement;
   const { min, maxExclusive } = volume.bounds;
 
+  if (min[0] >= maxExclusive[0] || min[1] >= maxExclusive[1] || min[2] >= maxExclusive[2]) {
+    return { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+  }
+
+  const corners: Vec3i[] = [
+    [min[0], min[1], min[2]],
+    [maxExclusive[0] - 1, min[1], min[2]],
+    [min[0], maxExclusive[1] - 1, min[2]],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, min[2]],
+    [min[0], min[1], maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, min[1], maxExclusive[2] - 1],
+    [min[0], maxExclusive[1] - 1, maxExclusive[2] - 1],
+    [maxExclusive[0] - 1, maxExclusive[1] - 1, maxExclusive[2] - 1],
+  ];
+
   let minX = Infinity, minY = Infinity, minZ = Infinity;
   let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
-  for (let y = min[1]; y < maxExclusive[1]; y++) {
-    for (let z = min[2]; z < maxExclusive[2]; z++) {
-      for (let x = min[0]; x < maxExclusive[0]; x++) {
-        const result = mapCellToWorld(
-          transform.translation,
-          origin,
-          transform.rotationY,
-          transform.mirror,
-          [x, y, z],
-        );
-        if (result.valid && result.worldBlock) {
-          const [wx, wy, wz] = result.worldBlock;
-          if (wx < minX) minX = wx;
-          if (wy < minY) minY = wy;
-          if (wz < minZ) minZ = wz;
-          if (wx > maxX) maxX = wx;
-          if (wy > maxY) maxY = wy;
-          if (wz > maxZ) maxZ = wz;
-        }
-      }
+  for (const c of corners) {
+    const result = mapCellToWorld(
+      transform.translation,
+      origin,
+      transform.rotationY,
+      transform.mirror,
+      c,
+    );
+    if (result.valid && result.worldBlock) {
+      const [wx, wy, wz] = result.worldBlock;
+      if (wx < minX) minX = wx;
+      if (wy < minY) minY = wy;
+      if (wz < minZ) minZ = wz;
+      if (wx > maxX) maxX = wx;
+      if (wy > maxY) maxY = wy;
+      if (wz > maxZ) maxZ = wz;
     }
+  }
+
+  if (minX === Infinity) {
+    return { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
   }
 
   return {
@@ -249,9 +264,9 @@ export function worldPointToLocal(
   const [mx, my, mz] = applyMirror(rx, ry, rz, transform.mirror);
 
   // localCenter = origin + d_unmirrored
-  const localCenterX = origin[0] + mx;
-  const localCenterY = origin[1] + my;
-  const localCenterZ = origin[2] + mz;
+  const localCenterX = origin[0] / 2 + mx;
+  const localCenterY = origin[1] / 2 + my;
+  const localCenterZ = origin[2] / 2 + mz;
 
   // Convert center back to block coordinate: subtract [0.5, 0.5, 0.5]
   return [localCenterX - 0.5, localCenterY - 0.5, localCenterZ - 0.5] as Vec3d;

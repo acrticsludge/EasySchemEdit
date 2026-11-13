@@ -24,6 +24,22 @@ export type {
 export type {
   Transform,
 } from './coordinates.ts';
+export {
+  floorDiv,
+  euclideanMod,
+  worldToChunkCoord,
+  localInChunk,
+  chunkKey,
+  applyRotation,
+  applyMirror,
+  mapCellToWorld,
+  isLatticeSafe,
+  localBlockToWorld,
+  placementWorldBounds,
+  rotateAboutPoint,
+  localPointToWorld,
+  worldPointToLocal,
+} from './coordinates.ts';
 
 export type {
   Placement,

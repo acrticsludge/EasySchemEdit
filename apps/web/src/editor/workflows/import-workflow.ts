@@ -3,11 +3,12 @@
 // Manages pending schematic import, format inspection, ghost cursor preview,
 // ground snap, rotation/mirror transformations, and transactional placement commit/undo.
 
-import type {
-  Bounds3i,
-  Placement,
-  Vec3Half,
-  Vec3i,
+import {
+  placementWorldBounds,
+  type Bounds3i,
+  type Placement,
+  type Vec3Half,
+  type Vec3i,
 } from '@easyschemedit/domain';
 import {
   importSchematic,
@@ -265,9 +266,10 @@ export class ImportWorkflowController {
       // Initialize base placements and anchor for ghost preview
       this.basePlacements = output.placements.map((p) => this.clonePlacement(p));
       if (this.basePlacements.length > 0) {
-        const minX = Math.min(...this.basePlacements.map((p) => p.transform.translation[0]));
-        const minY = Math.min(...this.basePlacements.map((p) => p.transform.translation[1]));
-        const minZ = Math.min(...this.basePlacements.map((p) => p.transform.translation[2]));
+        const boundsList = this.basePlacements.map((p) => placementWorldBounds(p));
+        const minX = Math.min(...boundsList.map((b) => b.min[0]));
+        const minY = Math.min(...boundsList.map((b) => b.min[1]));
+        const minZ = Math.min(...boundsList.map((b) => b.min[2]));
         this.baseAnchor = [minX, minY, minZ];
       } else {
         this.baseAnchor = [0, 0, 0];

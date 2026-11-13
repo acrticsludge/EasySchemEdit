@@ -29,6 +29,7 @@ import {
   applyMirror,
   placementWorldBounds,
   mapCellToWorld,
+  worldPointToLocal,
 } from '../../domain/coordinates.ts';
 import { resolveBlockAt, type EffectiveBlockResult } from '../../domain/effective-block.ts';
 import { getBlock, setBlock } from '../../domain/volume-api.ts';
@@ -447,6 +448,22 @@ function isNonVoxelMutatingCommand(type: string): boolean {
   return false;
 }
 
+function isRegionVoxelCommand(type: string): boolean {
+  const norm = normalizeType(type);
+  return (
+    norm === 'region:fill' ||
+    norm === 'fill' ||
+    norm === 'region:replace' ||
+    norm === 'replace' ||
+    norm === 'region:delete' ||
+    norm === 'delete' ||
+    norm === 'region:hollow' ||
+    norm === 'hollow' ||
+    norm === 'region:walls' ||
+    norm === 'walls'
+  );
+}
+
 function mapHistoryType(cmdType: string): HistoryEntryType {
   const norm = normalizeType(cmdType);
   if (norm.includes('paste')) return 'paste';
@@ -574,10 +591,19 @@ export class EditorSession {
     }
 
     // 3. Snapshot before mutation for rollback atomicity & delta computation
-    const prevProject = isNonVoxelMutatingCommand(cmd.type)
+    const isRegion = isRegionVoxelCommand(cmd.type) && !!(cmd as { bounds?: Bounds3i }).bounds;
+    const prevProject = (isNonVoxelMutatingCommand(cmd.type) || isRegion)
       ? cloneProjectShallow(this.project)
       : cloneProject(this.project);
     const selectionBefore = { ...this.selection };
+
+    if (isRegion) {
+      const bounds = (cmd as { bounds: Bounds3i }).bounds;
+      const targetPlacementId =
+        (cmd as { targetPlacementId?: string; placementId?: string }).targetPlacementId ??
+        (cmd as { targetPlacementId?: string; placementId?: string }).placementId;
+      this.preparePlacementsForRegionOperation(bounds, targetPlacementId);
+    }
 
     try {
       // 4. Dispatch and execute command
@@ -1365,7 +1391,7 @@ export class EditorSession {
       // Validate lock status for intersecting placements
       for (const p of this.project.placements) {
         if (targetPlacementId && p.id !== targetPlacementId) continue;
-        const pb = placementWorldBounds(p);
+        const pb = fastPlacementWorldBounds(p);
         if (boundsIntersect3i(bounds, pb) && p.locked) {
           return lockedError(p.id, norm);
         }
@@ -1478,7 +1504,7 @@ export class EditorSession {
       // Validate lock
       if (sel.kind === 'cuboid') {
         for (const p of this.project.placements) {
-          const pb = placementWorldBounds(p);
+          const pb = fastPlacementWorldBounds(p);
           if (boundsIntersect3i(sel.bounds, pb) && p.locked) {
             return lockedError(p.id, 'cut');
           }
@@ -1578,6 +1604,94 @@ export class EditorSession {
   // ==========================================================================
   // Delta & Event Computing
   // ==========================================================================
+
+  private preparePlacementsForRegionOperation(bounds: Bounds3i, targetPlacementId?: string): void {
+    if (
+      bounds.min[0] >= bounds.maxExclusive[0] ||
+      bounds.min[1] >= bounds.maxExclusive[1] ||
+      bounds.min[2] >= bounds.maxExclusive[2]
+    ) {
+      return;
+    }
+
+    for (const p of this.project.placements) {
+      if (targetPlacementId && p.id !== targetPlacementId) continue;
+      const pb = fastPlacementWorldBounds(p);
+      if (!boundsIntersect3i(bounds, pb)) continue;
+
+      // Transform corners of bounds into local block coordinates
+      const bMin = bounds.min;
+      const bMax = bounds.maxExclusive;
+      const corners: [number, number, number][] = [
+        [bMin[0], bMin[1], bMin[2]],
+        [bMax[0] - 1, bMin[1], bMin[2]],
+        [bMin[0], bMax[1] - 1, bMin[2]],
+        [bMax[0] - 1, bMax[1] - 1, bMin[2]],
+        [bMin[0], bMin[1], bMax[2] - 1],
+        [bMax[0] - 1, bMin[1], bMax[2] - 1],
+        [bMin[0], bMax[1] - 1, bMax[2] - 1],
+        [bMax[0] - 1, bMax[1] - 1, bMax[2] - 1],
+      ];
+
+      let locMinX = Infinity;
+      let locMinY = Infinity;
+      let locMinZ = Infinity;
+      let locMaxX = -Infinity;
+      let locMaxY = -Infinity;
+      let locMaxZ = -Infinity;
+
+      for (const corner of corners) {
+        const [lx, ly, lz] = worldPointToLocal(p, corner);
+        if (lx < locMinX) locMinX = lx;
+        if (ly < locMinY) locMinY = ly;
+        if (lz < locMinZ) locMinZ = lz;
+        if (lx > locMaxX) locMaxX = lx;
+        if (ly > locMaxY) locMaxY = ly;
+        if (lz > locMaxZ) locMaxZ = lz;
+      }
+
+      // Expand by 1 chunk on each side so edge/rounding is always safely covered
+      const minChunkX = Math.floor(locMinX / 16) - 1;
+      const maxChunkX = Math.floor(locMaxX / 16) + 1;
+      const minChunkY = Math.floor(locMinY / 16) - 1;
+      const maxChunkY = Math.floor(locMaxY / 16) + 1;
+      const minChunkZ = Math.floor(locMinZ / 16) - 1;
+      const maxChunkZ = Math.floor(locMaxZ / 16) + 1;
+
+      // Replace placement volume with fresh shallow copy (new chunks Map)
+      p.volume = {
+        ...p.volume,
+        bounds: {
+          min: [...p.volume.bounds.min] as Vec3i,
+          maxExclusive: [...p.volume.bounds.maxExclusive] as Vec3i,
+        },
+        chunks: new Map(p.volume.chunks),
+      };
+
+      for (const [key, chunk] of p.volume.chunks) {
+        const parts = key.split('_');
+        const cx = Number(parts[0]);
+        const cy = Number(parts[1]);
+        const cz = Number(parts[2]);
+
+        if (
+          cx >= minChunkX &&
+          cx <= maxChunkX &&
+          cy >= minChunkY &&
+          cy <= maxChunkY &&
+          cz >= minChunkZ &&
+          cz <= maxChunkZ
+        ) {
+          p.volume.chunks.set(key, {
+            key: chunk.key,
+            palette: chunk.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
+            indices: chunk.indices.slice(),
+            revision: chunk.revision,
+          });
+        }
+      }
+    }
+  }
 
   private computeDeltas(
     prevProject: Project,
@@ -1696,6 +1810,7 @@ export class EditorSession {
             changedPlacementIds.add(id);
             computedCellDiffs += cc.indices.length;
           } else {
+            if (pc === cc) continue;
             const indEq = areIndicesEqual(pc.indices, cc.indices);
             const palEq = arePalettesEqual(pc.palette, cc.palette);
             if (!indEq || !palEq) {

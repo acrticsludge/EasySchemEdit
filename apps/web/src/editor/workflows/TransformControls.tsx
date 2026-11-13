@@ -877,7 +877,10 @@ export function TransformControls({
             type="button"
             data-testid="btn-duplicate"
             disabled={isLocked}
-            onClick={() => controller.duplicatePlacement(currentPlacement.id, [1, 0, 1])}
+            onClick={() => {
+              const width = Math.max(1, currentPlacement.volume.bounds.maxExclusive[0] - currentPlacement.volume.bounds.min[0]) + 1;
+              controller.duplicatePlacement(currentPlacement.id, [width, 0, 0]);
+            }}
             style={buttonStyle(isLocked)}
           >
             Duplicate

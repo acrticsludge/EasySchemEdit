@@ -36,7 +36,7 @@ export class ViewportCameraController {
 
   // Bounds limits
   private minDistance = 1;
-  private maxDistance = 2000;
+  private maxDistance = 10000;
 
   constructor(options?: {
     mode?: CameraMode;
@@ -108,7 +108,7 @@ export class ViewportCameraController {
   }
 
   public setFlySpeed(speed: number): void {
-    this.flySpeed = Math.max(1, Math.min(200, speed));
+    this.flySpeed = Math.max(2, Math.min(200, speed));
   }
 
   public adjustFlySpeed(delta: number): void {
@@ -200,7 +200,17 @@ export class ViewportCameraController {
    */
   public zoom(delta: number): void {
     const factor = Math.exp(-delta * 0.0015);
-    this.setDistance(this.distance * factor);
+    const rawNext = this.distance * factor;
+    if (delta > 0 && rawNext < this.minDistance) {
+      this.distance = this.minDistance;
+      const fwd = this.getForwardVector();
+      const push = Math.max(0.25, delta * 0.015);
+      this.target[0] += fwd[0] * push;
+      this.target[1] += fwd[1] * push;
+      this.target[2] += fwd[2] * push;
+    } else {
+      this.setDistance(rawNext);
+    }
   }
 
   /**

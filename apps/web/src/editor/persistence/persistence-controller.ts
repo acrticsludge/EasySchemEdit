@@ -590,7 +590,7 @@ export class ProjectPersistenceController {
     for (const p of currentPlacements) {
       if (p.locked) {
         await this.store.execute({
-          type: 'placement:set-locked',
+          type: 'placement:setLocked',
           placementId: p.id,
           locked: false,
         });

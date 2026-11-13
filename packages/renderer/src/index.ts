@@ -173,6 +173,9 @@ export type {
 
 export {
   resolveBlockModels,
+  resolveBlockModel,
+  getFluidBaseName,
+  createFluidModelPart,
   normalizeResourceLocation,
   createMissingModelPart,
   computeDefaultUv,
@@ -201,6 +204,8 @@ export {
   rotateDirection,
   isOpaqueFullCube,
   shouldCullFace,
+  FACE_SHADE,
+  getFluidFamily,
 } from './chunk-mesher.ts';
 
 

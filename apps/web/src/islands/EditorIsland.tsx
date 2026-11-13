@@ -97,6 +97,17 @@ export default function EditorIsland() {
           const blob = new Blob([pngBytes as unknown as BlobPart], { type: 'image/png' });
           const bmp = await createImageBitmap(blob);
           ctx.drawImage(bmp, 0, 0, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
+
+          // Extrude 1px border into atlas padding gutter to prevent edge bleeding
+          ctx.drawImage(bmp, 0, 0, 1, rect.h, rect.x - 1, rect.y, 1, rect.h);
+          ctx.drawImage(bmp, rect.w - 1, 0, 1, rect.h, rect.x + rect.w, rect.y, 1, rect.h);
+          ctx.drawImage(bmp, 0, 0, rect.w, 1, rect.x, rect.y - 1, rect.w, 1);
+          ctx.drawImage(bmp, 0, rect.h - 1, rect.w, 1, rect.x, rect.y + rect.h, rect.w, 1);
+          ctx.drawImage(bmp, 0, 0, 1, 1, rect.x - 1, rect.y - 1, 1, 1);
+          ctx.drawImage(bmp, rect.w - 1, 0, 1, 1, rect.x + rect.w, rect.y - 1, 1, 1);
+          ctx.drawImage(bmp, 0, rect.h - 1, 1, 1, rect.x - 1, rect.y + rect.h, 1, 1);
+          ctx.drawImage(bmp, rect.w - 1, rect.h - 1, 1, 1, rect.x + rect.w, rect.y + rect.h, 1, 1);
+
           bmp.close();
         } catch {
           // Ignore individual unreadable texture
@@ -156,6 +167,19 @@ export default function EditorIsland() {
     },
     [runtime]
   );
+
+  useEffect(() => {
+    const placements = sessionState.project.placements;
+    if (!selectedPlacementId && placements.length > 0) {
+      const nextId = placements[placements.length - 1]!.id;
+      runtime.workspace.selectPlacement(nextId);
+      setSelectedPlacementId(nextId);
+    } else if (selectedPlacementId && !placements.some((p) => p.id === selectedPlacementId)) {
+      const nextId = placements.length > 0 ? placements[placements.length - 1]!.id : null;
+      runtime.workspace.selectPlacement(nextId);
+      setSelectedPlacementId(nextId);
+    }
+  }, [sessionState.project.placements, selectedPlacementId, runtime]);
 
   const selectedPlacementIds = useMemo(
     () => (selectedPlacementId ? new Set([selectedPlacementId]) : undefined),

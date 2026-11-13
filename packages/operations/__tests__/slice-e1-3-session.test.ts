@@ -620,6 +620,107 @@ console.log('--- Test 15: Failure is Atomic ---');
   assertEqual(JSON.stringify(session.snapshot()), snapshotBefore, 'Document state is byte-for-byte identical');
 }
 
+// ── Test 16: Region Operations on Large Schematics (3,000+ chunks) ──
+console.log('--- Test 16: Large Schematic Region Optimization ---');
+{
+  const chunks = new Map<string, VoxelChunk>();
+  // 18 x 14 x 12 = 3,024 chunks
+  for (let x = 0; x < 18; x++) {
+    for (let y = 0; y < 14; y++) {
+      for (let z = 0; z < 12; z++) {
+        const key = `${x}_${y}_${z}`;
+        chunks.set(key, {
+          key,
+          palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+          indices: new Uint8Array(4096),
+          revision: 0,
+        });
+      }
+    }
+  }
+
+  const largePlacement: Placement = {
+    id: 'large-p1',
+    name: 'Large Schematic',
+    volume: {
+      bounds: { min: [0, 0, 0], maxExclusive: [18 * 16, 14 * 16, 12 * 16] },
+      chunkSize: 16,
+      chunks,
+      nonAirCount: 0,
+      paletteCardinality: 2,
+    },
+    transform: { translation: [0, 0, 0], rotationY: 0, mirror: 'none' },
+    origin: [0, 0, 0],
+    visible: true,
+    locked: false,
+    createdAt: new Date().toISOString(),
+    source: { format: 'generated', filename: 'large.schem', diagnostics: [] },
+    eraseTombstones: new Set(),
+    ancillary: {
+      blockEntities: new Map(),
+      entities: [],
+      pendingBlockTicks: [],
+      pendingFluidTicks: [],
+      unknownTags: new Map(),
+    },
+  };
+
+  const project: Project = {
+    schemaVersion: 1,
+    id: 'proj-large',
+    name: 'Large Project',
+    overlapPolicy: 'top-wins',
+    conflictOverlay: 'off',
+    metadata: { createdAt: '', modifiedAt: '' },
+    revision: 0,
+    importGroups: [],
+    placements: [largePlacement],
+  };
+
+  const session = new EditorSession(project);
+
+  // Pick an untouched chunk on the far side
+  const farKey = '17_13_11';
+  const untouchedChunkBefore = session.peekProject().placements[0]!.volume.chunks.get(farKey)!;
+  assert(!!untouchedChunkBefore, 'Far chunk exists before operation');
+
+  const startTime = Date.now();
+  // Fill small 2x2x2 block area inside chunk 0_0_0
+  const fillRes = session.execute({
+    type: 'region:fill',
+    bounds: { min: [1, 1, 1], maxExclusive: [3, 3, 3] },
+    block: { id: 'minecraft:gold_block', props: {} },
+    placementId: 'large-p1',
+  });
+  const elapsedMs = Date.now() - startTime;
+
+  assert(fillRes.ok, 'Region fill on 3,000+ chunk schematic succeeded');
+  console.log(`  > Large schematic region fill took ${elapsedMs}ms`);
+  assert(elapsedMs < 100, `Execution is fast (${elapsedMs}ms < 100ms)`);
+
+  const pAfter = session.peekProject().placements[0]!;
+  const untouchedChunkAfter = pAfter.volume.chunks.get(farKey)!;
+
+  // Crucial check: untouched chunk identity pc === cc preserved!
+  assert(untouchedChunkAfter === untouchedChunkBefore, 'Untouched chunk reference is preserved in O(1)');
+
+  // Verify only chunk 0_0_0 changed
+  assertEqual(fillRes.changed?.chunkKeys.length, 1, 'Exactly 1 chunk delta recorded');
+  assertEqual(fillRes.changed?.chunkKeys[0], '0_0_0', 'Chunk 0_0_0 was the only modified chunk');
+
+  // Verify undo restores the exact original state
+  const undoRes = session.undo();
+  assert(!!undoRes?.ok, 'Undo succeeded on large schematic');
+  const chunk0AfterUndo = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assert(chunk0AfterUndo.indices[voxelIndex(1, 1, 1)] === 0, 'Block rolled back to air on undo');
+
+  // Verify redo
+  const redoRes = session.redo();
+  assert(!!redoRes?.ok, 'Redo succeeded on large schematic');
+  const chunk0AfterRedo = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assert(chunk0AfterRedo.indices[voxelIndex(1, 1, 1)] !== 0, 'Block restored on redo');
+}
+
 console.log(`\n=== Summary: ${passed} passed, ${failed} failed ===`);
 if (failed > 0) {
   throw new Error(`Tests failed: ${failed} tests did not pass`);

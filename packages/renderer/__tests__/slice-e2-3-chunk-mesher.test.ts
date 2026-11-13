@@ -362,6 +362,35 @@ console.log('--- 5. Same-Block Transparent Culling ---');
   assert(mixedOutput.passes.translucent !== null, 'translucent pass exists for water');
   assertEqual(mixedOutput.passes.cutout!.faceCount, 6, 'glass face adjacent to water is NOT culled (6 faces)');
   assertEqual(mixedOutput.passes.translucent!.faceCount, 6, 'water face adjacent to glass is NOT culled (6 faces)');
+
+  // Case C: Two adjacent water blocks (translucent pass)
+  // Shared interior face between same-fluid blocks must be culled!
+  const waterOutput = meshChunk({
+    chunkKey: 'test:water-water',
+    assets,
+    getBlock: (lx, ly, lz) => {
+      if ((lx === 0 || lx === 1) && ly === 0 && lz === 0) return 'minecraft:water';
+      return null;
+    },
+  });
+
+  assert(waterOutput.passes.translucent !== null, 'translucent pass exists for water');
+  assertEqual(waterOutput.passes.translucent!.faceCount, 10, 'two adjacent water blocks cull shared face (10 faces)');
+
+  // Case D: Water adjacent to flowing_water (same fluid family)
+  // Shared interior face must be culled!
+  const flowingOutput = meshChunk({
+    chunkKey: 'test:water-flowing',
+    assets,
+    getBlock: (lx, ly, lz) => {
+      if (lx === 0 && ly === 0 && lz === 0) return 'minecraft:water';
+      if (lx === 1 && ly === 0 && lz === 0) return 'minecraft:flowing_water';
+      return null;
+    },
+  });
+
+  assert(flowingOutput.passes.translucent !== null, 'translucent pass exists for water+flowing_water');
+  assertEqual(flowingOutput.passes.translucent!.faceCount, 10, 'water adjacent to flowing_water culls shared face (10 faces)');
 }
 
 // ============================================================================
@@ -469,11 +498,11 @@ console.log('--- 7. Grass Block Tinting & Directional Shading ---');
 
   if (downFaceColor) {
     // Dirt bottom face has tintindex: undefined -> base is [1, 1, 1]
-    // Directional shade for down (-Y) is 0.5
-    // So final color is [0.5, 0.5, 0.5]
-    assertApprox(downFaceColor[0], 0.5, 'bottom face R is 0.5');
-    assertApprox(downFaceColor[1], 0.5, 'bottom face G is 0.5');
-    assertApprox(downFaceColor[2], 0.5, 'bottom face B is 0.5');
+    // Directional shade for all faces is 1.0 (unlit/full-bright, eliminating dark face shadows)
+    // So final color is [1.0, 1.0, 1.0]
+    assertApprox(downFaceColor[0], 1.0, 'bottom face R is 1.0');
+    assertApprox(downFaceColor[1], 1.0, 'bottom face G is 1.0');
+    assertApprox(downFaceColor[2], 1.0, 'bottom face B is 1.0');
     assert(
       Math.abs(downFaceColor[0] - downFaceColor[1]) < 0.001 &&
       Math.abs(downFaceColor[1] - downFaceColor[2]) < 0.001,
@@ -482,10 +511,10 @@ console.log('--- 7. Grass Block Tinting & Directional Shading ---');
   }
 
   if (northFaceColor) {
-    // North face has shade = 0.8 and untinted base [1, 1, 1]
-    assertApprox(northFaceColor[0], 0.8, 'north face shade is 0.8');
-    assertApprox(northFaceColor[1], 0.8, 'north face shade is 0.8');
-    assertApprox(northFaceColor[2], 0.8, 'north face shade is 0.8');
+    // North face has shade = 1.0 and untinted base [1, 1, 1]
+    assertApprox(northFaceColor[0], 1.0, 'north face shade is 1.0');
+    assertApprox(northFaceColor[1], 1.0, 'north face shade is 1.0');
+    assertApprox(northFaceColor[2], 1.0, 'north face shade is 1.0');
   }
 }
 

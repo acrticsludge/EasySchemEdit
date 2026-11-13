@@ -338,26 +338,35 @@ console.log('--- Test 4: Viewport Overlays ---');
     'Enabling chunkBorders must produce at least 1 child line segment'
   );
 
-  // 3. Section and block borders enabled
+  // 3. Section borders enabled (chunk + section = 2 line segment groups)
   const fullGroup = buildGridBordersGroup(bounds, {
     chunkBorders: true,
     sectionBorders: true,
-    blockBorders: true,
+    blockBorders: false,
   });
   assertEqual(
     fullGroup.children.length,
-    3,
-    'Enabling chunk, section, and block borders must produce 3 line segment groups'
+    2,
+    'Enabling chunk and section borders must produce 2 line segment groups'
   );
 
-  // 4. Selection box overlay
+  // 4. Block grid shader uniform on ChunkSceneManager (not wireframe lines)
+  const manager = new ChunkSceneManager();
+  assertEqual((manager as any).blockGridUniform.value, 0.0, 'Block grid uniform should be 0.0 by default');
+  manager.setBlockGrid(true);
+  assertEqual((manager as any).blockGridUniform.value, 1.0, 'Block grid uniform should be 1.0 when enabled');
+  manager.setBlockGrid(false);
+  assertEqual((manager as any).blockGridUniform.value, 0.0, 'Block grid uniform should be 0.0 when disabled');
+  manager.dispose();
+
+  // 5. Selection box overlay
   const emptySel = buildSelectionBoxMesh(null);
   assertEqual(emptySel.children.length, 0, 'Null selection bounds must produce empty group');
 
   const selGroup = buildSelectionBoxMesh(bounds);
   assert(selGroup.children.length === 2, 'Selection box should contain 1 fill mesh + 1 line segments outline');
 
-  console.log('✓ Test 4 passed: overlays respect default-off flags and generate line segments when enabled.');
+  console.log('✓ Test 4 passed: overlays respect default-off flags, generate line segments when enabled, and block grid uniform toggles.');
 }
 
 // ============================================================================

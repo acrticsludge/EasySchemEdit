@@ -17,6 +17,7 @@ import type {
 import {
   CANONICAL_AIR,
   parseBlockStateString,
+  placementWorldBounds,
 } from '@easyschemedit/domain';
 import {
   exportSchematic,
@@ -615,6 +616,108 @@ async function runTests(): Promise<void> {
 
     const mz = applyMirror(10, 5, 20, 'z');
     check(mz[0] === 10 && mz[1] === 5 && mz[2] === -20, 'Mirror Z');
+  }
+
+  // --------------------------------------------------------------------------
+  // Test Suite 8: Non-Zero Origin & Negative Offset Schematic Placement
+  // --------------------------------------------------------------------------
+  console.log('\n--- Test 8: Non-Zero Origin & Negative Offset Placement ---');
+  {
+    const store = createEditorSessionStore();
+    const testPlacement = createTestPlacement(
+      'p_offset',
+      'offset_building',
+      10,
+      10,
+      10,
+      [-383, -22, -287],
+      new Map([['0_0_0', stone]]),
+      'schem-v3',
+    );
+    testPlacement.origin = [-766, -44, -574];
+
+    // Verify fixture's world bounds min before import
+    const baseBounds = placementWorldBounds(testPlacement);
+    check(
+      baseBounds.min[0] === 0 && baseBounds.min[1] === 0 && baseBounds.min[2] === 0,
+      'Base placement with origin [-766, -44, -574] and translation [-383, -22, -287] has world bounds min at [0, 0, 0]',
+    );
+
+    const controller = new ImportWorkflowController(store, {
+      parseFn: async () => ({
+        placements: [testPlacement],
+        group: {
+          id: 'grp_offset',
+          name: 'Offset Build',
+          sourceFilename: 'offset.schem',
+          placementIds: [testPlacement.id],
+          sourceFormat: 'schem-v3',
+        },
+        importGroups: [],
+        normalizedImport: {} as any,
+        report: {
+          format: { kind: 'schem-v3', confidence: 'high' } as any,
+          dimensions: { width: 10, height: 10, length: 10 },
+          volume: 1000n,
+          nonAirBlockCount: 1,
+          paletteSize: 1,
+          regionCount: 1,
+          fileSizeBytes: 100,
+          compressedSizeBytes: 100,
+          decompressedSizeBytes: 100,
+          preserved: { blockEntities: 0, entities: 0, biomes: false, ticks: 0 },
+          unsupported: { tags: [], blockStates: [] },
+          sameStateOverlaps: 0,
+          errors: [],
+          warnings: [],
+        },
+      } as any),
+    });
+
+    await controller.startFileImport(new Uint8Array([1, 2, 3]), 'offset.schem', { autoPreview: true });
+    check(controller.getState() === 'ghost-preview', 'Transitions to ghost-preview');
+
+    // 1. When cursorPosition is [0, 0, 0] (e.g. clicking "Place at Origin")
+    controller.setCursorPosition([0, 0, 0]);
+    const ghostsAtOrigin = controller.getGhostPreviewPlacements();
+    check(ghostsAtOrigin.length === 1, '1 ghost placement generated');
+    const ghostBoundsAtOrigin = placementWorldBounds(ghostsAtOrigin[0]);
+    check(
+      ghostBoundsAtOrigin.min[0] === 0 &&
+      ghostBoundsAtOrigin.min[1] === 0 &&
+      ghostBoundsAtOrigin.min[2] === 0,
+      'getGhostPreviewPlacements() places schematic at cursorPosition [0, 0, 0] (placementWorldBounds.min === [0, 0, 0])',
+    );
+    check(
+      ghostsAtOrigin[0].transform.translation[0] === -383 &&
+      ghostsAtOrigin[0].transform.translation[1] === -22 &&
+      ghostsAtOrigin[0].transform.translation[2] === -287,
+      'Ghost placement translation preserves [-383, -22, -287] when cursorPosition is [0, 0, 0]',
+    );
+
+    // 2. When cursorPosition is shifted, e.g. [100, 64, -50]
+    controller.setCursorPosition([100, 64, -50]);
+    const ghostsShifted = controller.getGhostPreviewPlacements();
+    const ghostBoundsShifted = placementWorldBounds(ghostsShifted[0]);
+    check(
+      ghostBoundsShifted.min[0] === 100 &&
+      ghostBoundsShifted.min[1] === 64 &&
+      ghostBoundsShifted.min[2] === -50,
+      'getGhostPreviewPlacements() places schematic at cursorPosition [100, 64, -50] (placementWorldBounds.min === [100, 64, -50])',
+    );
+
+    // 3. Confirm placement and verify committed placement world bounds
+    await controller.confirmPlace();
+    const snapshot = store.session.snapshot();
+    const committed = snapshot.placements.find((p) => p.name === 'offset_building')!;
+    check(!!committed, 'Committed placement exists in store');
+    const committedBounds = placementWorldBounds(committed);
+    check(
+      committedBounds.min[0] === 100 &&
+      committedBounds.min[1] === 64 &&
+      committedBounds.min[2] === -50,
+      'Committed placement world bounds min equals cursorPosition [100, 64, -50]',
+    );
   }
 
   console.log(`\n========================================`);

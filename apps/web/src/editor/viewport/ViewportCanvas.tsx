@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import type { EditorSession, SessionChangeEvent } from '@easyschemedit/operations';
 import type { AssetSource, TextureUvInfo } from '@easyschemedit/renderer';
-import type { Bounds3i, Vec3i } from '@easyschemedit/domain';
+import { placementWorldBounds, type Bounds3i, type Vec3i } from '@easyschemedit/domain';
 
 import { ChunkSceneManager, type ChunkSceneStats } from './chunk-mesh-builder.ts';
 import { ViewportCameraController, type CameraMode, type CameraPreset } from './camera-controller.ts';
@@ -186,6 +186,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const cPos = conflictOverlayPositionsRef.current;
     const gPrev = ghostPreviewRef.current;
 
+    chunkManagerRef.current?.setBlockGrid(gPrefs.blockBorders);
+
     // 1. Placement bounds
     if (placementBoundsGroupRef.current) scene.remove(placementBoundsGroupRef.current);
     placementBoundsGroupRef.current = buildPlacementBoundsGroup(
@@ -212,12 +214,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       let minX = Infinity, minY = Infinity, minZ = Infinity;
       let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
       for (const p of project.placements) {
-        minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-        minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-        minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-        maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-        maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-        maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+        const wb = placementWorldBounds(p);
+        minX = Math.min(minX, wb.min[0]);
+        minY = Math.min(minY, wb.min[1]);
+        minZ = Math.min(minZ, wb.min[2]);
+        maxX = Math.max(maxX, wb.maxExclusive[0]);
+        maxY = Math.max(maxY, wb.maxExclusive[1]);
+        maxZ = Math.max(maxZ, wb.maxExclusive[2]);
       }
       if (Number.isFinite(minX)) {
         unionBounds = {
@@ -300,12 +303,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
         for (const p of project.placements) {
-          minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-          minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-          minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-          maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-          maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-          maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+          const wb = placementWorldBounds(p);
+          minX = Math.min(minX, wb.min[0]);
+          minY = Math.min(minY, wb.min[1]);
+          minZ = Math.min(minZ, wb.min[2]);
+          maxX = Math.max(maxX, wb.maxExclusive[0]);
+          maxY = Math.max(maxY, wb.maxExclusive[1]);
+          maxZ = Math.max(maxZ, wb.maxExclusive[2]);
         }
         if (Number.isFinite(minX) && cameraCtrlRef.current) {
           cameraCtrlRef.current.frameBounds({
@@ -347,6 +351,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
   // Separate useEffects for prop updates without recreating WebGL context
   useEffect(() => {
+    chunkManagerRef.current?.setBlockGrid(gridPrefs.blockBorders);
     updateOverlays();
   }, [updateOverlays, selectedPlacementIds, gridPrefs, conflictOverlayPositions, ghostPreview]);
 
@@ -371,7 +376,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     sceneRef.current = scene;
 
     // Camera
-    const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 2000);
+    const camera = new THREE.PerspectiveCamera(60, width / height, 0.5, 16000);
     cameraRef.current = camera;
 
     // Camera controller
@@ -411,6 +416,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
     // Chunk Manager
     const chunkManager = new ChunkSceneManager();
+    chunkManager.setBlockGrid(gridPrefsRef.current.blockBorders);
     chunkManagerRef.current = chunkManager;
     scene.add(chunkManager.rootGroup);
 
@@ -551,12 +557,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       let minX = Infinity, minY = Infinity, minZ = Infinity;
       let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
       for (const p of project.placements) {
-        minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-        minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-        minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-        maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-        maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-        maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+        const wb = placementWorldBounds(p);
+        minX = Math.min(minX, wb.min[0]);
+        minY = Math.min(minY, wb.min[1]);
+        minZ = Math.min(minZ, wb.min[2]);
+        maxX = Math.max(maxX, wb.maxExclusive[0]);
+        maxY = Math.max(maxY, wb.maxExclusive[1]);
+        maxZ = Math.max(maxZ, wb.maxExclusive[2]);
       }
       if (Number.isFinite(minX)) {
         cameraCtrl.frameBounds({
@@ -684,11 +691,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       const pId = Array.from(selectedPlacementIds)[0]!;
       const placement = session.peekProject().placements.find((p) => p.id === pId);
       if (placement && !placement.locked) {
-        const [tx, ty, tz] = placement.transform.translation;
-        const { min, maxExclusive } = placement.volume.bounds;
-        const cx = tx + (min[0] + maxExclusive[0]) / 2;
-        const cy = ty + (min[1] + maxExclusive[1]) / 2;
-        const cz = tz + (min[2] + maxExclusive[2]) / 2;
+        const wb = placementWorldBounds(placement);
+        const cx = (wb.min[0] + wb.maxExclusive[0]) / 2;
+        const cy = (wb.min[1] + wb.maxExclusive[1]) / 2;
+        const cz = (wb.min[2] + wb.maxExclusive[2]) / 2;
 
         gizmoProxy.position.set(cx, cy, cz);
         gizmoProxy.rotation.set(0, (placement.transform.rotationY * Math.PI) / 180, 0);
@@ -784,14 +790,14 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
       if (cameraCtrl.getMode() === 'orbit') {
         if (isOrbitPan) {
-          const panScale = cameraCtrl.getDistance() * 0.0015;
+          const panScale = Math.max(0.02, cameraCtrl.getDistance() * 0.002);
           cameraCtrl.pan(-dx * panScale, dy * panScale);
         } else {
-          cameraCtrl.orbit(-dx * 0.006, dy * 0.006);
+          cameraCtrl.orbit(-dx * 0.008, dy * 0.008);
         }
       } else {
         // Fly look
-        cameraCtrl.lookFly(-dx * 0.004, -dy * 0.004);
+        cameraCtrl.lookFly(-dx * 0.006, -dy * 0.006);
       }
     } else {
       if (transformCtrlRef.current && (transformCtrlRef.current as any).axis) {
@@ -824,7 +830,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       cameraCtrl.zoom(-e.deltaY);
     } else {
       // Adjust fly speed
-      cameraCtrl.adjustFlySpeed(e.deltaY > 0 ? -2 : 2);
+      const factor = e.deltaY > 0 ? 0.85 : 1.18;
+      cameraCtrl.setFlySpeed(cameraCtrl.getFlySpeed() * factor);
     }
   };
 
@@ -1001,12 +1008,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       let minX = Infinity, minY = Infinity, minZ = Infinity;
       let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
       for (const p of project.placements) {
-        minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-        minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-        minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-        maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-        maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-        maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+        const wb = placementWorldBounds(p);
+        minX = Math.min(minX, wb.min[0]);
+        minY = Math.min(minY, wb.min[1]);
+        minZ = Math.min(minZ, wb.min[2]);
+        maxX = Math.max(maxX, wb.maxExclusive[0]);
+        maxY = Math.max(maxY, wb.maxExclusive[1]);
+        maxZ = Math.max(maxZ, wb.maxExclusive[2]);
       }
       if (Number.isFinite(minX)) {
         bounds = { min: [minX, minY, minZ], maxExclusive: [maxX, maxY, maxZ] };
@@ -1028,12 +1036,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
     for (const p of project.placements) {
-      minX = Math.min(minX, p.volume.bounds.min[0] + p.transform.translation[0]);
-      minY = Math.min(minY, p.volume.bounds.min[1] + p.transform.translation[1]);
-      minZ = Math.min(minZ, p.volume.bounds.min[2] + p.transform.translation[2]);
-      maxX = Math.max(maxX, p.volume.bounds.maxExclusive[0] + p.transform.translation[0]);
-      maxY = Math.max(maxY, p.volume.bounds.maxExclusive[1] + p.transform.translation[1]);
-      maxZ = Math.max(maxZ, p.volume.bounds.maxExclusive[2] + p.transform.translation[2]);
+      const wb = placementWorldBounds(p);
+      minX = Math.min(minX, wb.min[0]);
+      minY = Math.min(minY, wb.min[1]);
+      minZ = Math.min(minZ, wb.min[2]);
+      maxX = Math.max(maxX, wb.maxExclusive[0]);
+      maxY = Math.max(maxY, wb.maxExclusive[1]);
+      maxZ = Math.max(maxZ, wb.maxExclusive[2]);
     }
     if (Number.isFinite(minX)) {
       cameraCtrl.frameBounds({ min: [minX, minY, minZ], maxExclusive: [maxX, maxY, maxZ] });

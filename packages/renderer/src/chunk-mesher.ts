@@ -79,6 +79,30 @@ const DIR_VECTORS: Record<string, [number, number, number]> = {
 
 const ALL_FACES = ['down', 'up', 'north', 'south', 'west', 'east'] as const;
 
+export const FACE_SHADE: Record<string, number> = {
+  up: 1.0,
+  down: 1.0,
+  north: 1.0,
+  south: 1.0,
+  west: 1.0,
+  east: 1.0,
+};
+
+export function getFluidFamily(name: string): 'water' | 'lava' | null {
+  if (!name) return null;
+  let base = name.trim().toLowerCase();
+  const bracket = base.indexOf('[');
+  if (bracket !== -1) {
+    base = base.slice(0, bracket).trim();
+  }
+  if (base.startsWith('minecraft:')) {
+    base = base.slice('minecraft:'.length);
+  }
+  if (base === 'water' || base === 'flowing_water') return 'water';
+  if (base === 'lava' || base === 'flowing_lava') return 'lava';
+  return null;
+}
+
 // ============================================================================
 // Air and Block Normalization Helpers
 // ============================================================================
@@ -505,7 +529,18 @@ export function shouldCullFace(
     return true;
   }
 
-  // Condition 2: Same-block non-opaque culling
+  // Condition 2: Fluid interior face culling
+  // If current block is a fluid (water, flowing_water, lava, flowing_lava) and neighbor
+  // is in the same fluid family, cull the interior face between them.
+  const currentFluid = getFluidFamily(currentBlockInfo.name);
+  if (currentFluid !== null) {
+    const neighborFluid = getFluidFamily(neighborInfo.name);
+    if (neighborFluid === currentFluid) {
+      return true;
+    }
+  }
+
+  // Condition 3: Same-block non-opaque culling
   // If current block is a full-cube cutout or translucent block, and neighbor has exact same blockstate
   if (
     currentBlockInfo.isFullCube &&
@@ -1296,19 +1331,8 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
                 }
               }
 
-              let shade = 1.0;
-              if (el.shade !== false) {
-                const ax = Math.abs(nx);
-                const ay = Math.abs(ny);
-                const az = Math.abs(nz);
-                if (ay >= ax && ay >= az) {
-                  shade = ny > 0 ? 1.0 : 0.5;
-                } else if (az >= ax && az >= ay) {
-                  shade = 0.8;
-                } else {
-                  shade = 0.6;
-                }
-              }
+              // Directional shading multiplier: all faces set to 1.0 to eliminate dark unlit face shadows
+              const shade = 1.0;
 
               const colorR = baseR * shade;
               const colorG = baseG * shade;

@@ -200,7 +200,6 @@ export interface GridBordersPrefs {
  * Builds grid borders group:
  * - Chunk borders: vertical 16x16 column lines in yellow (0xffaa00).
  * - Section borders: horizontal 16-high plane lines in blue (0x0088ff).
- * - Block borders: 1x1 voxel cell wireframe lines in gray (0x555566).
  *
  * If all preferences are false, returns an empty THREE.Group with 0 children.
  */
@@ -211,7 +210,7 @@ export function buildGridBordersGroup(
   const group = new THREE.Group();
   group.name = 'grid-borders-overlay';
 
-  if (!prefs.chunkBorders && !prefs.sectionBorders && !prefs.blockBorders) {
+  if (!prefs.chunkBorders && !prefs.sectionBorders) {
     return group; // 0 children
   }
 
@@ -275,32 +274,6 @@ export function buildGridBordersGroup(
         color: 0x0088ff,
         transparent: true,
         opacity: 0.65,
-        depthWrite: false,
-      });
-      group.add(new THREE.LineSegments(geom, mat));
-    }
-  }
-
-  // 3. Block wireframe borders (every 1 on X, Y, Z, capped to prevent runaway buffer sizes)
-  if (prefs.blockBorders) {
-    const blockPositions: number[] = [];
-    const spanX = Math.min(x1 - x0, 64);
-    const spanY = Math.min(y1 - y0, 64);
-    const spanZ = Math.min(z1 - z0, 64);
-
-    for (let bx = x0; bx <= x0 + spanX; bx++) {
-      for (let by = y0; by <= y0 + spanY; by++) {
-        blockPositions.push(bx, by, z0, bx, by, z0 + spanZ);
-      }
-    }
-
-    if (blockPositions.length > 0) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(blockPositions), 3));
-      const mat = new THREE.LineBasicMaterial({
-        color: 0x555566,
-        transparent: true,
-        opacity: 0.35,
         depthWrite: false,
       });
       group.add(new THREE.LineSegments(geom, mat));

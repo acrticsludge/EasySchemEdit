@@ -93,6 +93,7 @@ interface PlacementGroupEntry {
 export class ChunkSceneManager {
   public readonly rootGroup: THREE.Group;
   public readonly materials: Record<MeshPass, THREE.Material>;
+  private blockGridUniform = { value: 0.0 };
 
   // Key: `${placementId}:${chunkKey}:${pass}`
   private activeMeshes: Map<string, THREE.Mesh> = new Map();
@@ -116,29 +117,75 @@ export class ChunkSceneManager {
     this.rootGroup.name = 'chunk-scene-root';
 
     // Shared materials per pass (Slice E3.2)
-    this.materials = {
-      opaque: new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.FrontSide,
-      }),
-      cutout: new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide,
-        alphaTest: 0.5,
-        transparent: false,
-      }),
-      translucent: new THREE.MeshLambertMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide,
-        transparent: true,
-        depthWrite: false,
-        opacity: 0.75,
-      }),
-      emissive: new THREE.MeshBasicMaterial({
-        vertexColors: true,
-        side: THREE.FrontSide,
-      }),
+    const opaqueMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.FrontSide,
+    });
+    const cutoutMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      alphaTest: 0.5,
+      transparent: false,
+    });
+    const translucentMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.75,
+    });
+    const emissiveMat = new THREE.MeshBasicMaterial({
+      vertexColors: true,
+      side: THREE.FrontSide,
+    });
+
+    const configureBlockGridMaterial = (mat: THREE.MeshBasicMaterial) => {
+      mat.customProgramCacheKey = () => 'block-grid-v1';
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uShowBlockGrid = this.blockGridUniform;
+        shader.vertexShader = shader.vertexShader.replace(
+          'void main()',
+          'varying vec3 vBlockPos;\nvarying vec3 vBlockNormal;\nvoid main()'
+        );
+        shader.vertexShader = shader.vertexShader.replace(
+          '#include <begin_vertex>',
+          '#include <begin_vertex>\nvBlockPos = position;\nvBlockNormal = abs(normal);'
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          'void main()',
+          'uniform float uShowBlockGrid;\nvarying vec3 vBlockPos;\nvarying vec3 vBlockNormal;\nvoid main()'
+        );
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          `#include <opaque_fragment>
+if (uShowBlockGrid > 0.5) {
+  vec3 f = fract(vBlockPos);
+  vec3 d = min(f, 1.0 - f) + vBlockNormal;
+  float edgeDist = min(d.x, min(d.y, d.z));
+  float line = 1.0 - smoothstep(0.015, 0.035, edgeDist);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.32 * line);
+}`
+        );
+      };
     };
+
+    configureBlockGridMaterial(opaqueMat);
+    configureBlockGridMaterial(cutoutMat);
+    configureBlockGridMaterial(translucentMat);
+
+    this.materials = {
+      opaque: opaqueMat,
+      cutout: cutoutMat,
+      translucent: translucentMat,
+      emissive: emissiveMat,
+    };
+  }
+
+  /**
+   * Toggles the block grid border overlay in the chunk shader.
+   */
+  public setBlockGrid(enabled: boolean): void {
+    this.blockGridUniform.value = enabled ? 1.0 : 0.0;
   }
 
   /**

@@ -5,8 +5,11 @@
 
 import {
   resolveBlockModels,
+  resolveBlockModel,
   normalizeResourceLocation,
   createMissingModelPart,
+  createFluidModelPart,
+  getFluidBaseName,
   computeDefaultUv,
   resolveTextureVariable,
   matchWhenCondition,
@@ -592,6 +595,58 @@ console.log('--- 11. Caching Behavior ---');
   const res2 = resolveBlockModels('minecraft:cached_block', { axis: 'y' }, src);
   assertEqual(src.blockStateCallCount, firstCount + 1, 'second call hits cache without calling getBlockState');
   assert(res1 === res2, 'second call returns identical cached array reference');
+}
+
+// ============================================================================
+// 12. Fluid Model Synthesis (Water & Lava Fallback)
+// ============================================================================
+console.log('--- 12. Fluid Model Synthesis ---');
+{
+  // 12.1 minecraft:water when water.json has elements: []
+  const srcEmpty = new MockAssetSource();
+  srcEmpty.blockStates.set('minecraft:water', {
+    variants: { '': { model: 'minecraft:block/water' } },
+  });
+  srcEmpty.models.set('minecraft:block/water', {
+    elements: [],
+  });
+  const partsEmpty = resolveBlockModels('minecraft:water', {}, srcEmpty);
+  assertEqual(partsEmpty.length, 1, 'resolves 1 part for water with empty elements');
+  assertEqual(partsEmpty[0]!.elements.length, 1, 'synthesizes 1 fluid cube element');
+  assertDeepEqual(partsEmpty[0]!.elements[0]!.from, [0, 0, 0], 'fluid element from is [0, 0, 0]');
+  assertDeepEqual(partsEmpty[0]!.elements[0]!.to, [16, 14, 16], 'fluid element to is [16, 14, 16]');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.up?.texture, 'minecraft:block/water_still', 'water texture is water_still');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.up?.tintindex, 0, 'water face has tintindex 0');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.up?.cullface, 'up', 'water face has cullface up');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.down?.cullface, 'down', 'water face has cullface down');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.north?.cullface, 'north', 'water face has cullface north');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.south?.cullface, 'south', 'water face has cullface south');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.west?.cullface, 'west', 'water face has cullface west');
+  assertEqual(partsEmpty[0]!.elements[0]!.faces.east?.cullface, 'east', 'water face has cullface east');
+
+  // 12.2 minecraft:water when blockstate / model is completely missing
+  const srcMissing = new MockAssetSource();
+  const partsMissing = resolveBlockModels('minecraft:water', {}, srcMissing);
+  assertEqual(partsMissing.length, 1, 'resolves 1 part for water when missing from assets');
+  assertEqual(partsMissing[0]!.elements.length, 1, 'synthesizes 1 fluid cube element when missing');
+  assert(!partsMissing[0]!.missing, 'not marked as missing model fallback');
+  assertEqual(partsMissing[0]!.elements[0]!.faces.up?.texture, 'minecraft:block/water_still', 'texture is water_still');
+
+  // 12.3 flowing_water, lava, flowing_lava
+  const flowingWaterParts = resolveBlockModels('minecraft:flowing_water', {}, srcMissing);
+  assertEqual(flowingWaterParts[0]!.elements[0]!.faces.up?.texture, 'minecraft:block/water_still', 'flowing_water texture is water_still');
+  assertEqual(flowingWaterParts[0]!.elements[0]!.faces.up?.tintindex, 0, 'flowing_water has tintindex 0');
+
+  const lavaParts = resolveBlockModels('minecraft:lava', {}, srcMissing);
+  assertEqual(lavaParts[0]!.elements[0]!.faces.up?.texture, 'minecraft:block/lava_still', 'lava texture is lava_still');
+  assertEqual(lavaParts[0]!.elements[0]!.faces.up?.tintindex, undefined, 'lava face has no tintindex');
+
+  const flowingLavaParts = resolveBlockModels('minecraft:flowing_lava', {}, srcMissing);
+  assertEqual(flowingLavaParts[0]!.elements[0]!.faces.up?.texture, 'minecraft:block/lava_still', 'flowing_lava texture is lava_still');
+
+  // 12.4 resolveBlockModel singular alias
+  const aliasParts = resolveBlockModel('minecraft:water', {}, srcMissing);
+  assertEqual(aliasParts.length, 1, 'resolveBlockModel alias works');
 }
 
 // ============================================================================

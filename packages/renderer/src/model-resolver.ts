@@ -206,6 +206,66 @@ export function createMissingModelPart(): ResolvedModelPart {
   };
 }
 
+/**
+ * Extracts the fluid base name ('water', 'flowing_water', 'lava', 'flowing_lava')
+ * by stripping namespace ('minecraft:') and bracketed properties ('[...]').
+ */
+export function getFluidBaseName(
+  blockName: string
+): 'water' | 'flowing_water' | 'lava' | 'flowing_lava' | null {
+  if (!blockName) return null;
+  let base = blockName.trim().toLowerCase();
+  const bracket = base.indexOf('[');
+  if (bracket !== -1) {
+    base = base.slice(0, bracket).trim();
+  }
+  if (base.startsWith('minecraft:')) {
+    base = base.slice('minecraft:'.length);
+  }
+  if (
+    base === 'water' ||
+    base === 'flowing_water' ||
+    base === 'lava' ||
+    base === 'flowing_lava'
+  ) {
+    return base;
+  }
+  return null;
+}
+
+/**
+ * Creates the synthesized fluid cube fallback (16x14x16 cube with still water or lava texture).
+ */
+export function createFluidModelPart(fluidName: string): ResolvedModelPart {
+  const isLava = fluidName === 'lava' || fluidName === 'flowing_lava';
+  const texture = isLava ? 'minecraft:block/lava_still' : 'minecraft:block/water_still';
+  const faces: Record<string, ResolvedFace> = {};
+  for (const dir of ['down', 'up', 'north', 'south', 'west', 'east']) {
+    const face: ResolvedFace = {
+      texture,
+      uv: computeDefaultUv(dir, [0, 0, 0], [16, 14, 16]),
+      cullface: dir,
+    };
+    if (!isLava) {
+      face.tintindex = 0;
+    }
+    faces[dir] = face;
+  }
+  return {
+    elements: [
+      {
+        from: [0, 0, 0],
+        to: [16, 14, 16],
+        faces,
+      },
+    ],
+    x: 0,
+    y: 0,
+    uvlock: false,
+    ambientOcclusion: false,
+  };
+}
+
 // ============================================================================
 // Default UV Computation
 // ============================================================================
@@ -547,8 +607,15 @@ export function resolveBlockModels(
     return cache.get(cacheKey)!;
   }
 
+  const fluidBase = getFluidBaseName(blockName);
+
   const def = getBlockStateFromSource(src, blockName);
   if (!def) {
+    if (fluidBase) {
+      const fluidPart = [createFluidModelPart(fluidBase)];
+      if (cache) cache.set(cacheKey, fluidPart);
+      return fluidPart;
+    }
     const missing = [createMissingModelPart()];
     if (cache) cache.set(cacheKey, missing);
     return missing;
@@ -639,9 +706,23 @@ export function resolveBlockModels(
     result = [createMissingModelPart()];
   }
 
+  // If the block is a fluid and the resolved parts have 0 elements or only missing model fallbacks,
+  // synthesize a fallback fluid part (1 element from [0, 0, 0] to [16, 14, 16]).
+  if (fluidBase) {
+    const totalElements = result.reduce((acc, p) => acc + p.elements.length, 0);
+    if (totalElements === 0 || result.every((p) => p.missing)) {
+      result = [createFluidModelPart(fluidBase)];
+    }
+  }
+
   if (cache) {
     cache.set(cacheKey, result);
   }
 
   return result;
 }
+
+/**
+ * Alias for resolveBlockModels (singular).
+ */
+export const resolveBlockModel = resolveBlockModels;
