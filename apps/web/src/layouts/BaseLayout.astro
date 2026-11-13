@@ -14,10 +14,17 @@ const { title } = Astro.props;
   <body>
     <slot />
     <script>
-      // Service worker registration placeholder (offline support, h-5+)
+      // Service Worker Registration for offline support
       if ('serviceWorker' in navigator) {
-        // eslint-disable-next-line no-console
-        console.log('Service worker registration deferred to h-5+');
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then((registration) => {
+              console.log('SW registered: ', registration.scope);
+            })
+            .catch((registrationError) => {
+              console.log('SW registration failed: ', registrationError);
+            });
+        });
       }
     </script>
   </body>
