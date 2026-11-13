@@ -22,7 +22,7 @@ import {
   CANONICAL_AIR,
   VANILLA_AIR_LIKE,
 } from '../../domain/block-state.ts';
-import { ClipboardEntry } from './clipboard.ts';
+import type { ClipboardEntry } from './clipboard.ts';
 
 export interface PendingPlacement {
   id: string;

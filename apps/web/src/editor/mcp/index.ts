@@ -6,7 +6,6 @@ export {
   isReadTool,
   tupleToBounds,
   parseBlockState,
-  parseMatcher,
   mapToolToCommands,
 } from './mcp-bridge-client.ts';
 
