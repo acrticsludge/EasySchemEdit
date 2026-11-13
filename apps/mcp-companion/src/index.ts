@@ -111,3 +111,26 @@ export type {
   ExportPathErrorCode,
   ResolvedPath,
 } from './mcp-export';
+
+export {
+  createAgentLog,
+  sanitizeText,
+  sanitizeValue,
+  sanitizeInputs,
+  serializeEntry,
+  warningTexts,
+  DEFAULT_MAX_LOG_ENTRIES,
+  DEFAULT_MAX_LOG_BYTES,
+  DEFAULT_MAX_LOG_STRING_BYTES,
+  REDACTION,
+  TRUNCATION_MARKER,
+} from './agent-log';
+
+export type {
+  AgentLog,
+  AgentLogEntry,
+  AgentLogAppendInput,
+  AgentLogOptions,
+  AgentLogSize,
+  SanitizeOptions,
+} from './agent-log';
