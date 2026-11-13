@@ -279,6 +279,63 @@ export default function EditorIsland() {
     }
   }, []);
 
+  const handleTransform = useCallback((type: 'rotateY' | 'mirrorX' | 'mirrorZ' | 'delete') => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+    const blockGroup = scene.getObjectByName('blocks');
+    if (!blockGroup) return;
+
+    const selected = Array.from(selectedRef.current);
+    if (selected.length === 0) return;
+
+    if (type === 'delete') {
+      selected.forEach((mesh) => {
+        blockGroup.remove(mesh);
+        mesh.geometry.dispose();
+        (mesh.material as THREE.Material).dispose();
+      });
+      selectedRef.current.clear();
+      setSelectedCount(0);
+      return;
+    }
+
+    // Compute centroid of selection
+    const center = new THREE.Vector3();
+    selected.forEach((m) => center.add(m.position));
+    center.divideScalar(selected.length);
+
+    selected.forEach((mesh) => {
+      const pos = mesh.position.clone().sub(center);
+      if (type === 'rotateY') {
+        const x = pos.x, z = pos.z;
+        pos.x = -z;
+        pos.z = x;
+      } else if (type === 'mirrorX') {
+        pos.x = -pos.x;
+      } else if (type === 'mirrorZ') {
+        pos.z = -pos.z;
+      }
+      mesh.position.copy(pos.add(center));
+      // Rotate the mesh itself for rotateY
+      if (type === 'rotateY') {
+        mesh.rotation.y += Math.PI / 2;
+      }
+    });
+  }, []);
+
+  // Keyboard shortcuts for transforms
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return;
+      if (e.key === 'r' || e.key === 'R') handleTransform('rotateY');
+      else if (e.key === 'x' || e.key === 'X') handleTransform('mirrorX');
+      else if (e.key === 'z' || e.key === 'Z') handleTransform('mirrorZ');
+      else if (e.key === 'Delete' || e.key === 'Backspace') handleTransform('delete');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [handleTransform]);
+
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
@@ -312,6 +369,14 @@ export default function EditorIsland() {
         <span style={{ fontSize: '13px', opacity: 0.7 }}>{status}</span>
         {fileName && <span style={{ fontSize: '12px', opacity: 0.5 }}>{fileName}</span>}
         {selectedCount > 0 && <span style={{ fontSize: '12px', color: '#ffcc00' }}>Selected: {selectedCount}</span>}
+        {selectedCount > 0 && (
+          <div style={{ display: 'flex', gap: '4px', marginLeft: 'auto' }}>
+            <button onClick={() => handleTransform('rotateY')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Rotate (R)</button>
+            <button onClick={() => handleTransform('mirrorX')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror X (X)</button>
+            <button onClick={() => handleTransform('mirrorZ')} style={{ padding: '4px 8px', background: '#2a2a3a', border: '1px solid #555', color: '#eaeaea', cursor: 'pointer', fontSize: '12px' }}>Mirror Z (Z)</button>
+            <button onClick={() => handleTransform('delete')} style={{ padding: '4px 8px', background: '#3a1a1a', border: '1px solid #555', color: '#ff6666', cursor: 'pointer', fontSize: '12px' }}>Delete (Del)</button>
+          </div>
+        )}
       </div>
       <div ref={containerRef} style={{ flex: 1 }} />
     </div>
