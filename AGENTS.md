@@ -72,11 +72,11 @@ Source of truth for docs:
 
 ```powershell
 pnpm install                                   # install
-pnpm typecheck                                 # NOTE: only covers some packages (see §7)
+pnpm typecheck                                 # covers all 10 workspace packages
+pnpm test                                      # runs node scripts/run-tests.mjs across all packages
 pnpm --filter @easyschemedit/<pkg> exec tsc --noEmit   # typecheck one package
 
 # Tests: plain TS scripts with custom assert(), no Jest/Vitest.
-# Run each file directly (root `pnpm test` is broken, see §7):
 node --experimental-strip-types packages/domain/__tests__/slice-0.test.ts
 
 pnpm --filter @easyschemedit/web dev           # web dev server
@@ -97,12 +97,12 @@ Package names are `@easyschemedit/<folder>` (web: `@easyschemedit/web`, MCP: `@e
 
 ## 7. Known issues (audit 2026-11-13). Don't trip over them.
 
-- `apps/web/src/islands/EditorIsland.tsx` is a monolithic prototype: one Three.js mesh per block, its own undo stack, and raw IndexedDB writes. It bypasses `renderer`, `persistence`, and `operations`.
-- `apps/web/src/workers/parse-worker.ts` decodes Litematica `BlockStates` as varints (wrong; they are bit-packed longs). Its gzip function is a no-op and block colours are hashed from names. Use `@easyschemedit/formats` instead.
-- `apps/web/astro.config.mjs:21` aliases `packages/domain/src/index.ts`, which doesn't exist (real path: `packages/domain/index.ts`).
-- `apps/web/.astro/` is committed and not gitignored. This can make the build fail with `EPERM` on Windows.
-- Root `pnpm test` uses `npx tsx` (not installed) plus a glob that Windows won't expand. Run tests with `node --experimental-strip-types` instead.
-- Root `typecheck` and CI skip `operations`, `renderer`, `mcp-companion`, and `web`. Typecheck those packages manually.
-- `packages/formats/index.ts` only exports detection, not the format adapters.
-- MCP stdio handlers in `apps/mcp-companion/src/server.ts` are stubs and aren't registered.
-- No tests for `apps/web`, `packages/workers`, or `packages/asset-pipeline`.
+- `apps/web/src/islands/EditorIsland.tsx` is a monolithic prototype: one Three.js mesh per block, its own undo stack, and raw IndexedDB writes. It bypasses `renderer`, `persistence`, and `operations`. — `[RESOLVED in Slice E3.9]`: Replaced monolithic prototype with modular `createEditorRuntime()` + `WorkspaceShell`, `ViewportCanvas` (chunked `BufferGeometry`), `persistence`, and `operations`.
+- `apps/web/src/workers/parse-worker.ts` decodes Litematica `BlockStates` as varints (wrong; they are bit-packed longs). Its gzip function is a no-op and block colours are hashed from names. Use `@easyschemedit/formats` instead. — `[RESOLVED in Slice E3.1]`: Replaced broken varint/no-op gzip worker with thin wrapper delegating to `@easyschemedit/workers` and `@easyschemedit/formats`.
+- `apps/web/astro.config.mjs:21` aliases `packages/domain/src/index.ts`, which doesn't exist (real path: `packages/domain/index.ts`). — `[RESOLVED in Slice E0.1]`: Removed broken manual Vite alias; workspace packages resolve via `package.json` `exports`.
+- `apps/web/.astro/` is committed and not gitignored. This can make the build fail with `EPERM` on Windows. — `[RESOLVED in Slice E0.1]`: Added `.astro/` to `.gitignore` and untracked cached files.
+- Root `pnpm test` uses `npx tsx` (not installed) plus a glob that Windows won't expand. Run tests with `node --experimental-strip-types` instead. — `[RESOLVED in Slice E0.1]`: Uses cross-platform `node scripts/run-tests.mjs` with `--experimental-strip-types`.
+- Root `typecheck` and CI skip `operations`, `renderer`, `mcp-companion`, and `web`. Typecheck those packages manually. — `[RESOLVED in Slice E0.1 & E5.1]`: Root `pnpm typecheck` and `.github/workflows/ci.yml` cover all 10 workspace packages.
+- `packages/formats/index.ts` only exports detection, not the format adapters. — `[RESOLVED in Slice E1.1]`: Exports unified `importSchematic`, `exportSchematic`, `defaultCodecServices`, and all format adapters.
+- MCP stdio handlers in `apps/mcp-companion/src/server.ts` are stubs and aren't registered. — `[RESOLVED in Slice E4.1]`: Wired to live `EditorSession` via `McpCommandBus` and registered on stdio + HTTP/WS bridge (`127.0.0.1:43127`).
+- No tests for `apps/web`, `packages/workers`, or `packages/asset-pipeline`. — `[RESOLVED in Slices E1.6, E3.1–E3.9, E4.2, E5.1]`: Full test suites added across all packages.
