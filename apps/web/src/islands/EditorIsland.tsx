@@ -9,7 +9,9 @@ export default function EditorIsland() {
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const selectedRef = useRef<Set<THREE.Mesh>>(new Set());
+  const selectionBoxRef = useRef<THREE.Mesh | null>(null);
+  const isSelecting = useRef(false);
+  const selectStart = useRef<THREE.Vector3 | null>(null);
   const [status, setStatus] = useState('Drop a .schem or .litematic file here');
   const [fileName, setFileName] = useState<string | null>(null);
   const [selectedCount, setSelectedCount] = useState(0);
@@ -112,168 +114,37 @@ export default function EditorIsland() {
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
 
-      // NbtServices using browser's DecompressionStream
-      const services = {
-        gzipCompress: (b: Uint8Array) => b,
-        gzipDecompress: async (b: Uint8Array, max: number) => {
-          const ds = new DecompressionStream('gzip');
-          const writer = ds.writable.getWriter();
-          writer.write(b);
-          writer.close();
-          const reader = ds.readable.getReader();
-          const chunks: Uint8Array[] = [];
-          let total = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            total += value.length;
-            if (total > max) throw new Error('decompressed too large');
-          }
-          const result = new Uint8Array(total);
-          let off = 0;
-          for (const c of chunks) { result.set(c, off); off += c.length; }
-          return result;
-        },
-      };
+      const worker = new Worker(new URL('../workers/parse-worker.ts', import.meta.url), { type: 'module' });
+      const result = await new Promise<any>((resolve, reject) => {
+        worker.onmessage = (e) => {
+          if (e.data.type === 'error') reject(new Error(e.data.message));
+          else resolve(e.data);
+        };
+        worker.onerror = (e) => reject(new Error(e.message));
+        worker.postMessage({ type: 'parse', bytes, fileName: file.name }, [bytes.buffer]);
+      });
+      worker.terminate();
 
-      const { decodeNbtFromBytes } = await import('@easyschemedit/formats');
-      const root = decodeNbtFromBytes(bytes) as any;
-      if (root.type !== 'compound') throw new Error('Not a compound NBT');
-
-      const entries = root.value as Map<string, any>;
-
-      // Check if Litematic (has Regions)
-      const regions = entries.get('Regions')?.value as Map<string, any> | undefined;
-      let totalBlocks = 0;
-      let totalNonAir = 0;
-
-      // Scene setup
+      // Render blocks from worker result
       const scene = sceneRef.current;
       if (!scene) throw new Error('Scene not ready');
 
-      // Clear previous blocks
       const oldBlocks = scene.getObjectByName('blocks');
       if (oldBlocks) scene.remove(oldBlocks);
       const blockGroup = new THREE.Group();
       blockGroup.name = 'blocks';
 
-      const colorMap: Record<string, number> = {
-        'minecraft:stone': 0x7f7f7f,
-        'minecraft:dirt': 0x866043,
-        'minecraft:grass_block': 0x5a8a3c,
-        'minecraft:oak_planks': 0xb8945f,
-        'minecraft:cobblestone': 0x7a7a7a,
-        'minecraft:oak_log': 0x9a7a4a,
-        'minecraft:glass': 0xadd8e6,
-        'minecraft:water': 0x3f76e4,
-        'minecraft:lava': 0xcf5f0a,
-      };
-
-      function getColor(name: string): number {
-        return colorMap[name] ?? (Math.abs(name.split('').reduce((a, c) => a + c.charCodeAt(0), 0)) % 0xffffff);
-      }
-
-      function decodeVarInts(data: Uint8Array): number[] {
-        const indices: number[] = [];
-        let byteOffset = 0;
-        while (byteOffset < data.length) {
-          let result = 0;
-          let bytesRead = 0;
-          let byte: number;
-          do {
-            byte = data[byteOffset + bytesRead];
-            result |= (byte & 0x7F) << (7 * bytesRead);
-            bytesRead++;
-          } while ((byte & 0x80) !== 0 && bytesRead < 5);
-          indices.push(result);
-          byteOffset += bytesRead;
-        }
-        return indices;
-      }
-
-      if (regions) {
-        // Litematic format
-        for (const [regionName, regionEntry] of regions) {
-          const region = regionEntry.value as Map<string, any>;
-          const pos = region.get('Position')?.value as number[] ?? [0, 0, 0];
-          const size = region.get('Size')?.value as number[] ?? [0, 0, 0];
-          const paletteEntry = region.get('BlockStatePalette')?.value as any[] ?? [];
-          const blockStatesEntry = region.get('BlockStates')?.value;
-
-          const ax = Math.abs(size[0] ?? 1);
-          const ay = Math.abs(size[1] ?? 1);
-          const az = Math.abs(size[2] ?? 1);
-          const paletteNames: string[] = paletteEntry.map((e: any) => {
-            const name = e.value?.get?.('Name')?.value ?? 'minecraft:air';
-            return name;
-          });
-
-          let indices: number[] = [];
-          if (blockStatesEntry?.value instanceof BigInt64Array || Array.isArray(blockStatesEntry?.value)) {
-            // Convert longs to bytes, then decode packed
-            // For simplicity, try direct byte array first
-            if (blockStatesEntry.value instanceof Uint8Array) {
-              indices = decodeVarInts(blockStatesEntry.value);
-            }
-          }
-
-          const total = ax * ay * az;
-          totalBlocks += total;
-          for (let i = 0; i < Math.min(indices.length, total); i++) {
-            const idx = indices[i];
-            const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx] : 'minecraft:air';
-            if (name === 'minecraft:air' || name === 'minecraft:cave_air' || name === 'minecraft:void_air') continue;
-
-            const x = (pos[0] ?? 0) + (i % ax);
-            const z = (pos[2] ?? 0) + (Math.floor(i / ax) % az);
-            const y = (pos[1] ?? 0) + Math.floor(i / (ax * az));
-
-            const color = getColor(name);
-            const geo = new THREE.BoxGeometry(1, 1, 1);
-            const mat = new THREE.MeshLambertMaterial({ color });
-            const mesh = new THREE.Mesh(geo, mat);
-            mesh.position.set(x, y, z);
-            blockGroup.add(mesh);
-            totalNonAir++;
-          }
-        }
-      } else {
-        // Sponge v3 format
-        const width = entries.get('Width')?.value ?? 0;
-        const height = entries.get('Height')?.value ?? 0;
-        const length = entries.get('Length')?.value ?? 0;
-
-        const blocks = entries.get('Blocks')?.value as Map<string, any>;
-        const paletteList = blocks?.get('Palette')?.value as any[];
-        const paletteNames: string[] = paletteList ? paletteList.map((e: any) => (typeof e === 'string' ? e : e.value ?? 'minecraft:air')) : [];
-        const dataBytes = blocks?.get('Data')?.value as Uint8Array;
-
-        const indices = dataBytes ? decodeVarInts(dataBytes) : [];
-        const total = width * height * length;
-        totalBlocks = total;
-
-        for (let i = 0; i < Math.min(indices.length, total); i++) {
-          const idx = indices[i];
-          const name = idx >= 0 && idx < paletteNames.length ? paletteNames[idx] : 'minecraft:air';
-          if (name === 'minecraft:air' || name === 'minecraft:cave_air' || name === 'minecraft:void_air') continue;
-
-          const x = i % width;
-          const z = Math.floor(i / width) % length;
-          const y = Math.floor(i / (width * length));
-
-          const color = getColor(name);
-          const geo = new THREE.BoxGeometry(1, 1, 1);
-          const mat = new THREE.MeshLambertMaterial({ color });
-          const mesh = new THREE.Mesh(geo, mat);
-          mesh.position.set(x, y, z);
-          blockGroup.add(mesh);
-          totalNonAir++;
-        }
-      }
+      result.blocks.forEach((b: any) => {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshLambertMaterial({ color: b.color });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(b.x, b.y, b.z);
+        blockGroup.add(mesh);
+      });
 
       scene.add(blockGroup);
-      setStatus(`Loaded ${file.name}: ${totalBlocks} total, ${totalNonAir} non-air blocks`);
+      setStatus(`Loaded ${file.name}: ${result.dimensions.width}×${result.dimensions.height}×${result.dimensions.length}, ${result.nonAirCount} blocks`);
+      setFileName(file.name);
     } catch (err) {
       setStatus(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }

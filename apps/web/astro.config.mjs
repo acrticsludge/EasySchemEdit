@@ -12,6 +12,9 @@ export default defineConfig({
     assets: '_astro',
   },
   vite: {
+    worker: {
+      format: 'es',
+    },
     resolve: {
       alias: {
         '@easyschemedit/formats': resolve(__dirname, '../../packages/formats/index.ts'),
