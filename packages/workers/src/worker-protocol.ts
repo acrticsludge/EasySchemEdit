@@ -59,3 +59,52 @@ export interface TransferablePayload {
   byteOffset: number;
   byteLength: number;
 }
+
+// ============================================================================
+// Worker Request Payloads (Slice E3.1)
+// ============================================================================
+
+export interface ImportWorkerPayload {
+  bytes: Uint8Array | ArrayBuffer;
+  fileName?: string;
+  filename?: string;
+  baseRevision?: number;
+}
+
+export interface ExportWorkerPayload {
+  targetFormat: 'schem-v3' | 'litematic';
+  snapshot: any;
+  options?: any;
+  baseRevision?: number;
+}
+
+export interface ChunkData {
+  key: string;
+  origin?: [number, number, number];
+  palette?: (string | { name: string; properties?: Record<string, string> })[];
+  indices?: Uint8Array | Uint16Array | Uint32Array | number[];
+  getBlock?: (lx: number, ly: number, lz: number) => any;
+}
+
+export type ResolvedModel = any;
+export type AtlasLayout = Record<string, { u0: number; v0: number; u1: number; v1: number; hasAlpha?: 'none' | 'binary' | 'partial' }> | any;
+
+export interface MeshWorkerPayload {
+  chunk: ChunkData;
+  neighborChunks?: Record<string, ChunkData>;
+  models?: Record<string, ResolvedModel>;
+  atlas?: AtlasLayout;
+  baseRevision?: number;
+  placementId?: string;
+}
+
+/**
+ * Stale-revision discard rule helper:
+ * Main thread applies worker results only if resultBaseRevision is undefined or matches currentProjectRevision.
+ */
+export function shouldApplyWorkerResult(
+  resultBaseRevision: number | undefined,
+  currentProjectRevision: number,
+): boolean {
+  return resultBaseRevision === undefined || resultBaseRevision === currentProjectRevision;
+}

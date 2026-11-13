@@ -3,88 +3,96 @@
 // SUBSPEC-H §5: All heavy computation off main thread; typed messages only.
 
 import type {
-  WorkerMessageToWorker,
+  WorkerMessage,
   WorkerMessageToMain,
-  WorkerResult,
   WorkerCancelResult,
+  ImportWorkerPayload,
 } from './worker-protocol.ts';
+import { importSchematic } from '../../formats/index.ts';
 
-let cancelled = false;
-
-self.addEventListener('message', (event: MessageEvent<WorkerMessageToWorker>) => {
-  const { requestId, type, payload, transfers } = event.data;
-
-  if (type === 'cancel') {
-    cancelled = true;
-    const cancelResult: WorkerCancelResult = { requestId, type: 'cancelled' };
-    self.postMessage(cancelResult);
-    return;
+/**
+ * Core handler for schematic import requests.
+ * Runs in worker thread or directly in tests / Node environments.
+ */
+export async function handleImportRequest(
+  requestId: string,
+  payload: ImportWorkerPayload,
+  isCancelled?: () => boolean,
+): Promise<WorkerMessageToMain> {
+  if (isCancelled?.()) {
+    return { requestId, type: 'cancelled' };
   }
 
-  cancelled = false;
-
-  if (type !== 'import') {
-    const errorResult: WorkerMessageToMain = {
-      requestId,
-      type: 'error',
-      code: 'WORKER_UNKNOWN_MESSAGE',
-      message: `Unknown message type: ${type}`,
-    };
-    self.postMessage(errorResult);
-    return;
-  }
-
-  // payload is expected to be { bytes: ArrayBuffer, filename: string }
-  const { bytes, filename } = payload as { bytes: ArrayBuffer; filename: string };
-  const byteArray = new Uint8Array(bytes);
-
-  // Parse NBT incrementally (placeholder — actual parsing delegates to domain nbts.ts)
-  // In h-5+, this imports the shared domain NBT decoder.
-  let parsed: { type: string; size: number };
   try {
-    parsed = parseNbtHeader(byteArray);
+    const rawBytes = payload.bytes;
+    const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
+    const fileName = payload.fileName ?? payload.filename ?? 'schematic.schem';
+
+    const res = await importSchematic(bytes, fileName);
+
+    if (isCancelled?.()) {
+      return { requestId, type: 'cancelled' };
+    }
+
+    return {
+      requestId,
+      type: 'result',
+      payload: {
+        placements: res.placements,
+        importGroups: res.importGroups,
+        group: res.group,
+        report: res.report,
+        baseRevision: payload.baseRevision,
+      },
+    };
   } catch (err) {
-    const errorResult: WorkerMessageToMain = {
+    return {
       requestId,
       type: 'error',
-      code: 'WORKER_PARSE_FAILED',
-      message: (err as Error).message,
+      code: (err as any)?.code ?? 'WORKER_PARSE_FAILED',
+      message: err instanceof Error ? err.message : String(err),
     };
-    self.postMessage(errorResult);
-    return;
   }
-
-  if (cancelled) {
-    const cancelResult: WorkerCancelResult = { requestId, type: 'cancelled' };
-    self.postMessage(cancelResult);
-    return;
-  }
-
-  const result: WorkerResult<{ format: string; size: number }> = {
-    requestId,
-    type: 'result',
-    payload: { format: parsed.type, size: parsed.size },
-  };
-  self.postMessage(result);
-});
-
-// Minimal NBT header parse for worker demonstration.
-function parseNbtHeader(bytes: Uint8Array): { type: string; size: number } {
-  if (bytes.length < 2) {
-    throw new Error('NBT_PARSE_TOO_SHORT');
-  }
-  // Check gzip magic
-  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
-    return { type: 'gzip-nbt', size: bytes.length };
-  }
-  // Check for raw NBT compound (tag type 10)
-  if (bytes[0] === 0x0a) {
-    return { type: 'nbt-compound', size: bytes.length };
-  }
-  return { type: 'unknown', size: bytes.length };
 }
 
 // Transferable support: postMessage with transfers
-export function postTransferable(message: WorkerMessageToMain, transfers: ArrayBufferLike[]): void {
-  (self as any).postMessage(message, transfers);
+export function postTransferable(message: WorkerMessageToMain, transfers?: ArrayBufferLike[]): void {
+  if (typeof self !== 'undefined' && typeof (self as any).postMessage === 'function') {
+    if (transfers && transfers.length > 0) {
+      (self as any).postMessage(message, transfers);
+    } else {
+      (self as any).postMessage(message);
+    }
+  }
+}
+
+// Guarded browser worker event listener
+if (typeof self !== 'undefined' && typeof (self as any).addEventListener === 'function') {
+  let cancelled = false;
+
+  self.addEventListener('message', async (event: MessageEvent<WorkerMessage<any>>) => {
+    const { requestId, type, payload } = event.data;
+
+    if (type === 'cancel') {
+      cancelled = true;
+      const cancelResult: WorkerCancelResult = { requestId, type: 'cancelled' };
+      self.postMessage(cancelResult);
+      return;
+    }
+
+    cancelled = false;
+
+    if (type !== 'import') {
+      self.postMessage({
+        requestId,
+        type: 'error',
+        code: 'WORKER_UNKNOWN_MESSAGE',
+        message: `Unknown message type: ${type}`,
+      });
+      return;
+    }
+
+    const result = await handleImportRequest(requestId, payload as ImportWorkerPayload, () => cancelled);
+    self.postMessage(result);
+  });
 }
