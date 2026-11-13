@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Astro static app shell with React editor island for EasySchemEdit",
   "scripts": {
-    "build": "astro build",
+    "build": "astro build && node -e \"import('node:fs').then(fs => { fs.rmSync('../../dist', { recursive: true, force: true }); fs.cpSync('dist', '../../dist', { recursive: true }); })\"",
     "dev": "astro dev",
     "preview": "astro preview",
     "typecheck": "tsc --noEmit"
