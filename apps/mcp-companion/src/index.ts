@@ -18,14 +18,6 @@ export type {
 } from './mutation-envelope.ts';
 
 export type {
-  PackManagerState,
-  PackEntry,
-  PackCompatibility,
-  PackDiagnostics,
-  PackAction,
-} from './pack-manager.ts';
-
-export type {
   PairingToken,
   PairingTokenState,
   SecurityConfig,
@@ -44,15 +36,32 @@ export type {
   ClipboardTool,
   ClipboardToolResult,
   ClipboardToolError,
-  ClipboardTools,
-} from './clipboard.ts';
+} from './tools/clipboard.ts';
 
 export type {
   CopyResult,
   CutResult,
   PasteResult,
-} from './clipboard.ts';
+} from './tools/clipboard.ts';
 
 export type {
   ClipboardToolResultMap,
-} from './clipboard.ts';
+} from './tools/clipboard.ts';
+
+export type {
+  HistoryTool,
+  HistoryToolResult,
+  HistoryToolError,
+} from './tools/history.ts';
+
+export type {
+  UndoResult,
+  RedoResult,
+  ExportSchematicResult,
+  GetOperationDiffResult,
+  SetColorModeResult,
+} from './tools/history.ts';
+
+export type {
+  HistoryToolResultMap,
+} from './tools/history.ts';
