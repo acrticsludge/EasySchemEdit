@@ -1,6 +1,10 @@
 // packages/asset-pipeline/src/jar-verifier.ts
 // SHA-1 verification against downloads.client.sha1 from version JSON.
-// Manual JAR path: reject corrupt/wrong-version JARs.
+// Inspect extracted version.json and pack.mcmeta for version integrity.
+
+import { strFromU8 } from 'fflate';
+import { PINNED_1_21_11_CLIENT_JAR_SHA1, sha1Hex, type Sha1Fn } from './version-manifest.ts';
+import { findZipEntrySync } from './asset-extractor.ts';
 
 export interface JarVerificationResult {
   valid: boolean;
@@ -9,14 +13,23 @@ export interface JarVerificationResult {
   reason?: string;
 }
 
-// Verify a client JAR's SHA-1 against the expected value from version JSON.
-// Returns valid=true if the JAR matches; valid=false with reason otherwise.
+export interface JarVersionInfo {
+  version?: string;
+  name?: string;
+  packFormat?: number;
+  description?: string;
+  error?: string;
+}
+
+/**
+ * Verify a client JAR's SHA-1 against expected value (defaults to PINNED_1_21_11_CLIENT_JAR_SHA1).
+ */
 export async function verifyClientJar(
   jarBytes: Uint8Array,
-  expectedSha1: string,
+  expectedSha1: string = PINNED_1_21_11_CLIENT_JAR_SHA1,
+  sha1Fn?: Sha1Fn,
 ): Promise<JarVerificationResult> {
-  const { sha1Hex } = await import('./version-manifest.ts');
-  const actualSha1 = await sha1Hex(jarBytes);
+  const actualSha1 = await sha1Hex(jarBytes, sha1Fn);
 
   if (!expectedSha1) {
     return { valid: false, expectedSha1: '', actualSha1, reason: 'ASSET_NO_EXPECTED_SHA1' };
@@ -27,29 +40,91 @@ export async function verifyClientJar(
       valid: false,
       expectedSha1,
       actualSha1,
-      reason: 'ASSET_SHA1_MISMATCH',
+      reason: 'SHA1_MISMATCH',
     };
   }
 
   return { valid: true, expectedSha1, actualSha1 };
 }
 
-// Detect Minecraft version from JAR metadata (version.json inside the JAR).
-// Used to validate a user-provided manual JAR against the pinned expected version.
-export async function detectJarVersion(jarBytes: Uint8Array): Promise<{ version?: string; error?: string }> {
-  // Minimal zip parsing to read version.json from the JAR.
-  // Full zip extraction is in asset-extractor.ts; this is a lightweight header read.
+/**
+ * Detect Minecraft version and metadata from JAR/zip synchronously by reading
+ * version.json and pack.mcmeta.
+ */
+export function detectJarVersionSync(jarBytes: Uint8Array): JarVersionInfo {
   try {
-    const { findZipEntry } = await import('./asset-extractor.ts');
-    const versionJsonEntry = await findZipEntry(jarBytes, 'version.json');
-    if (!versionJsonEntry) {
-      return { version: undefined, error: 'ASSET_NO_VERSION_JSON_IN_JAR' };
+    const versionBytes = findZipEntrySync(jarBytes, 'version.json');
+    const packBytes = findZipEntrySync(jarBytes, 'pack.mcmeta');
+
+    if (!versionBytes && !packBytes) {
+      return {
+        error: 'ASSET_NO_VERSION_METADATA_IN_JAR: Neither version.json nor pack.mcmeta found',
+      };
     }
-    const versionJson = JSON.parse(
-      new TextDecoder().decode(versionJsonEntry),
-    ) as { id?: string };
-    return { version: versionJson.id };
+
+    let detectedVersion: string | undefined;
+    let detectedName: string | undefined;
+    let detectedPackFormat: number | undefined;
+    let detectedDesc: string | undefined;
+
+    if (versionBytes) {
+      try {
+        const vj = JSON.parse(strFromU8(versionBytes)) as {
+          id?: string;
+          name?: string;
+          pack_version?: { resource?: number; data?: number };
+        };
+        detectedVersion = vj.id || vj.name;
+        detectedName = vj.name || vj.id;
+        if (vj.pack_version?.resource !== undefined) {
+          detectedPackFormat = vj.pack_version.resource;
+        }
+      } catch (err) {
+        return { error: `ASSET_MALFORMED_VERSION_JSON: ${(err as Error).message}` };
+      }
+    }
+
+    if (packBytes) {
+      try {
+        const pm = JSON.parse(strFromU8(packBytes)) as {
+          pack?: {
+            description?: string | unknown;
+            pack_format?: number;
+          };
+        };
+        if (pm.pack) {
+          if (detectedPackFormat === undefined && typeof pm.pack.pack_format === 'number') {
+            detectedPackFormat = pm.pack.pack_format;
+          }
+          if (pm.pack.description) {
+            detectedDesc =
+              typeof pm.pack.description === 'string'
+                ? pm.pack.description
+                : JSON.stringify(pm.pack.description);
+          }
+        }
+      } catch (err) {
+        // pack.mcmeta parse failure is not fatal if version.json succeeded
+        if (!detectedVersion) {
+          return { error: `ASSET_MALFORMED_PACK_MCMETA: ${(err as Error).message}` };
+        }
+      }
+    }
+
+    return {
+      version: detectedVersion,
+      name: detectedName,
+      packFormat: detectedPackFormat,
+      description: detectedDesc,
+    };
   } catch (err) {
-    return { version: undefined, error: `ASSET_JAR_READ_FAILED: ${(err as Error).message}` };
+    return { error: `ASSET_JAR_READ_FAILED: ${(err as Error).message}` };
   }
+}
+
+/**
+ * Detect Minecraft version and metadata from JAR metadata (async wrapper).
+ */
+export async function detectJarVersion(jarBytes: Uint8Array): Promise<JarVersionInfo> {
+  return detectJarVersionSync(jarBytes);
 }

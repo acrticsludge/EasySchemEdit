@@ -1,10 +1,12 @@
 // packages/asset-pipeline/src/asset-extractor.ts
-// Zip open, extract blockstates/models/textures (+ .mcmeta, atlases, colormaps).
-// SUBSPEC-B b-13: recursive extraction of blockstates/models/textures, .mcmeta, atlases, colormaps.
+// Synchronous and streaming zip extraction via fflate.
+// SUBSPEC-B b-13: extraction of blockstates, models, textures, mcmeta, version.json, pack.mcmeta.
+
+import { unzipSync } from 'fflate';
 
 export interface ExtractedAsset {
-  path: string;          // archive-relative path, e.g. "assets/minecraft/blockstates/stone.json"
-  data: Uint8Array;      // file bytes
+  path: string;     // archive-relative path, e.g. "assets/minecraft/blockstates/stone.json"
+  data: Uint8Array; // file bytes
 }
 
 export interface ExtractionResult {
@@ -17,82 +19,118 @@ export interface ExtractionResult {
   errors: string[];
 }
 
-// Find a zip entry by name without full extraction (lightweight header read).
+/**
+ * Filter predicate determining if a zip entry path is an asset required by the editor.
+ * Extracts:
+ * - assets/<namespace>/blockstates/*.json
+ * - assets/<namespace>/models/block/*.json
+ * - assets/<namespace>/models/*.json
+ * - assets/<namespace>/textures/block/*.png
+ * - assets/<namespace>/textures/block/*.png.mcmeta
+ * - version.json
+ * - pack.mcmeta
+ * Ignores all other files (classes, sounds, lang, non-block textures, etc.).
+ */
+export function isExtractableAssetPath(rawPath: string): boolean {
+  const norm = rawPath.replace(/\\/g, '/').replace(/^\//, '');
+
+  if (norm === 'version.json' || norm === 'pack.mcmeta') {
+    return true;
+  }
+
+  // Blockstates: assets/<namespace>/blockstates/<file>.json
+  if (/^assets\/[^/]+\/blockstates\/[^/]+\.json$/i.test(norm)) {
+    return true;
+  }
+
+  // Models: assets/<namespace>/models/block/*.json or assets/<namespace>/models/*.json
+  if (/^assets\/[^/]+\/models\/(?:block\/)?[^/]+\.json$/i.test(norm)) {
+    return true;
+  }
+
+  // Textures: assets/<namespace>/textures/block/*.png
+  if (/^assets\/[^/]+\/textures\/block\/[^/]+\.png$/i.test(norm)) {
+    return true;
+  }
+
+  // Texture animation metadata: assets/<namespace>/textures/block/*.png.mcmeta
+  if (/^assets\/[^/]+\/textures\/block\/[^/]+\.png\.mcmeta$/i.test(norm)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Find and extract a single entry by name from a zip buffer synchronously.
+ */
+export function findZipEntrySync(
+  jarBytes: Uint8Array,
+  entryName: string,
+): Uint8Array | null {
+  const normTarget = entryName.replace(/\\/g, '/').replace(/^\//, '');
+  const unzipped = unzipSync(jarBytes, {
+    filter: (file) => file.name.replace(/\\/g, '/').replace(/^\//, '') === normTarget,
+  });
+  return unzipped[normTarget] ?? Object.values(unzipped)[0] ?? null;
+}
+
+/**
+ * Find and extract a single entry by name (async wrapper for compatibility).
+ */
 export async function findZipEntry(
   jarBytes: Uint8Array,
   entryName: string,
 ): Promise<Uint8Array | null> {
-  const result = await extractZipEntries(jarBytes, [entryName]);
-  return result.assets.length > 0 ? result.assets[0].data : null;
+  return findZipEntrySync(jarBytes, entryName);
 }
 
-// Extract specific entries from a zip/JAR buffer.
-// entryNames are archive-relative paths. Returns only found entries.
-export async function extractZipEntries(
+/**
+ * Extract specific named entries (or all matching assets if empty) synchronously.
+ */
+export function extractZipEntriesSync(
   jarBytes: Uint8Array,
-  entryNames: string[],
-): Promise<ExtractionResult> {
+  entryNames: string[] = [],
+): ExtractionResult {
   const assets: ExtractedAsset[] = [];
   const errors: string[] = [];
-  const wanted = new Set(entryNames);
 
-  let offset = 0;
-  // Parse local file headers (PK\x03\x04) to find entries.
-  // This is a minimal implementation; full extraction uses the same logic.
-  while (offset < jarBytes.length - 4) {
-    const sig = jarBytes[offset] | (jarBytes[offset + 1] << 8) | (jarBytes[offset + 2] << 16) | (jarBytes[offset + 3] << 24);
-    if (sig !== 0x04034b50) {
-      // Not a local file header — could be central directory (PK\x01\x02) or end of central directory.
-      break;
-    }
-
-    const nameLength = jarBytes[offset + 26] | (jarBytes[offset + 27] << 8);
-    const extraLength = jarBytes[offset + 28] | (jarBytes[offset + 29] << 8);
-    const compressedSize =
-      jarBytes[offset + 18] |
-      (jarBytes[offset + 19] << 8) |
-      (jarBytes[offset + 20] << 16) |
-      (jarBytes[offset + 21] << 24);
-    const uncompressedSize =
-      jarBytes[offset + 22] |
-      (jarBytes[offset + 23] << 8) |
-      (jarBytes[offset + 24] << 16) |
-      (jarBytes[offset + 25] << 24);
-    const method =
-      jarBytes[offset + 8] | (jarBytes[offset + 9] << 8); // compression method (0=stored, 8=deflated)
-
-    const nameBytes = jarBytes.slice(offset + 30, offset + 30 + nameLength);
-    const name = new TextDecoder().decode(nameBytes);
-
-    const dataStart = offset + 30 + nameLength + extraLength;
-    const dataEnd = dataStart + compressedSize;
-
-    if (wanted.has(name)) {
-      let entryData: Uint8Array = jarBytes.slice(dataStart, dataEnd) as unknown as Uint8Array;
-      if (method === 8) {
-        // Deflated — decompress. Use a minimal inflate or fallback.
-        try {
-          entryData = await inflateRaw(entryData);
-        } catch (err) {
-          errors.push(`ASSET_INFLATE_FAILED: ${name}`);
-        }
-      }
-      assets.push({ path: name, data: entryData });
-    }
-
-    offset = dataEnd;
+  let filter: (file: { name: string }) => boolean;
+  if (entryNames.length > 0) {
+    const wanted = new Set(entryNames.map((p) => p.replace(/\\/g, '/').replace(/^\//, '')));
+    filter = (file) => wanted.has(file.name.replace(/\\/g, '/').replace(/^\//, ''));
+  } else {
+    filter = (file) => isExtractableAssetPath(file.name);
   }
 
-  // Categorize
+  let unzipped: Record<string, Uint8Array>;
+  try {
+    unzipped = unzipSync(jarBytes, { filter });
+  } catch (err) {
+    errors.push(`ASSET_EXTRACTION_FAILED: ${(err as Error).message}`);
+    return {
+      assets: [],
+      assetCount: 0,
+      blockstateCount: 0,
+      modelCount: 0,
+      textureCount: 0,
+      otherCount: 0,
+      errors,
+    };
+  }
+
   let blockstateCount = 0;
   let modelCount = 0;
   let textureCount = 0;
   let otherCount = 0;
 
-  for (const a of assets) {
-    if (a.path.startsWith('assets/minecraft/blockstates/')) blockstateCount++;
-    else if (a.path.startsWith('assets/minecraft/models/')) modelCount++;
-    else if (a.path.startsWith('assets/minecraft/textures/')) textureCount++;
+  for (const [rawPath, data] of Object.entries(unzipped)) {
+    const path = rawPath.replace(/\\/g, '/').replace(/^\//, '');
+    assets.push({ path, data });
+
+    if (path.includes('/blockstates/')) blockstateCount++;
+    else if (path.includes('/models/')) modelCount++;
+    else if (path.includes('/textures/')) textureCount++;
     else otherCount++;
   }
 
@@ -102,80 +140,31 @@ export async function extractZipEntries(
     blockstateCount,
     modelCount,
     textureCount,
-    otherCount: otherCount,
+    otherCount,
     errors,
   };
 }
 
-// Extract all supported asset categories recursively:
-// blockstates, models, textures, .mcmeta, atlases, colormaps.
-export async function extractAllAssets(
+/**
+ * Extract specific entries from a zip/JAR buffer (async wrapper for compatibility).
+ */
+export async function extractZipEntries(
   jarBytes: Uint8Array,
+  entryNames: string[] = [],
 ): Promise<ExtractionResult> {
-  const wanted: string[] = [];
-
-  // First pass: walk all local file headers to collect candidate paths.
-  let offset = 0;
-  while (offset < jarBytes.length - 4) {
-    const sig = jarBytes[offset] | (jarBytes[offset + 1] << 8) | (jarBytes[offset + 2] << 16) | (jarBytes[offset + 3] << 24);
-    if (sig !== 0x04034b50) break;
-
-    const nameLength = jarBytes[offset + 26] | (jarBytes[offset + 27] << 8);
-    const extraLength = jarBytes[offset + 28] | (jarBytes[offset + 29] << 8);
-    const compressedSize =
-      jarBytes[offset + 18] |
-      (jarBytes[offset + 19] << 8) |
-      (jarBytes[offset + 20] << 16) |
-      (jarBytes[offset + 21] << 24);
-
-    const nameBytes = jarBytes.slice(offset + 30, offset + 30 + nameLength);
-    const name = new TextDecoder().decode(nameBytes);
-
-    if (
-      name.startsWith('assets/minecraft/blockstates/') ||
-      name.startsWith('assets/minecraft/models/') ||
-      name.startsWith('assets/minecraft/textures/') ||
-      name.endsWith('.mcmeta') ||
-      name.includes('atlas') ||
-      name.includes('colormap')
-    ) {
-      wanted.push(name);
-    }
-
-    offset += 30 + nameLength + extraLength + compressedSize;
-  }
-
-  // Second pass: extract the collected entries.
-  const result = await extractZipEntries(jarBytes, wanted);
-  return result;
+  return extractZipEntriesSync(jarBytes, entryNames);
 }
 
-// Minimal raw inflate (RFC 1951) for stored/deflated entries.
-// Uses a lightweight implementation to avoid external dependencies.
-async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
-  // Use the browser's CompressionStream if available (modern browsers).
-  if (typeof DecompressionStream !== 'undefined') {
-    const stream = new DecompressionStream('deflate-raw');
-    const writer = stream.writable.getWriter();
-    writer.write(data.buffer as ArrayBuffer);
-    writer.close();
-    const reader = stream.readable.getReader();
-    const chunks: Uint8Array[] = [];
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (value) chunks.push(value);
-    }
-    const total = chunks.reduce((sum, c) => sum + c.length, 0);
-    const result = new Uint8Array(total);
-    let pos = 0;
-    for (const c of chunks) {
-      result.set(c, pos);
-      pos += c.length;
-    }
-    return result;
-  }
+/**
+ * Extract all supported asset categories from client JAR / pack synchronously.
+ */
+export function extractAllAssetsSync(jarBytes: Uint8Array): ExtractionResult {
+  return extractZipEntriesSync(jarBytes, []);
+}
 
-  // Fallback: throw — deflated entries require DecompressionStream.
-  throw new Error('ASSET_INFLATE_UNSUPPORTED: no DecompressionStream available');
+/**
+ * Extract all supported asset categories (async wrapper).
+ */
+export async function extractAllAssets(jarBytes: Uint8Array): Promise<ExtractionResult> {
+  return extractAllAssetsSync(jarBytes);
 }
