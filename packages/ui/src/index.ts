@@ -33,6 +33,22 @@ export type {
 } from './layout.ts';
 
 export {
+  createInspector,
+} from './inspector.ts';
+
+export type {
+  BlockStateMetadata,
+  BlockStateProperty,
+  Inspector,
+  InspectorContext,
+  InspectorView,
+  MirrorAxis,
+  NumericInput,
+  Rotation,
+  Transform,
+} from './inspector.ts';
+
+export {
   createOutliner,
 } from './outliner.ts';
 
