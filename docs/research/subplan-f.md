@@ -58,3 +58,7 @@ decision. The discrepancy is logged as D-1 in `docs/agent/DOUBTS.md` for the Pha
 - D-2: SUBSPEC-F is silent on whether outstanding confirmation tokens must be revoked on authority handover.
 - D-3: the "large" threshold that makes `export_schematic` confirmation-required.
 - D-4: SPEC-F §4.2 asks for symlink-race safety via `O_NOFOLLOW`; the pure-TS companion package cannot open file descriptors, so race-freedom depends on the host adapter (see D-4 in DOUBTS.md).
+- D-5: `MCP_LIMITS` (f-7) and `LIMITS` (f-11) duplicate the same six budget numbers.
+- D-6: package tsconfigs disagree about `.ts` import specifiers and about `noEmit`, so `build` and `tsc --noEmit` give different answers.
+- D-7: bridge/health ports are 8765/8766 in code vs 43127 in SPEC-F F2.
+

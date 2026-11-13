@@ -61,3 +61,47 @@ Items here are unresolved; nothing here may be implemented as a guess.
 - **Severity:** Medium (a TOCTOU window exists between the containment check and the rename; it is
   exploitable only by a local attacker who can create symlinks inside an approved directory).
 
+## D-5: `MCP_LIMITS` and `LIMITS` duplicate the same six budget numbers
+
+- **Context:** `destructive-protocol.ts` exports `MCP_LIMITS`; `failure-handling.ts` exports `LIMITS`
+  with identical values, because a value import between the two files fails TS5097 (see D-6).
+  Slice f-11's test asserts them in lockstep, which catches drift only when the test runs.
+- **Options:** (a) move the constants into a module both re-export through `index.ts`; (b) set
+  `allowImportingTsExtensions` + `noEmit` in the package tsconfig so f-11 can import f-7's values;
+  (c) leave the duplication and rely on the lockstep test.
+- **Recommended default:** (b) — it also removes the constraint that forced injection in slice f-10.
+  (a) is the workaround if the tsconfig change is undesirable.
+- **Evidence:** `docs/audits/subplan-f-round-2.md` PF-4.
+- **Severity:** Medium (silent divergence in budget enforcement is a correctness risk, not a crash).
+
+## D-6: Package tsconfigs disagree about `.ts` import specifiers, and `build` scripts disagree with them
+
+- **Context:** `apps/mcp-companion/tsconfig.json` does NOT set `allowImportingTsExtensions`, so
+  type-only `.ts` imports compile (elided) while value imports fail TS5097 — this forced the
+  injected-sanitizer design in slice f-10. `packages/domain` and `packages/formats` DO set the flag,
+  but the flag is only legal with `noEmit`/`emitDeclarationOnly`, and their `build: tsc` scripts pass
+  neither, so a plain package build fails TS5096 while `tsc --noEmit` passes.
+- **Options:** (a) set `allowImportingTsExtensions` + `noEmit` (or `emitDeclarationOnly`) everywhere
+  and make the build scripts emit declarations only, bundling separately; (b) drop the flag
+  everywhere and write extensionless imports; (c) leave as-is and keep injecting collaborators.
+- **Recommended default:** (a) — one rule for all packages, and it matches how the tests already run
+  (`node --experimental-strip-types` consumes `.ts` directly, so no emit is needed for tests).
+- **Evidence:** `docs/audits/subplan-f-round-2.md` PF-5; `packages/domain/tsconfig.json` line 21 and
+  `packages/domain/package.json` `build: tsc`.
+- **Severity:** Medium (the current state means `pnpm build` is broken for two packages while
+  `tsc --noEmit` is green — a confusing signal for anyone picking the repo up).
+
+## D-7: Bridge port conflict — implementation 8765/8766 vs SPEC-F F2's 43127
+
+- **Context:** SPEC-F F2 fixes the browser bridge at `127.0.0.1:43127` (configurable).
+  `src/bridge.ts` listens on 8765 and `src/health.ts` on 8766, both written in Phase 2 before SPEC-F
+  was reconciled.
+- **Options:** (a) move both to 43127 (one port, `/healthz` served by the bridge); (b) bridge on
+  43127 and health on 43128; (c) keep the current ports and amend SPEC-F F2.
+- **Recommended default:** (a) — SPEC-F F2 is a locked decision; one port keeps CORS/origin policy
+  in one place.
+- **Evidence:** `docs/specs/subs/SUBSPEC-F_MCP_ADAPTER.md` F2 and §3.1; `src/bridge.ts:7`,
+  `src/health.ts:7`; `docs/audits/subplan-f-round-2.md` PF-2.
+- **Severity:** Low (nothing depends on the ports yet; both listeners are stubs).
+
+
