@@ -302,7 +302,59 @@ console.log('--- Test 3: ViewportCameraController ---');
   assert(Number.isFinite(threeCam.position.y), 'Camera position Y must be finite');
   assert(Number.isFinite(threeCam.position.z), 'Camera position Z must be finite');
 
-  console.log('✓ Test 3 passed: orbit, fly, framing, presets, and Three camera sync work as expected.');
+  // Smooth damped zoom and zoom-toward-anchor
+  const zoomCtrl = new ViewportCameraController({
+    mode: 'orbit',
+    target: [0, 0, 0],
+    distance: 30,
+    yaw: 0,
+    pitch: 0,
+  });
+  const anchorPoint: [number, number, number] = [10, 0, 10];
+  zoomCtrl.queueZoom(120, anchorPoint);
+  assert(zoomCtrl.getTargetDistance() < 30, 'targetDistance should decrease on positive zoom delta');
+  assertEqual(zoomCtrl.getDistance(), 30, 'Distance should not jump immediately before stepDamping');
+
+  // Step damping over several frames
+  let prevD = zoomCtrl.getDistance();
+  for (let frame = 0; frame < 10; frame++) {
+    zoomCtrl.stepDamping(0.016);
+    assert(zoomCtrl.getDistance() < prevD, 'Distance should smoothly decrease towards targetDistance');
+    prevD = zoomCtrl.getDistance();
+  }
+
+  // Verify target shifted towards anchorPoint [10, 0, 10]
+  const intermediateTarget = zoomCtrl.getTarget();
+  assert(intermediateTarget[0] > 0, 'Target X should move towards zoom anchor');
+  assert(intermediateTarget[2] > 0, 'Target Z should move towards zoom anchor');
+
+  // Converge damping to completion
+  for (let frame = 0; frame < 60; frame++) {
+    zoomCtrl.stepDamping(0.016);
+  }
+  assert(
+    Math.abs(zoomCtrl.getDistance() - zoomCtrl.getTargetDistance()) < 1e-4,
+    'Distance must converge to targetDistance'
+  );
+
+  // setPivotPreservingCamera preserves camera position within 1e-5
+  const camPosBefore = [...zoomCtrl.getPosition()];
+  const newPivot: [number, number, number] = [5, 2, 7];
+  zoomCtrl.setPivotPreservingCamera(newPivot);
+
+  assertDeepEqual(zoomCtrl.getTarget(), newPivot, 'Target should update to new pivot');
+  const camPosAfter = zoomCtrl.getPosition();
+  const camPosDelta = Math.hypot(
+    camPosBefore[0] - camPosAfter[0],
+    camPosBefore[1] - camPosAfter[1],
+    camPosBefore[2] - camPosAfter[2]
+  );
+  assert(
+    camPosDelta < 1e-5,
+    `setPivotPreservingCamera must preserve camera position within 1e-5 (got ${camPosDelta})`
+  );
+
+  console.log('✓ Test 3 passed: orbit, fly, framing, presets, damped zoom, cursor pivot, and Three camera sync work as expected.');
 }
 
 // ============================================================================

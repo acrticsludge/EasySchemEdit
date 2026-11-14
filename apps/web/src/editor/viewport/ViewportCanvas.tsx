@@ -123,6 +123,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const gridGroupRef = useRef<THREE.Group | null>(null);
   const conflictGroupRef = useRef<THREE.Group | null>(null);
   const ghostGroupRef = useRef<THREE.Group | null>(null);
+  const groundGridRef = useRef<THREE.GridHelper | null>(null);
 
   // Prop refs for stable callbacks
   const assetSourceRef = useRef(assetSource);
@@ -232,6 +233,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (gridGroupRef.current) scene.remove(gridGroupRef.current);
     gridGroupRef.current = buildGridBordersGroup(unionBounds, gPrefs);
     scene.add(gridGroupRef.current);
+
+    if (groundGridRef.current) {
+      groundGridRef.current.visible = project.placements.length === 0;
+    }
 
     // 5. Conflicts
     if (conflictGroupRef.current) scene.remove(conflictGroupRef.current);
@@ -412,6 +417,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     // Ground helper
     const groundGrid = new THREE.GridHelper(128, 128, 0x444466, 0x252538);
     groundGrid.position.y = -0.01;
+    groundGrid.visible = session.peekProject().placements.length === 0;
+    groundGridRef.current = groundGrid;
     scene.add(groundGrid);
 
     // Chunk Manager
@@ -625,6 +632,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         }
       }
 
+      cameraCtrl.stepDamping(dt);
       cameraCtrl.syncToThreeCamera(camera);
       renderer.render(scene, camera);
 
@@ -670,6 +678,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         scene.remove(gizmoProxyRef.current);
         gizmoProxyRef.current = null;
       }
+      groundGridRef.current = null;
 
       chunkManager.dispose();
       renderer.dispose();
@@ -717,17 +726,6 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   // --------------------------------------------------------------------------
   // Mouse and Keyboard Event Handlers
   // --------------------------------------------------------------------------
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
-      return;
-    }
-    isDraggingRef.current = true;
-    dragButtonRef.current = e.button;
-    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
-    pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  };
-
   const performRaycast = useCallback(
     (clientX: number, clientY: number): VoxelHit | null => {
       const canvas = canvasRef.current;
@@ -778,6 +776,29 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     [session]
   );
 
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
+      return;
+    }
+    isDraggingRef.current = true;
+    dragButtonRef.current = e.button;
+    lastMousePosRef.current = { x: e.clientX, y: e.clientY };
+    pointerDownPosRef.current = { x: e.clientX, y: e.clientY };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    const cameraCtrl = cameraCtrlRef.current;
+    if (cameraCtrl && cameraCtrl.getMode() === 'orbit' && e.button === 0 && !e.shiftKey) {
+      const hit = performRaycast(e.clientX, e.clientY);
+      if (hit) {
+        cameraCtrl.setPivotPreservingCamera([
+          hit.position[0] + 0.5,
+          hit.position[1] + 0.5,
+          hit.position[2] + 0.5,
+        ]);
+      }
+    }
+  };
+
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const cameraCtrl = cameraCtrlRef.current;
 
@@ -827,7 +848,32 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (!cameraCtrl) return;
 
     if (cameraCtrl.getMode() === 'orbit') {
-      cameraCtrl.zoom(-e.deltaY);
+      const hit = performRaycast(e.clientX, e.clientY);
+      let anchor: [number, number, number] | null = null;
+      if (hit) {
+        anchor = [hit.position[0] + 0.5, hit.position[1] + 0.5, hit.position[2] + 0.5];
+      } else {
+        const camera = cameraRef.current;
+        const canvas = canvasRef.current;
+        if (camera && canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+          const target = cameraCtrl.getTarget();
+          const fwd = cameraCtrl.getForwardVector();
+          const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+            new THREE.Vector3(fwd[0], fwd[1], fwd[2]),
+            new THREE.Vector3(target[0], target[1], target[2])
+          );
+          const intersection = new THREE.Vector3();
+          if (raycaster.ray.intersectPlane(plane, intersection)) {
+            anchor = [intersection.x, intersection.y, intersection.z];
+          }
+        }
+      }
+      cameraCtrl.queueZoom(-e.deltaY, anchor);
     } else {
       // Adjust fly speed
       const factor = e.deltaY > 0 ? 0.85 : 1.18;

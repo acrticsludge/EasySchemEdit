@@ -27,6 +27,9 @@ export class ViewportCameraController {
   // Orbit state
   private target: [number, number, number] = [0, 0, 0];
   private distance = 30;
+  private targetDistance = 30;
+  private zoomAnchor: [number, number, number] | null = null;
+  private pendingDollyPush = 0;
   private yaw = Math.PI / 4;
   private pitch = Math.PI / 6;
 
@@ -50,6 +53,7 @@ export class ViewportCameraController {
     if (options?.mode) this.mode = options.mode;
     if (options?.target) this.target = [...options.target];
     if (options?.distance !== undefined) this.distance = options.distance;
+    this.targetDistance = this.distance;
     if (options?.yaw !== undefined) this.yaw = options.yaw;
     if (options?.pitch !== undefined) this.pitch = options.pitch;
     if (options?.flyPosition) this.flyPosition = [...options.flyPosition];
@@ -76,6 +80,9 @@ export class ViewportCameraController {
         this.flyPosition[2] + fwd[2] * this.distance,
       ];
     }
+    this.targetDistance = this.distance;
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
     this.mode = mode;
   }
 
@@ -91,8 +98,13 @@ export class ViewportCameraController {
     return this.distance;
   }
 
+  public getTargetDistance(): number {
+    return this.targetDistance;
+  }
+
   public setDistance(dist: number): void {
     this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, dist));
+    this.targetDistance = this.distance;
   }
 
   public getYaw(): number {
@@ -196,7 +208,7 @@ export class ViewportCameraController {
   }
 
   /**
-   * Zooms in or out. Accepts a delta (e.g. from mouse wheel) or relative scale.
+   * Synchronously zooms in or out. Accepts a delta (e.g. from mouse wheel) or relative scale.
    */
   public zoom(delta: number): void {
     const factor = Math.exp(-delta * 0.0015);
@@ -211,6 +223,92 @@ export class ViewportCameraController {
     } else {
       this.setDistance(rawNext);
     }
+    this.targetDistance = this.distance;
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
+  }
+
+  /**
+   * Queues a smooth damped zoom toward an optional 3D anchor point (e.g. under cursor).
+   */
+  public queueZoom(delta: number, anchorPoint?: [number, number, number] | null): void {
+    const factor = Math.exp(-delta * 0.0012);
+    const rawNext = this.targetDistance * factor;
+    if (delta > 0 && rawNext < this.minDistance) {
+      this.targetDistance = this.minDistance;
+      this.pendingDollyPush += Math.max(0.15, delta * 0.012);
+    } else {
+      this.targetDistance = Math.max(this.minDistance, Math.min(this.maxDistance, rawNext));
+    }
+    this.zoomAnchor = anchorPoint ? [...anchorPoint] : null;
+  }
+
+  /**
+   * Advances smooth damped zoom and dolly push towards target distance.
+   */
+  public stepDamping(dtSeconds: number): void {
+    if (this.mode !== 'orbit') return;
+
+    const alpha = 1 - Math.exp(-14 * Math.min(dtSeconds, 0.1));
+
+    const prevDist = this.distance;
+    let nextDist = prevDist + (this.targetDistance - prevDist) * alpha;
+    if (Math.abs(this.targetDistance - nextDist) < 1e-4) {
+      nextDist = this.targetDistance;
+    }
+
+    if (this.zoomAnchor && prevDist > 1e-5 && nextDist !== prevDist) {
+      const ratio = nextDist / prevDist;
+      this.target[0] = this.zoomAnchor[0] + (this.target[0] - this.zoomAnchor[0]) * ratio;
+      this.target[1] = this.zoomAnchor[1] + (this.target[1] - this.zoomAnchor[1]) * ratio;
+      this.target[2] = this.zoomAnchor[2] + (this.target[2] - this.zoomAnchor[2]) * ratio;
+    }
+    this.distance = nextDist;
+
+    if (this.pendingDollyPush > 1e-4) {
+      const pushStep = this.pendingDollyPush * alpha;
+      this.pendingDollyPush -= pushStep;
+      if (this.pendingDollyPush < 1e-4) {
+        this.pendingDollyPush = 0;
+      }
+      const fwd = this.getForwardVector();
+      this.target[0] += fwd[0] * pushStep;
+      this.target[1] += fwd[1] * pushStep;
+      this.target[2] += fwd[2] * pushStep;
+      if (this.zoomAnchor) {
+        this.zoomAnchor[0] += fwd[0] * pushStep;
+        this.zoomAnchor[1] += fwd[1] * pushStep;
+        this.zoomAnchor[2] += fwd[2] * pushStep;
+        if (this.distance <= this.minDistance + 0.01) {
+          this.zoomAnchor = null;
+        }
+      }
+    }
+  }
+
+  /**
+   * Sets a new look target (pivot) for orbit mode while keeping the
+   * current camera position unchanged in world space. Recalculates
+   * yaw, pitch, and distance so that no camera jump occurs.
+   */
+  public setPivotPreservingCamera(pivot: [number, number, number]): void {
+    const camPos = this.getOrbitPosition();
+    const dx = camPos[0] - pivot[0];
+    const dy = camPos[1] - pivot[1];
+    const dz = camPos[2] - pivot[2];
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 1e-4) return;
+
+    const clampedDist = Math.max(this.minDistance, Math.min(this.maxDistance, dist));
+    this.target = [...pivot];
+    this.distance = clampedDist;
+    this.targetDistance = clampedDist;
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
+
+    const maxPitch = Math.PI / 2 - 0.005;
+    this.yaw = Math.atan2(dx, dz);
+    this.pitch = Math.max(-maxPitch, Math.min(maxPitch, Math.asin(Math.max(-1, Math.min(1, dy / dist)))));
   }
 
   /**
@@ -253,6 +351,8 @@ export class ViewportCameraController {
 
     this.target = [cx, cy, cz];
     this.setDistance(maxDim * 1.6 + 6);
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
 
     if (this.mode === 'fly') {
       const pos = this.getOrbitPosition();
@@ -286,6 +386,10 @@ export class ViewportCameraController {
         this.pitch = 0;
         break;
     }
+
+    this.targetDistance = this.distance;
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
 
     if (this.mode === 'fly') {
       const pos = this.getOrbitPosition();

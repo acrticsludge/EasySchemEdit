@@ -140,30 +140,35 @@ export class ChunkSceneManager {
     });
 
     const configureBlockGridMaterial = (mat: THREE.MeshBasicMaterial) => {
-      mat.customProgramCacheKey = () => 'block-grid-v1';
+      mat.customProgramCacheKey = () => 'block-grid-v2';
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.uShowBlockGrid = this.blockGridUniform;
         shader.vertexShader = shader.vertexShader.replace(
           'void main()',
-          'varying vec3 vBlockPos;\nvarying vec3 vBlockNormal;\nvoid main()'
+          'varying vec3 vBlockPos;\nvoid main()'
         );
         shader.vertexShader = shader.vertexShader.replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvBlockPos = position;\nvBlockNormal = abs(normal);'
+          '#include <begin_vertex>\nvBlockPos = position;'
         );
         shader.fragmentShader = shader.fragmentShader.replace(
           'void main()',
-          'uniform float uShowBlockGrid;\nvarying vec3 vBlockPos;\nvarying vec3 vBlockNormal;\nvoid main()'
+          'uniform float uShowBlockGrid;\nvarying vec3 vBlockPos;\nvoid main()'
         );
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <opaque_fragment>',
           `#include <opaque_fragment>
 if (uShowBlockGrid > 0.5) {
   vec3 f = fract(vBlockPos);
-  vec3 d = min(f, 1.0 - f) + vBlockNormal;
-  float edgeDist = min(d.x, min(d.y, d.z));
-  float line = 1.0 - smoothstep(0.015, 0.035, edgeDist);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.32 * line);
+  vec3 d = min(f, 1.0 - f);
+  vec3 fw = fwidth(vBlockPos);
+  vec3 isNormalAxis = step(fw, vec3(1e-5));
+  vec3 edgeWidth = max(fw * 1.25, vec3(0.05));
+  vec3 a = smoothstep(vec3(0.0), edgeWidth, d) + isNormalAxis;
+  float edge = 1.0 - clamp(min(a.x, min(a.y, a.z)), 0.0, 1.0);
+  float maxFw = max(fw.x, max(fw.y, fw.z));
+  float distFade = 1.0 - smoothstep(0.35, 0.75, maxFw);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.48 * edge * distFade);
 }`
         );
       };
