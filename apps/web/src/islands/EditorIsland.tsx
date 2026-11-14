@@ -235,7 +235,14 @@ export default function EditorIsland() {
     }
 
     if (hit.placementId) {
-      setSelectedVoxel(hit);
+      setSelectedVoxel((prev) =>
+        prev &&
+        prev.position[0] === hit.position[0] &&
+        prev.position[1] === hit.position[1] &&
+        prev.position[2] === hit.position[2]
+          ? null
+          : hit
+      );
     } else {
       setSelectedVoxel(null);
     }
