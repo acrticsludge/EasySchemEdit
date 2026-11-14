@@ -389,6 +389,87 @@ function test7_pinnedConstants(): void {
 }
 
 // ============================================================================
+// Test 8: Custom resource pack extraction with wrapper folder and subfolders
+// ============================================================================
+async function test8_topLevelWrapperAndSubfolderCustomPack(): Promise<void> {
+  console.log('--- Test 8: Top-level wrapper and subfolder custom pack extraction ---');
+
+  // Synthetic custom resource pack zip with top-level wrapper directory "MyPack/"
+  // and nested texture subfolder "textures/block/custom/"
+  const customStonePng = new Uint8Array([0x50, 0x41, 0x43, 0x4b, 1]);
+  const customTilePng = new Uint8Array([0x50, 0x41, 0x43, 0x4b, 2]);
+
+  const customPackFiles: Record<string, Uint8Array> = {
+    'MyPack/pack.mcmeta': strToU8(JSON.stringify({ pack: { description: 'Wrapped Custom Pack', pack_format: 34 } })),
+    'MyPack/assets/minecraft/textures/block/stone.png': customStonePng,
+    'MyPack/assets/minecraft/textures/block/custom/tile.png': customTilePng,
+    // Unrelated file inside wrapper should still be filtered out
+    'MyPack/assets/minecraft/sounds/custom.ogg': strToU8('OggS-synthetic-sound'),
+  };
+
+  const customZipBytes = zipSync(customPackFiles);
+  const extraction = extractAllAssetsSync(customZipBytes);
+
+  assertEqual(extraction.errors.length, 0, 'Extraction errors should be empty');
+  assertEqual(extraction.textureCount, 2, 'Should extract 2 textures');
+
+  const paths = extraction.assets.map((a) => a.path);
+
+  // Assert paths are normalized without "MyPack/" prefix
+  assert(
+    paths.includes('assets/minecraft/textures/block/stone.png'),
+    'Should extract stone texture normalized to assets/minecraft/textures/block/stone.png',
+  );
+  assert(
+    paths.includes('assets/minecraft/textures/block/custom/tile.png'),
+    'Should extract custom subfolder texture normalized to assets/minecraft/textures/block/custom/tile.png',
+  );
+  assert(
+    paths.includes('pack.mcmeta'),
+    'Should extract pack.mcmeta normalized to root pack.mcmeta',
+  );
+  assert(
+    !paths.some((p) => p.startsWith('MyPack/')),
+    'No extracted asset path should retain the wrapper prefix MyPack/',
+  );
+  assert(
+    !paths.includes('assets/minecraft/sounds/custom.ogg'),
+    'Unrelated sounds in wrapped pack should still be filtered out',
+  );
+
+  // Now verify composition over vanilla base pack
+  const vanillaStoneTexture = new Uint8Array([1, 1, 1, 1]);
+  const vanillaOakTexture = new Uint8Array([2, 2, 2, 2]);
+
+  const baseFiles = new Map<string, Uint8Array>();
+  baseFiles.set('assets/minecraft/textures/block/stone.png', vanillaStoneTexture);
+  baseFiles.set('assets/minecraft/textures/block/oak_planks.png', vanillaOakTexture);
+  const basePack = { files: baseFiles, version: '1.21.11' };
+
+  const bundle = composeAssetPacks(basePack, [extraction]);
+
+  // 1. Stone texture should be OVERRIDDEN by custom pack
+  const resolvedStone = bundle.getTexture('stone');
+  assert(resolvedStone !== undefined, 'bundle.getTexture("stone") should resolve');
+  assertEqual(resolvedStone?.[0], 0x50, 'Stone texture should come from custom pack');
+  assertEqual(resolvedStone?.[4], 1, 'Stone texture byte 4 should be 1 from custom pack');
+
+  // 2. Custom subfolder texture should be resolvable
+  const resolvedCustomTile = bundle.getTexture('custom/tile');
+  assert(resolvedCustomTile !== undefined, 'bundle.getTexture("custom/tile") should resolve');
+  assertEqual(resolvedCustomTile?.[4], 2, 'Custom tile texture byte 4 should be 2');
+
+  const resolvedCustomTileByBlock = bundle.getTexture('block/custom/tile');
+  assert(resolvedCustomTileByBlock !== undefined, 'bundle.getTexture("block/custom/tile") should resolve');
+  assertEqual(resolvedCustomTileByBlock?.[4], 2, 'Custom tile by block/custom/tile should match');
+
+  // 3. Vanilla oak_planks should still be intact (inherited)
+  const resolvedOak = bundle.getTexture('oak_planks');
+  assert(resolvedOak !== undefined, 'bundle.getTexture("oak_planks") should resolve from base pack');
+  assertEqual(resolvedOak?.[0], 2, 'Oak texture byte 0 should be 2 from base pack');
+}
+
+// ============================================================================
 // Runner
 // ============================================================================
 async function runAll(): Promise<void> {
@@ -401,6 +482,7 @@ async function runAll(): Promise<void> {
   await test4_networkFailureSurfacesAssetDownloadFailed();
   await test5_extractionFilterIgnoresUnrelatedFiles();
   await test6_composeAssetPacksPrecedence();
+  await test8_topLevelWrapperAndSubfolderCustomPack();
 
   console.log(`\nResults: ${passed} passed, ${failed} failed`);
   if (failed > 0) {

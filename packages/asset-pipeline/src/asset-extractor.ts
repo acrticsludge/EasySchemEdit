@@ -22,39 +22,43 @@ export interface ExtractionResult {
 /**
  * Filter predicate determining if a zip entry path is an asset required by the editor.
  * Extracts:
- * - assets/<namespace>/blockstates/*.json
- * - assets/<namespace>/models/block/*.json
- * - assets/<namespace>/models/*.json
- * - assets/<namespace>/textures/block/*.png
- * - assets/<namespace>/textures/block/*.png.mcmeta
+ * - assets/<namespace>/blockstates/[nested/]*.json
+ * - assets/<namespace>/models/[nested/]*.json
+ * - assets/<namespace>/textures/(block|blocks)/[nested/]*.png
+ * - assets/<namespace>/textures/(block|blocks)/[nested/]*.png.mcmeta
  * - version.json
  * - pack.mcmeta
+ * Also supports ZIPs with a top-level wrapper folder prefix (e.g. MyPack/assets/...).
  * Ignores all other files (classes, sounds, lang, non-block textures, etc.).
  */
 export function isExtractableAssetPath(rawPath: string): boolean {
   const norm = rawPath.replace(/\\/g, '/').replace(/^\//, '');
 
-  if (norm === 'version.json' || norm === 'pack.mcmeta') {
+  if (
+    norm === 'version.json' ||
+    norm === 'pack.mcmeta' ||
+    norm.endsWith('/pack.mcmeta') ||
+    norm.endsWith('/version.json')
+  ) {
     return true;
   }
 
-  // Blockstates: assets/<namespace>/blockstates/<file>.json
-  if (/^assets\/[^/]+\/blockstates\/[^/]+\.json$/i.test(norm)) {
+  // Strip any wrapper folder prefix before assets/
+  const assetsIdx = norm.indexOf('assets/');
+  const sub = assetsIdx >= 0 ? norm.slice(assetsIdx) : norm;
+
+  // Blockstates: assets/<namespace>/blockstates/**/*.json
+  if (/^assets\/[^/]+\/blockstates\/.+\.json$/i.test(sub)) {
     return true;
   }
 
-  // Models: assets/<namespace>/models/block/*.json or assets/<namespace>/models/*.json
-  if (/^assets\/[^/]+\/models\/(?:block\/)?[^/]+\.json$/i.test(norm)) {
+  // Models: assets/<namespace>/models/**/*.json
+  if (/^assets\/[^/]+\/models\/.+\.json$/i.test(sub)) {
     return true;
   }
 
-  // Textures: assets/<namespace>/textures/block/*.png
-  if (/^assets\/[^/]+\/textures\/block\/[^/]+\.png$/i.test(norm)) {
-    return true;
-  }
-
-  // Texture animation metadata: assets/<namespace>/textures/block/*.png.mcmeta
-  if (/^assets\/[^/]+\/textures\/block\/[^/]+\.png\.mcmeta$/i.test(norm)) {
+  // Textures: assets/<namespace>/textures/(block|blocks)/**/*.png(.mcmeta)
+  if (/^assets\/[^/]+\/textures\/(?:block|blocks)\/.+\.png(?:\.mcmeta)?$/i.test(sub)) {
     return true;
   }
 
@@ -70,7 +74,10 @@ export function findZipEntrySync(
 ): Uint8Array | null {
   const normTarget = entryName.replace(/\\/g, '/').replace(/^\//, '');
   const unzipped = unzipSync(jarBytes, {
-    filter: (file) => file.name.replace(/\\/g, '/').replace(/^\//, '') === normTarget,
+    filter: (file) => {
+      const n = file.name.replace(/\\/g, '/').replace(/^\//, '');
+      return n === normTarget || n.endsWith('/' + normTarget);
+    },
   });
   return unzipped[normTarget] ?? Object.values(unzipped)[0] ?? null;
 }
@@ -125,7 +132,17 @@ export function extractZipEntriesSync(
   let otherCount = 0;
 
   for (const [rawPath, data] of Object.entries(unzipped)) {
-    const path = rawPath.replace(/\\/g, '/').replace(/^\//, '');
+    let path = rawPath.replace(/\\/g, '/').replace(/^\//, '');
+    if (entryNames.length === 0) {
+      const assetsIdx = path.indexOf('assets/');
+      if (assetsIdx > 0) {
+        path = path.slice(assetsIdx);
+      } else if (path.endsWith('/pack.mcmeta')) {
+        path = 'pack.mcmeta';
+      } else if (path.endsWith('/version.json')) {
+        path = 'version.json';
+      }
+    }
     assets.push({ path, data });
 
     if (path.includes('/blockstates/')) blockstateCount++;
