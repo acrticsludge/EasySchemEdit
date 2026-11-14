@@ -11,7 +11,6 @@ import type { WorkspaceControllers, StorageLike } from './layout-bridge.ts';
 import { createWorkspaceControllers } from './layout-bridge.ts';
 import { Toolbar, type ToolbarProps } from './Toolbar.tsx';
 import { OutlinerPanel } from './OutlinerPanel.tsx';
-import { InspectorPanel } from './InspectorPanel.tsx';
 import { BottomDock } from './BottomDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import { SelectedPlacementBar } from '../viewport/SelectedPlacementBar.tsx';
@@ -45,6 +44,8 @@ export interface WorkspaceShellProps {
   className?: string;
   selectedPlacementId?: string | null;
   onSelectPlacement?: (id: string | null) => void;
+  nudgeStep?: 1 | 16;
+  onNudgeStepChange?: (step: 1 | 16) => void;
 }
 
 export function WorkspaceShell({
@@ -55,7 +56,6 @@ export function WorkspaceShell({
   storage,
   viewportSlot,
   tabSlots,
-  rightDockSlots,
   onImport,
   onExport,
   onBake,
@@ -68,6 +68,8 @@ export function WorkspaceShell({
   className = '',
   selectedPlacementId: controlledSelectedPlacementId,
   onSelectPlacement,
+  nudgeStep,
+  onNudgeStepChange,
 }: WorkspaceShellProps) {
   // Sync with store state
   const sessionSnap = useEditorSession(store);
@@ -118,30 +120,15 @@ export function WorkspaceShell({
 
   const layoutState = controllers.layout.state();
   const leftPanel = layoutState.panels.find((p) => p.id === 'hierarchy');
-  const rightPanel = layoutState.panels.find((p) => p.id === 'inspector');
   const bottomPanel = layoutState.panels.find((p) => p.id === 'bottom-dock');
 
   const leftWidth = leftPanel?.collapsed ? 28 : (leftPanel?.width ?? 260);
-  const rightWidth = rightPanel?.collapsed ? 28 : Math.max(310, rightPanel?.width ?? 320);
   const bottomHeight = bottomPanel?.collapsed ? 28 : (bottomPanel?.height ?? 220);
-
-  const [rightDockTab, setRightDockTab] = useState<RightDockTabId>('inspector');
-
-  useEffect(() => {
-    const activeTool = sessionSnap.selectedTool;
-    if (rightDockSlots) {
-      if (['cuboid', 'cuboid-select', 'fill', 'replace', 'walls', 'hollow', 'delete', 'delete-region', 'paste'].includes(activeTool) && rightDockSlots.tools) {
-        setRightDockTab('tools');
-      } else if (['move', 'rotate'].includes(activeTool) && rightDockSlots.transform) {
-        setRightDockTab('transform');
-      }
-    }
-  }, [sessionSnap.selectedTool, rightDockSlots]);
 
   // --------------------------------------------------------------------------
   // Divider Drag Resizing
   // --------------------------------------------------------------------------
-  const [activeResizing, setActiveResizing] = useState<'left' | 'right' | 'bottom' | null>(null);
+  const [activeResizing, setActiveResizing] = useState<'left' | 'bottom' | null>(null);
   const dragStartRef = useRef<{ startX: number; startY: number; initialWidth: number; initialHeight: number }>({
     startX: 0,
     startY: 0,
@@ -149,11 +136,11 @@ export function WorkspaceShell({
     initialHeight: 0,
   });
 
-  const handleStartResize = (panel: 'left' | 'right' | 'bottom', e: React.MouseEvent) => {
+  const handleStartResize = (panel: 'left' | 'bottom', e: React.MouseEvent) => {
     e.preventDefault();
     setActiveResizing(panel);
 
-    const initialW = panel === 'left' ? (leftPanel?.width ?? 260) : (rightPanel?.width ?? 320);
+    const initialW = leftPanel?.width ?? 260;
     const initialH = bottomPanel?.height ?? 220;
 
     dragStartRef.current = {
@@ -176,12 +163,6 @@ export function WorkspaceShell({
       if (activeResizing === 'left') {
         const deltaX = e.clientX - dragStartRef.current.startX;
         controllers.layout.resizePanel('hierarchy', { width: deltaX }, windowSize);
-        dragStartRef.current.startX = e.clientX;
-        forceLayoutUpdate();
-      } else if (activeResizing === 'right') {
-        // Dragging right border to the left increases width
-        const deltaX = dragStartRef.current.startX - e.clientX;
-        controllers.layout.resizePanel('inspector', { width: deltaX }, windowSize);
         dragStartRef.current.startX = e.clientX;
         forceLayoutUpdate();
       } else if (activeResizing === 'bottom') {
@@ -348,118 +329,8 @@ export function WorkspaceShell({
               store={store}
               placement={selectedPlacement}
               onSelectPlacement={handleSelectPlacement}
-            />
-          )}
-        </div>
-
-        {/* Divider Right */}
-        {!rightPanel?.collapsed && (
-          <div
-            onMouseDown={(e) => handleStartResize('right', e)}
-            role="separator"
-            aria-orientation="vertical"
-            title="Drag to resize inspector"
-            style={{
-              width: '4px',
-              height: '100%',
-              cursor: 'col-resize',
-              backgroundColor: activeResizing === 'right' ? 'var(--color-accent, #4a9eff)' : 'transparent',
-              zIndex: 10,
-              flexShrink: 0,
-              transition: 'background-color 0.1s',
-            }}
-          />
-        )}
-
-        {/* Right: Inspector */}
-        <div
-          style={{
-            width: `${rightWidth}px`,
-            minWidth: rightPanel?.collapsed ? '28px' : '160px',
-            maxWidth: '600px',
-            height: '100%',
-            flexShrink: 0,
-            overflow: 'hidden',
-            display: 'flex',
-          }}
-        >
-          {rightPanel?.collapsed ? (
-            <CollapsedBar
-              label="INSPECTOR / TOOLS"
-              onClick={() => {
-                controllers.layout.expandPanel('inspector');
-                forceLayoutUpdate();
-              }}
-            />
-          ) : rightDockSlots ? (
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', backgroundColor: 'var(--color-bg-surface, #141414)', borderLeft: '1px solid var(--color-border, #222)' }}>
-              {/* Tab Header */}
-              <div style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--color-border, #222)', background: 'var(--color-bg-alt, #1a1a1a)', flexShrink: 0, overflowX: 'hidden' }}>
-                {(['inspector', 'tools', 'transform', 'library'] as RightDockTabId[]).map((tabId) => {
-                  if (tabId !== 'inspector' && !rightDockSlots[tabId as keyof typeof rightDockSlots]) return null;
-                  const isActive = rightDockTab === tabId;
-                  return (
-                    <button
-                      key={tabId}
-                      onClick={() => setRightDockTab(tabId)}
-                      style={{
-                        padding: '8px 8px',
-                        background: isActive ? 'var(--color-bg-surface, #141414)' : 'transparent',
-                        color: isActive ? 'var(--color-accent, #4a9eff)' : 'var(--color-text-secondary, #aaa)',
-                        border: 'none',
-                        borderBottom: isActive ? '2px solid var(--color-accent, #4a9eff)' : '2px solid transparent',
-                        cursor: 'pointer',
-                        fontSize: '10px',
-                        letterSpacing: '0.3px',
-                        fontWeight: isActive ? 600 : 400,
-                        textTransform: 'uppercase',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      {tabId}
-                    </button>
-                  );
-                })}
-                <div style={{ flex: 1 }} />
-                <button
-                  onClick={() => {
-                    controllers.layout.collapsePanel('inspector');
-                    forceLayoutUpdate();
-                  }}
-                  title="Collapse Right Dock"
-                  style={{ background: 'transparent', border: 'none', color: 'var(--color-text-secondary, #aaa)', cursor: 'pointer', padding: '8px 10px', fontSize: '10px' }}
-                >
-                  ▶
-                </button>
-              </div>
-              {/* Tab Content */}
-              <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', minHeight: 0, minWidth: 0 }}>
-                {rightDockTab === 'inspector' && (
-                  <InspectorPanel
-                    store={store}
-                    controllers={controllers}
-                    hideHeader={true}
-                    onCollapse={() => {
-                      controllers.layout.collapsePanel('inspector');
-                      forceLayoutUpdate();
-                    }}
-                    onSelectPlacement={handleSelectPlacement}
-                  />
-                )}
-                {rightDockTab === 'tools' && rightDockSlots.tools}
-                {rightDockTab === 'transform' && rightDockSlots.transform}
-                {rightDockTab === 'library' && rightDockSlots.library}
-              </div>
-            </div>
-          ) : (
-            <InspectorPanel
-              store={store}
-              controllers={controllers}
-              onCollapse={() => {
-                controllers.layout.collapsePanel('inspector');
-                forceLayoutUpdate();
-              }}
-              onSelectPlacement={handleSelectPlacement}
+              step={nudgeStep}
+              onStepChange={onNudgeStepChange}
             />
           )}
         </div>
@@ -498,7 +369,7 @@ export function WorkspaceShell({
       >
         {bottomPanel?.collapsed ? (
           <CollapsedHorizontalBar
-            label="BOTTOM DOCK (Assets | Materials | Conflicts | History | Agent Log)"
+            label="BOTTOM DOCK (Assets | Materials | Conflicts | History)"
             onClick={() => {
               controllers.layout.expandPanel('bottom-dock');
               forceLayoutUpdate();

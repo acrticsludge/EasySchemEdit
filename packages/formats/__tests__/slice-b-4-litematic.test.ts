@@ -2,7 +2,7 @@
 import { LitematicAdapter } from '../litematic.ts';
 import { encodeNbt } from '../nbts.ts';
 import { encodePackedBlockStates } from '../litematic-packed.ts';
-import { linearIndex, rawToNormalizedCoord } from '../litematic-size.ts';
+import { linearIndex } from '../litematic-size.ts';
 import { blockStateId } from '../../domain/block-state.ts';
 import { getBlock } from '../../domain/volume-api.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
@@ -121,15 +121,14 @@ const adapter = new LitematicAdapter();
   }
 }
 
-// 3. Negative Size reversal: ax=-2 reverses X
+// 3. Negative Size: ax=-2 preserves min-to-max BlockStates order and adjusts translation
 {
   const palette = compound([
     ['minecraft:stone', compound([['Name', str('minecraft:stone')], ['Properties', compound([])]])],
     ['minecraft:dirt', compound([['Name', str('minecraft:dirt')], ['Properties', compound([])]])],
   ]);
-  // blockStates entries [0,1,0,1,...]; raw x=0 → entry 0 = stone
-  // reversal ax=-2: rawToNormalizedCoord(0,0,0,{ax:-2,ay:2,az:2}) = {x: 1, y: 0, z: 0}
-  // flat index = 1 → entry at flat 1 = dirt → stored at chunk position li=0
+  // blockStates entries [0,1,0,1,...]; entry 0 = stone, entry 1 = dirt
+  // In real Litematica, BlockStates is always stored in min-to-max order 0..|Size|-1
   const blockStates = { type: 'longArray', value: BigInt64Array.from([0x4444n]) } as NbtTag;
   const region = compound([
     ['Position', list([int(0), int(0), int(0)])],
@@ -153,12 +152,15 @@ const adapter = new LitematicAdapter();
     maxNbtNestingDepth: 512, maxNbtTagCount: 1_000_000,
   });
   const placement = result.placements[0];
+  check(placement.transform.translation[0] === -1, 'negative ax translation minX=-1');
   const chunk = placement.volume.chunks.get('0_0_0');
-  // normalized x=1 → flat index 1 → entry 1 = dirt → stored at chunk position li=0
   if (chunk) {
     const idx0 = chunk.indices[0];
     const state0 = chunk.palette[idx0];
-    check(state0.id === 'minecraft:dirt', 'negative ax reversal: chunk position 0 = dirt');
+    check(state0.id === 'minecraft:stone', 'negative ax: chunk position 0 = stone (min-to-max)');
+    const idx1 = chunk.indices[1];
+    const state1 = chunk.palette[idx1];
+    check(state1.id === 'minecraft:dirt', 'negative ax: chunk position 1 = dirt (min-to-max)');
   }
 }
 
@@ -311,8 +313,7 @@ function buildLitematic32x16x32NegativeSize(): Uint8Array {
   ];
 
   for (const [x, y, z] of expectedCoords) {
-    const nc = rawToNormalizedCoord(x, y, z, { ax: sizeAx, ay: sizeAy, az: sizeAz });
-    const flat = linearIndex(nc.x, nc.z, nc.y, width, length);
+    const flat = linearIndex(x, z, y, width, length);
     indices[flat] = 1; // stone
   }
 
@@ -374,6 +375,12 @@ function buildLitematic32x16x32NegativeSize(): Uint8Array {
 
   check(result.placements.length === 1, 'negative-Size multi-chunk: one placement');
   const placement = result.placements[0];
+  check(
+    placement.transform.translation[0] === -31 &&
+    placement.transform.translation[1] === 0 &&
+    placement.transform.translation[2] === -31,
+    'negative-Size multi-chunk: translation reflects min-corner [-31, 0, -31]'
+  );
   check(placement.volume.nonAirCount > 0, 'negative-Size multi-chunk: nonAirCount > 0');
   check(placement.volume.nonAirCount === 4, 'negative-Size multi-chunk: nonAirCount=4');
 

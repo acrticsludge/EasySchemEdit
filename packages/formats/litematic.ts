@@ -27,7 +27,6 @@ import { decodeNbtFromBytes, encodeNbt } from './nbts.ts';
 import { gzipCompress, gzipDecompressBounded } from './codec.ts';
 import {
   normalizeRegionSize,
-  rawToNormalizedCoord,
   linearIndex,
 } from './litematic-size.ts';
 import { decodePackedBlockStates, encodePackedBlockStates } from './litematic-packed.ts';
@@ -240,12 +239,16 @@ export class LitematicAdapter implements FormatAdapter {
       const width = normSize.ax, height = normSize.ay, length = normSize.az;
       regionCount++;
 
-      if (pos[0]! < enclosingMinX) enclosingMinX = pos[0]!;
-      if (pos[1]! < enclosingMinY) enclosingMinY = pos[1]!;
-      if (pos[2]! < enclosingMinZ) enclosingMinZ = pos[2]!;
-      if (pos[0]! + width > enclosingMaxX) enclosingMaxX = pos[0]! + width;
-      if (pos[1]! + height > enclosingMaxY) enclosingMaxY = pos[1]! + height;
-      if (pos[2]! + length > enclosingMaxZ) enclosingMaxZ = pos[2]! + length;
+      const minX = ax < 0 ? pos[0]! + ax + 1 : pos[0]!;
+      const minY = ay < 0 ? pos[1]! + ay + 1 : pos[1]!;
+      const minZ = az < 0 ? pos[2]! + az + 1 : pos[2]!;
+
+      if (minX < enclosingMinX) enclosingMinX = minX;
+      if (minY < enclosingMinY) enclosingMinY = minY;
+      if (minZ < enclosingMinZ) enclosingMinZ = minZ;
+      if (minX + width > enclosingMaxX) enclosingMaxX = minX + width;
+      if (minY + height > enclosingMaxY) enclosingMaxY = minY + height;
+      if (minZ + length > enclosingMaxZ) enclosingMaxZ = minZ + length;
 
       // Build palette: BlockStateId[] ({Name, Properties})
       const palette: BlockStateId[] = [];
@@ -309,8 +312,7 @@ export class LitematicAdapter implements FormatAdapter {
       for (let y = 0; y < height; y++) {
         for (let z = 0; z < length; z++) {
           for (let x = 0; x < width; x++) {
-            const nc = rawToNormalizedCoord(x, y, z, { ax, ay, az });
-            const flat = linearIndex(nc.x, nc.z, nc.y, width, length);
+            const flat = linearIndex(x, z, y, width, length);
             const stateIdx = Number(indices[flat]);
             const state = palette[stateIdx] ?? CANONICAL_AIR;
             if (VANILLA_AIR_LIKE.has(state.id)) {
@@ -365,7 +367,7 @@ export class LitematicAdapter implements FormatAdapter {
         paletteCardinality: chunks.size > 0 ? Array.from(chunks.values())[0].palette.length : 1,
       };
 
-      const transform: Transform = { translation: [pos[0]!, pos[1]!, pos[2]!], rotationY: 0, mirror: 'none' };
+      const transform: Transform = { translation: [minX, minY, minZ], rotationY: 0, mirror: 'none' };
       const origin: [number, number, number] = [0, 0, 0];
 
       const ancillary = {

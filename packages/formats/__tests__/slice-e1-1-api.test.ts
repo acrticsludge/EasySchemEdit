@@ -471,7 +471,8 @@ console.log('--- TEST SUITE: slice E1.1 API & Codecs ---');
     'negative Size [-2, 2, 2] normalized to bounds width=2, height=2, length=2',
   );
   const negChunk = negP.volume.chunks.get('0_0_0')!;
-  check(negChunk.palette[negChunk.indices[0]]?.id === 'minecraft:dirt', 'negative ax reversal places dirt at local x=0');
+  check(negChunk.palette[negChunk.indices[0]]?.id === 'minecraft:stone', 'negative ax preserves min-to-max order: stone at local x=0');
+  check(negP.transform.translation[0] === -1, 'negative ax translation minX=-1');
 
   // 2d. Multi-placement flattening to Litematica
   console.log('\n[Test 2d] Multi-placement flattening to Litematica');

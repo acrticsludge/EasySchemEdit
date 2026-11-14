@@ -14,13 +14,8 @@ import {
   ImportDialog,
   ExportDialog,
   BakeDialog,
-  ProjectDialog,
   MaterialListPanel,
   ConflictsPanel,
-  AgentLogPanel,
-  BlockPickerPanel,
-  TransformControls,
-  LibraryPanel,
   useImportWorkflow,
   type GhostPreviewSpec,
   type VoxelHit,
@@ -43,11 +38,11 @@ export default function EditorIsland() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isBakeOpen, setIsBakeOpen] = useState(false);
-  const [isProjectOpen, setIsProjectOpen] = useState(false);
 
   const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
   const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
   const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
+  const [nudgeStep, setNudgeStep] = useState<1 | 16>(1);
 
   // Crash recovery check on mount
   useEffect(() => {
@@ -286,6 +281,8 @@ export default function EditorIsland() {
         onSave={() => runtime.persistence.saveCurrentProject()}
         hoveredBlockName={hoveredBlockName}
         cursorCoordinates={cursorCoordinates}
+        nudgeStep={nudgeStep}
+        onNudgeStepChange={setNudgeStep}
         viewportSlot={
           <div style={{ position: 'relative', width: '100%', height: '100%' }}>
             <ViewportCanvas
@@ -300,35 +297,14 @@ export default function EditorIsland() {
               conflictOverlayPositions={conflictOverlayPositions}
               onVoxelClick={handleVoxelClick}
               onVoxelHover={handleVoxelHover}
+              dragSnapStep={nudgeStep}
             />
           </div>
         }
-        rightDockSlots={{
-          tools: (
-            <BlockPickerPanel
-              store={runtime.store}
-              selectionTool={runtime.selectionTool}
-              regionTools={runtime.regionTools}
-            />
-          ),
-          transform: (
-            <TransformControls
-              controller={runtime.placementOps}
-              store={runtime.store}
-              placementId={selectedPlacementId ?? undefined}
-            />
-          ),
-          library: (
-            <LibraryPanel
-              controller={runtime.persistence}
-            />
-          ),
-        }}
         tabSlots={{
           assets: <AssetLoadPanel manager={runtime.assetManager} />,
           materials: <MaterialListPanel controller={runtime.materialListController} />,
           conflicts: <ConflictsPanel controller={runtime.conflictsController} onOpenBake={() => setIsBakeOpen(true)} />,
-          'agent-log': <AgentLogPanel client={runtime.mcpClient} session={runtime.store.session} />,
         }}
       />
 
@@ -352,14 +328,6 @@ export default function EditorIsland() {
           controller={runtime.bakeController}
           isOpen={isBakeOpen}
           onClose={() => setIsBakeOpen(false)}
-        />
-      )}
-
-      {isProjectOpen && (
-        <ProjectDialog
-          controller={runtime.persistence}
-          isOpen={isProjectOpen}
-          onClose={() => setIsProjectOpen(false)}
         />
       )}
     </div>

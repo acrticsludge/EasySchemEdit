@@ -35,13 +35,6 @@ const TOOLS: ToolDefinition[] = [
   { id: 'select', label: 'Select Placement', shortcut: '1', icon: '⬚', category: 'pointer' },
   { id: 'move', label: 'Move Placement', shortcut: 'W', icon: '✥', category: 'pointer' },
   { id: 'rotate', label: 'Rotate Placement', shortcut: 'E', icon: '↻', category: 'pointer' },
-  { id: 'cuboid', label: 'Cuboid Selection', shortcut: '2', icon: '⧈', category: 'region' },
-  { id: 'fill', label: 'Fill Region', icon: '◼', category: 'region' },
-  { id: 'replace', label: 'Replace Blocks', icon: '⇄', category: 'region' },
-  { id: 'walls', label: 'Walls', icon: '▯', category: 'region' },
-  { id: 'hollow', label: 'Hollow', icon: '◻', category: 'region' },
-  { id: 'delete', label: 'Delete Region', shortcut: 'Del', icon: '✕', category: 'region' },
-  { id: 'paste', label: 'Paste Clipboard', shortcut: 'Ctrl+V', icon: '📋', category: 'region' },
 ];
 
 export function Toolbar({

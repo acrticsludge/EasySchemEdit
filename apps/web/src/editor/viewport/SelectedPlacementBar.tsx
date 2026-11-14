@@ -12,6 +12,8 @@ export interface SelectedPlacementBarProps {
   placement: Placement;
   onSelectPlacement?: (id: string | null) => void;
   className?: string;
+  step?: 1 | 16;
+  onStepChange?: (step: 1 | 16) => void;
 }
 
 export function SelectedPlacementBar({
@@ -19,14 +21,77 @@ export function SelectedPlacementBar({
   placement,
   onSelectPlacement,
   className = '',
+  step: stepProp,
+  onStepChange,
 }: SelectedPlacementBarProps) {
   const sessionSnap = useEditorSession(store);
-  const [step, setStep] = useState<1 | 16>(1);
+  const [localStep, setLocalStep] = useState<1 | 16>(1);
+  const step = stepProp !== undefined ? stepProp : localStep;
+
+  const handleStepChange = useCallback((nextStep: 1 | 16) => {
+    setLocalStep(nextStep);
+    onStepChange?.(nextStep);
+  }, [onStepChange]);
 
   const tx = placement.transform.translation[0];
   const ty = placement.transform.translation[1];
   const tz = placement.transform.translation[2];
   const isMoveActive = sessionSnap.selectedTool === 'move';
+
+  // Coordinate inline editing state
+  const [isEditingCoords, setIsEditingCoords] = useState(false);
+  const [editX, setEditX] = useState<string>(String(tx));
+  const [editY, setEditY] = useState<string>(String(ty));
+  const [editZ, setEditZ] = useState<string>(String(tz));
+
+  useEffect(() => {
+    setIsEditingCoords(false);
+  }, [placement.id, placement.locked]);
+
+  const startEditingCoords = useCallback(() => {
+    if (placement.locked) return;
+    setEditX(String(tx));
+    setEditY(String(ty));
+    setEditZ(String(tz));
+    setIsEditingCoords(true);
+  }, [placement.locked, tx, ty, tz]);
+
+  const cancelEditingCoords = useCallback(() => {
+    setIsEditingCoords(false);
+  }, []);
+
+  const commitEditingCoords = useCallback(async () => {
+    if (placement.locked) {
+      setIsEditingCoords(false);
+      return;
+    }
+    const nx = Math.round(Number(editX));
+    const ny = Math.round(Number(editY));
+    const nz = Math.round(Number(editZ));
+    if (Number.isFinite(nx) && Number.isFinite(ny) && Number.isFinite(nz)) {
+      const dx = nx - tx;
+      const dy = ny - ty;
+      const dz = nz - tz;
+      if (dx !== 0 || dy !== 0 || dz !== 0) {
+        await store.execute({
+          type: 'placement:move',
+          placementId: placement.id,
+          offset: [dx, dy, dz],
+        });
+      }
+    }
+    setIsEditingCoords(false);
+  }, [placement.locked, placement.id, editX, editY, editZ, tx, ty, tz, store]);
+
+  const handleCoordKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      void commitEditingCoords();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelEditingCoords();
+    }
+  }, [commitEditingCoords, cancelEditingCoords]);
 
   const handleSelectMove = useCallback(() => {
     if (sessionSnap.selectedTool === 'move') {
@@ -46,6 +111,35 @@ export function SelectedPlacementBar({
       rotationY: nextRot,
     });
   }, [placement, store]);
+
+  const handleMirror = useCallback(async (axis: 'x' | 'z') => {
+    if (placement.locked) return;
+    const cur = placement.transform.mirror ?? 'none';
+    const nextMirror: 'none' | 'x' | 'z' = cur === axis ? 'none' : axis;
+    await store.execute({
+      type: 'placement:mirror',
+      placementId: placement.id,
+      mirror: nextMirror,
+    });
+  }, [placement, store]);
+
+  const handleSnapToChunk = useCallback(async () => {
+    if (placement.locked) return;
+    const targetX = Math.round(tx / 16) * 16;
+    const targetZ = Math.round(tz / 16) * 16;
+    const dx = targetX - tx;
+    const dz = targetZ - tz;
+    if (dx !== 0 || dz !== 0) {
+      await store.execute({
+        type: 'placement:move',
+        placementId: placement.id,
+        offset: [dx, 0, dz],
+      });
+    }
+  }, [placement, tx, tz, store]);
+
+  const isMirrorX = (placement.transform.mirror ?? 'none') === 'x';
+  const isMirrorZ = (placement.transform.mirror ?? 'none') === 'z';
 
   const handleNudge = useCallback(async (axis: 'x' | 'y' | 'z', dir: 1 | -1) => {
     if (placement.locked) return;
@@ -156,20 +250,89 @@ export function SelectedPlacementBar({
         >
           {placement.name}
         </span>
-        <span
-          style={{
-            fontFamily: 'monospace',
-            fontSize: '10px',
-            backgroundColor: '#2a2a38',
-            color: '#93c5fd',
-            padding: '2px 5px',
-            borderRadius: '2px',
-            border: '1px solid #3b82f640',
-          }}
-          title="World Coordinates (X, Y, Z)"
-        >
-          ({tx}, {ty}, {tz})
-        </span>
+        {!isEditingCoords ? (
+          <span
+            onClick={!placement.locked ? startEditingCoords : undefined}
+            role={!placement.locked ? 'button' : undefined}
+            tabIndex={!placement.locked ? 0 : undefined}
+            onKeyDown={
+              !placement.locked
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      startEditingCoords();
+                    }
+                  }
+                : undefined
+            }
+            style={{
+              fontFamily: 'monospace',
+              fontSize: '10px',
+              backgroundColor: '#2a2a38',
+              color: '#93c5fd',
+              padding: '2px 5px',
+              borderRadius: '2px',
+              border: '1px solid #3b82f640',
+              cursor: placement.locked ? 'default' : 'pointer',
+              userSelect: 'none',
+            }}
+            title={placement.locked ? 'World Coordinates (X, Y, Z) [Locked]' : 'Click to edit coordinates (X, Y, Z)'}
+          >
+            ({tx}, {ty}, {tz})
+          </span>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+              X
+              <input
+                type="number"
+                value={editX}
+                onChange={(e) => setEditX(e.target.value)}
+                onKeyDown={handleCoordKeyDown}
+                autoFocus
+                style={coordInputStyle}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+              Y
+              <input
+                type="number"
+                value={editY}
+                onChange={(e) => setEditY(e.target.value)}
+                onKeyDown={handleCoordKeyDown}
+                style={coordInputStyle}
+              />
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+              Z
+              <input
+                type="number"
+                value={editZ}
+                onChange={(e) => setEditZ(e.target.value)}
+                onKeyDown={handleCoordKeyDown}
+                style={coordInputStyle}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void commitEditingCoords()}
+              title="Apply coordinates (Enter)"
+              aria-label="Apply coordinates"
+              style={coordBtnStyle}
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              onClick={cancelEditingCoords}
+              title="Cancel (Esc)"
+              aria-label="Cancel coordinates edit"
+              style={{ ...coordBtnStyle, color: '#f87171' }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
         {placement.locked && (
           <span style={{ fontSize: '10px', color: '#eab308' }} title="Placement is locked">
             🔒
@@ -212,6 +375,46 @@ export function SelectedPlacementBar({
         ↻ Rotate 90° (E)
       </button>
 
+      {/* Mirror X / Flip X */}
+      <button
+        type="button"
+        onClick={() => void handleMirror('x')}
+        disabled={placement.locked}
+        title="Mirror / Flip along X axis"
+        aria-label="Mirror X"
+        style={{
+          ...actionButtonStyle,
+          backgroundColor: isMirrorX ? '#3b82f6' : '#2a2a38',
+          color: isMirrorX ? '#ffffff' : '#eaeaea',
+          borderColor: isMirrorX ? '#60a5fa' : '#3a3a4c',
+          fontWeight: isMirrorX ? 600 : 400,
+          opacity: placement.locked ? 0.4 : 1,
+          cursor: placement.locked ? 'not-allowed' : 'pointer',
+        }}
+      >
+        Flip X
+      </button>
+
+      {/* Mirror Z / Flip Z */}
+      <button
+        type="button"
+        onClick={() => void handleMirror('z')}
+        disabled={placement.locked}
+        title="Mirror / Flip along Z axis"
+        aria-label="Mirror Z"
+        style={{
+          ...actionButtonStyle,
+          backgroundColor: isMirrorZ ? '#3b82f6' : '#2a2a38',
+          color: isMirrorZ ? '#ffffff' : '#eaeaea',
+          borderColor: isMirrorZ ? '#60a5fa' : '#3a3a4c',
+          fontWeight: isMirrorZ ? 600 : 400,
+          opacity: placement.locked ? 0.4 : 1,
+          cursor: placement.locked ? 'not-allowed' : 'pointer',
+        }}
+      >
+        Flip Z
+      </button>
+
       <div style={dividerStyle} />
 
       {/* Step Toggle & Nudge Buttons */}
@@ -219,7 +422,7 @@ export function SelectedPlacementBar({
         <div style={{ display: 'flex', border: '1px solid #3a3a4c', borderRadius: '2px', overflow: 'hidden' }}>
           <button
             type="button"
-            onClick={() => setStep(1)}
+            onClick={() => handleStepChange(1)}
             title="Step: 1 block"
             style={{
               ...toggleStepButtonStyle,
@@ -231,7 +434,7 @@ export function SelectedPlacementBar({
           </button>
           <button
             type="button"
-            onClick={() => setStep(16)}
+            onClick={() => handleStepChange(16)}
             title="Step: 16 blocks (Chunk)"
             style={{
               ...toggleStepButtonStyle,
@@ -278,6 +481,24 @@ export function SelectedPlacementBar({
             </div>
           ))}
         </div>
+
+        {/* Snap to Chunk Button */}
+        <button
+          type="button"
+          onClick={() => void handleSnapToChunk()}
+          disabled={placement.locked}
+          title="Snap X/Z to nearest 16-block chunk"
+          aria-label="Snap to Chunk"
+          style={{
+            ...actionButtonStyle,
+            padding: '0 6px',
+            fontSize: '10px',
+            opacity: placement.locked ? 0.4 : 1,
+            cursor: placement.locked ? 'not-allowed' : 'pointer',
+          }}
+        >
+          ⊞ Chunk
+        </button>
       </div>
 
       <div style={dividerStyle} />
@@ -366,5 +587,34 @@ const nudgeButtonStyle: React.CSSProperties = {
   color: '#cbd5e1',
   fontSize: '10px',
   fontFamily: 'monospace',
+  cursor: 'pointer',
+};
+
+const coordInputStyle: React.CSSProperties = {
+  width: '42px',
+  height: '20px',
+  backgroundColor: '#14141c',
+  color: '#ffffff',
+  border: '1px solid #3b82f6',
+  borderRadius: '2px',
+  padding: '0 3px',
+  fontSize: '10px',
+  fontFamily: 'monospace',
+  textAlign: 'center',
+  outline: 'none',
+};
+
+const coordBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '20px',
+  minWidth: '20px',
+  padding: '0 4px',
+  backgroundColor: '#2a2a38',
+  border: '1px solid #3a3a4c',
+  borderRadius: '2px',
+  color: '#4ade80',
+  fontSize: '10px',
   cursor: 'pointer',
 };

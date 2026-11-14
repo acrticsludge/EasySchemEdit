@@ -163,6 +163,7 @@ export interface ViewportCanvasProps {
     stateConflict: Vec3i[];
   };
   selectedPlacementIds?: Set<string>;
+  dragSnapStep?: 1 | 16;
 }
 
 export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
@@ -178,6 +179,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   onVoxelHover,
   conflictOverlayPositions,
   selectedPlacementIds = EMPTY_STRING_SET,
+  dragSnapStep = 1,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -235,6 +237,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   ghostPreviewRef.current = ghostPreview;
   const onVoxelHoverRef = useRef(onVoxelHover);
   onVoxelHoverRef.current = onVoxelHover;
+  const dragSnapStepRef = useRef<1 | 16>(dragSnapStep);
+  useEffect(() => {
+    dragSnapStepRef.current = dragSnapStep;
+  }, [dragSnapStep]);
   const prevPlacementCountRef = useRef<number>(0);
   const pointerDownPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -247,7 +253,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     blockBorders: false,
   });
   gridPrefsRef.current = gridPrefs;
-  const [hudCollapsed, setHudCollapsed] = useState<boolean>(false);
+  const [hudCollapsed, setHudCollapsed] = useState<boolean>(true);
   const [stats, setStats] = useState<ChunkSceneStats>({
     meshCount: 0,
     chunkCount: 0,
@@ -726,7 +732,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           shiftKeyRef.current ||
           keysDownRef.current.has('ShiftLeft') ||
           keysDownRef.current.has('ShiftRight');
-        const step = isShift ? 16 : 1;
+        const baseStep = dragSnapStepRef.current ?? 1;
+        const step = isShift ? (baseStep === 16 ? 1 : 16) : baseStep;
 
         let sx = Math.round((dragStartTranslationRef.current[0] + rawDx) / step) * step;
         let sy = Math.round((dragStartTranslationRef.current[1] + rawDy) / step) * step;
@@ -745,7 +752,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         const posArr = posAttr?.array as Float32Array | undefined;
         const colArr = colAttr?.array as Float32Array | undefined;
 
-        if (startBounds && siblings.length > 0 && !isShift) {
+        if (startBounds && siblings.length > 0 && step === 1) {
           const startTx = dragStartTranslationRef.current[0];
           const startTy = dragStartTranslationRef.current[1];
           const startTz = dragStartTranslationRef.current[2];
@@ -1303,7 +1310,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
     const cameraCtrl = cameraCtrlRef.current;
-    if (cameraCtrl && cameraCtrl.getMode() === 'orbit' && e.button === 0 && !e.shiftKey) {
+    if (cameraCtrl && cameraCtrl.getMode() === 'orbit' && e.button === 1) {
       const hit = performRaycast(e.clientX, e.clientY);
       if (hit) {
         cameraCtrl.setPivotPreservingCamera([
@@ -1459,6 +1466,23 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const hit = performRaycast(e.clientX, e.clientY);
     if (hit) {
       onVoxelClick?.(hit, e);
+    }
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
+      return;
+    }
+    const cameraCtrl = cameraCtrlRef.current;
+    if (cameraCtrl && cameraCtrl.getMode() === 'orbit') {
+      const hit = performRaycast(e.clientX, e.clientY);
+      if (hit) {
+        cameraCtrl.setPivotPreservingCamera([
+          hit.position[0] + 0.5,
+          hit.position[1] + 0.5,
+          hit.position[2] + 0.5,
+        ]);
+      }
     }
   };
 
@@ -1697,6 +1721,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         }}
         onWheel={handleWheel}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onContextMenu={(e) => e.preventDefault()}
         style={{
           display: 'block',
@@ -1855,25 +1880,25 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       </div>
 
       {/* Floating Hover Readout (top-left so it never overlaps SelectedPlacementBar at bottom-center) */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          backgroundColor: '#1e1e2edd',
-          backdropFilter: 'blur(8px)',
-          border: '1px solid #33334d',
-          borderRadius: '6px',
-          padding: '6px 12px',
-          color: '#e2e2ec',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          pointerEvents: 'none',
-          zIndex: 10,
-        }}
-      >
-        {hoveredVoxel ? (
+      {hoveredVoxel && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 12,
+            left: 12,
+            backgroundColor: '#1e1e2edd',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid #33334d',
+            borderRadius: '6px',
+            padding: '6px 12px',
+            color: '#e2e2ec',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            pointerEvents: 'none',
+            zIndex: 10,
+          }}
+        >
           <div>
             <span style={{ color: '#00e5ff', fontWeight: 600 }}>
               [{hoveredVoxel.position[0]}, {hoveredVoxel.position[1]}, {hoveredVoxel.position[2]}]
@@ -1888,10 +1913,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               <span style={{ color: '#8888aa' }}> · {hoveredVoxel.placementId}</span>
             )}
           </div>
-        ) : (
-          <span style={{ color: '#666680' }}>Hover over voxels to inspect</span>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };

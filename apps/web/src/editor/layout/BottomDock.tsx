@@ -30,7 +30,6 @@ const TABS: TabItem[] = [
   { id: 'materials', label: 'Materials', icon: '🧱' },
   { id: 'conflicts', label: 'Conflicts', icon: '⚠' },
   { id: 'history', label: 'History', icon: '⏱' },
-  { id: 'agent-log', label: 'Agent Log', icon: '🤖' },
 ];
 
 export function BottomDock({
@@ -302,16 +301,6 @@ function DefaultTabContent({
         </div>
       );
 
-    case 'agent-log':
-      return (
-        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
-          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>AI Companion / MCP Activity</div>
-          <div>Local companion status: Standby</div>
-          <div style={{ fontSize: '11px', marginTop: '4px', color: '#888888' }}>
-            Pair companion on 127.0.0.1:43127 with token to enable automated agent edits.
-          </div>
-        </div>
-      );
 
     default:
       return null;
