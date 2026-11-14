@@ -236,7 +236,11 @@ export class ViewportCameraController {
     const rawNext = this.targetDistance * factor;
     if (delta > 0 && rawNext < this.minDistance) {
       this.targetDistance = this.minDistance;
-      this.pendingDollyPush += Math.max(0.15, delta * 0.012);
+      this.pendingDollyPush += Math.max(0.5, delta * 0.02);
+    } else if (delta < 0) {
+      const minOutStep = Math.max(0.5, Math.abs(delta) * 0.015);
+      const steppedOut = Math.max(rawNext, this.targetDistance + minOutStep);
+      this.targetDistance = Math.max(this.minDistance, Math.min(this.maxDistance, steppedOut));
     } else {
       this.targetDistance = Math.max(this.minDistance, Math.min(this.maxDistance, rawNext));
     }

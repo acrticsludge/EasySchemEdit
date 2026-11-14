@@ -753,7 +753,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       const project = session.peekProject();
       const blockLookup = createProjectBlockLookup(project);
 
-      const voxelHit = raycastVoxels(rayOrigin, rayDir, 256, blockLookup);
+      const voxelHit = raycastVoxels(rayOrigin, rayDir, 2048, blockLookup);
       if (voxelHit) return voxelHit;
 
       if (Math.abs(rayDir[1]) > 1e-5) {
@@ -811,7 +811,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
       if (cameraCtrl.getMode() === 'orbit') {
         if (isOrbitPan) {
-          const panScale = Math.max(0.02, cameraCtrl.getDistance() * 0.002);
+          const panScale = Math.max(0.05, cameraCtrl.getDistance() * 0.0022);
           cameraCtrl.pan(-dx * panScale, dy * panScale);
         } else {
           cameraCtrl.orbit(-dx * 0.008, dy * 0.008);
