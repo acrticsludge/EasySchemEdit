@@ -381,7 +381,7 @@ export type GetBlockQuery = {
 };
 
 export type GetSelectionQuery = {
-  type: 'getSelection' | 'get_selection';
+  type: 'getSelection' | 'get_selection' | 'selection:get' | 'selection.get';
 };
 
 export type MaterialListQuery = {

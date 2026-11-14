@@ -6,7 +6,15 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import '../editor/design-tokens.css';
-import type { Project } from '@easyschemedit/domain';
+import {
+  placementWorldBounds,
+  worldBlockToLocal,
+  type Bounds3i,
+  type Project,
+  type Vec3Half,
+  type Vec3i,
+} from '@easyschemedit/domain';
+import { createCuboidSelection } from '@easyschemedit/operations';
 import { packVxprojArchive, unpackVxprojArchive } from '@easyschemedit/persistence';
 import {
   createEditorRuntime,
@@ -67,6 +75,29 @@ function createDefaultGuestProjects(): WorkspaceProjectNode[] {
       ],
     },
   ];
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  const chunkSize = 8192;
+  for (let i = 0; i < len; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+    for (let j = 0; j < chunk.length; j++) {
+      binary += String.fromCharCode(chunk[j]);
+    }
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
 
 function createEmptyProjectDocument(name: string): Project {
@@ -136,15 +167,40 @@ export default function EditorIsland() {
             if (tree.length === 0) {
               setIsFirstProjectOpen(true);
             } else {
-              const firstProj = tree[0];
-              setActiveProjectId(firstProj.id);
-              runtime.persistence.setActiveCloudProjectId(firstProj.id);
-              if (firstProj.schematics.length > 0) {
-                const firstSchem = firstProj.schematics[0];
-                await runtime.persistence.openSchematicFromCloud(firstSchem.id);
+              let targetProjId: string | null = null;
+              let targetSchemId: string | null = null;
+              try {
+                const raw = localStorage.getItem('ese_last_active:' + user.id);
+                if (raw) {
+                  const parsed = JSON.parse(raw);
+                  if (
+                    parsed &&
+                    typeof parsed.projectId === 'string' &&
+                    typeof parsed.schematicId === 'string'
+                  ) {
+                    const foundProj = tree.find((p) => p.id === parsed.projectId);
+                    if (foundProj && foundProj.schematics.some((s) => s.id === parsed.schematicId)) {
+                      targetProjId = parsed.projectId;
+                      targetSchemId = parsed.schematicId;
+                    }
+                  }
+                }
+              } catch {
+                // Ignore storage parsing error
+              }
+
+              const projToOpen = (targetProjId && tree.find((p) => p.id === targetProjId)) || tree[0];
+              const schemToOpen =
+                (targetSchemId && projToOpen.schematics.find((s) => s.id === targetSchemId)) ||
+                projToOpen.schematics[0];
+
+              setActiveProjectId(projToOpen.id);
+              runtime.persistence.setActiveCloudProjectId(projToOpen.id);
+              if (schemToOpen) {
+                await runtime.persistence.openSchematicFromCloud(schemToOpen.id);
                 if (active) {
-                  setActiveSchematicId(firstSchem.id);
-                  runtime.persistence.setActiveCloudSchematicId(firstSchem.id);
+                  setActiveSchematicId(schemToOpen.id);
+                  runtime.persistence.setActiveCloudSchematicId(schemToOpen.id);
                 }
               }
             }
@@ -152,17 +208,105 @@ export default function EditorIsland() {
             console.warn('Failed to load cloud workspace tree:', err);
           }
         } else {
-          setWorkspaceProjects(createDefaultGuestProjects());
-          setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
-          setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+          // Restore guest workspace from localStorage if saved
+          let restoredGuest = false;
+          try {
+            const raw = localStorage.getItem('ese_guest_workspace');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && Array.isArray(parsed.projects) && parsed.projects.length > 0) {
+                setWorkspaceProjects(parsed.projects);
+                const gProjId = parsed.activeProjectId || parsed.projects[0].id;
+                const gSchemId = parsed.activeSchematicId || parsed.projects[0].schematics[0]?.id;
+                setActiveProjectId(gProjId);
+                setActiveSchematicId(gSchemId ?? null);
+
+                if (parsed.buffersBase64 && typeof parsed.buffersBase64 === 'object') {
+                  for (const [id, b64] of Object.entries(parsed.buffersBase64)) {
+                    if (typeof b64 === 'string') {
+                      try {
+                        guestBuffersRef.current.set(id, base64ToUint8Array(b64));
+                      } catch {
+                        // ignore corrupt buffer
+                      }
+                    }
+                  }
+                }
+
+                if (gSchemId && guestBuffersRef.current.has(gSchemId)) {
+                  const buf = guestBuffersRef.current.get(gSchemId)!;
+                  try {
+                    const proj = unpackVxprojArchive(buf);
+                    await runtime.persistence.replaceProjectInSession(proj);
+                    runtime.persistence.markClean();
+                    restoredGuest = true;
+                  } catch {
+                    // ignore unpack error
+                  }
+                }
+              }
+            }
+          } catch {
+            // fallback
+          }
+
+          if (!restoredGuest && active) {
+            setWorkspaceProjects(createDefaultGuestProjects());
+            setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
+            setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+          }
         }
       })
       .catch(() => {
         if (active) {
           setAuthUser(null);
-          setWorkspaceProjects(createDefaultGuestProjects());
-          setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
-          setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+          let restoredGuest = false;
+          try {
+            const raw = localStorage.getItem('ese_guest_workspace');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (parsed && Array.isArray(parsed.projects) && parsed.projects.length > 0) {
+                setWorkspaceProjects(parsed.projects);
+                const gProjId = parsed.activeProjectId || parsed.projects[0].id;
+                const gSchemId = parsed.activeSchematicId || parsed.projects[0].schematics[0]?.id;
+                setActiveProjectId(gProjId);
+                setActiveSchematicId(gSchemId ?? null);
+
+                if (parsed.buffersBase64 && typeof parsed.buffersBase64 === 'object') {
+                  for (const [id, b64] of Object.entries(parsed.buffersBase64)) {
+                    if (typeof b64 === 'string') {
+                      try {
+                        guestBuffersRef.current.set(id, base64ToUint8Array(b64));
+                      } catch {
+                        // ignore
+                      }
+                    }
+                  }
+                }
+
+                if (gSchemId && guestBuffersRef.current.has(gSchemId)) {
+                  const buf = guestBuffersRef.current.get(gSchemId)!;
+                  try {
+                    const proj = unpackVxprojArchive(buf);
+                    void runtime.persistence.replaceProjectInSession(proj).then(() => {
+                      runtime.persistence.markClean();
+                    });
+                    restoredGuest = true;
+                  } catch {
+                    // ignore
+                  }
+                }
+              }
+            }
+          } catch {
+            // fallback
+          }
+
+          if (!restoredGuest) {
+            setWorkspaceProjects(createDefaultGuestProjects());
+            setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
+            setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+          }
         }
       });
     return () => {
@@ -229,6 +373,20 @@ export default function EditorIsland() {
     [authUser, activeSchematicId, runtime],
   );
 
+  // Track last active project & schematic for authenticated user
+  useEffect(() => {
+    if (authUser && activeProjectId && activeSchematicId) {
+      try {
+        localStorage.setItem(
+          'ese_last_active:' + authUser.id,
+          JSON.stringify({ projectId: activeProjectId, schematicId: activeSchematicId }),
+        );
+      } catch {
+        // Ignore storage error
+      }
+    }
+  }, [authUser, activeProjectId, activeSchematicId]);
+
   // Cloud autosave (debounced 2.5s)
   useEffect(() => {
     if (
@@ -249,18 +407,38 @@ export default function EditorIsland() {
     }
   }, [authUser, activeSchematicId, isDirty, isSaving, sessionState.revision, performCloudSave]);
 
-  // Guest snapshot autosave (debounced 1s)
+  // Guest snapshot & workspace autosave (debounced 1s)
   useEffect(() => {
-    if (!authUser && activeSchematicId && isDirty) {
-      const timer = window.setTimeout(() => {
-        guestBuffersRef.current.set(
-          activeSchematicId,
-          packVxprojArchive(runtime.persistence.getCurrentProject()),
+    if (authUser) return;
+    const timer = window.setTimeout(() => {
+      try {
+        if (activeSchematicId) {
+          const currentProj = runtime.persistence.getCurrentProject();
+          if (currentProj) {
+            guestBuffersRef.current.set(activeSchematicId, packVxprojArchive(currentProj));
+          }
+        }
+        const buffersBase64: Record<string, string> = {};
+        for (const [id, buf] of guestBuffersRef.current.entries()) {
+          if (buf instanceof Uint8Array) {
+            buffersBase64[id] = uint8ArrayToBase64(buf);
+          }
+        }
+        localStorage.setItem(
+          'ese_guest_workspace',
+          JSON.stringify({
+            projects: workspaceProjects,
+            activeProjectId,
+            activeSchematicId,
+            buffersBase64,
+          }),
         );
-      }, 1000);
-      return () => window.clearTimeout(timer);
-    }
-  }, [authUser, activeSchematicId, isDirty, sessionState.revision, runtime]);
+      } catch (err) {
+        console.warn('Failed to persist guest workspace to localStorage:', err);
+      }
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [authUser, workspaceProjects, activeProjectId, activeSchematicId, isDirty, sessionState.revision, runtime]);
 
   const handleSave = useCallback(() => {
     if (!authUser) {
@@ -353,6 +531,9 @@ export default function EditorIsland() {
           }
 
           guestBuffersRef.current.clear();
+          try {
+            localStorage.removeItem('ese_guest_workspace');
+          } catch {}
           const tree = await listWorkspaceTree();
           setWorkspaceProjects(tree);
 
@@ -399,9 +580,16 @@ export default function EditorIsland() {
     await logout();
     setAuthUser(null);
     guestBuffersRef.current.clear();
+    try {
+      localStorage.removeItem('ese_guest_workspace');
+    } catch {}
     setWorkspaceProjects(createDefaultGuestProjects());
     setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
     setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+    setRegionPos1(null);
+    setRegionPos2(null);
+    setRegionPickMode(null);
+    setRegionBounds(null);
     const emptyProj = createEmptyProjectDocument('untitled.schem');
     await runtime.persistence.replaceProjectInSession(emptyProj);
   }, [runtime]);
@@ -445,6 +633,10 @@ export default function EditorIsland() {
           setActiveSchematicId(schematicId);
           setSelectedPlacementId(null);
           setSelectedVoxel(null);
+          setRegionPos1(null);
+          setRegionPos2(null);
+          setRegionPickMode(null);
+          setRegionBounds(null);
         } else {
           if (runtime.persistence.isDirty() && activeSchematicId) {
             const shouldSave = confirm('You have unsaved changes. Save before switching?');
@@ -459,6 +651,10 @@ export default function EditorIsland() {
           runtime.persistence.setActiveCloudSchematicId(schematicId);
           setSelectedPlacementId(null);
           setSelectedVoxel(null);
+          setRegionPos1(null);
+          setRegionPos2(null);
+          setRegionPickMode(null);
+          setRegionBounds(null);
         }
       } finally {
         isSwitchingSchematicRef.current = false;
@@ -834,6 +1030,10 @@ export default function EditorIsland() {
   const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
   const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
   const [selectedVoxel, setSelectedVoxel] = useState<VoxelHit | null>(null);
+  const [regionPos1, setRegionPos1] = useState<Vec3i | null>(null);
+  const [regionPos2, setRegionPos2] = useState<Vec3i | null>(null);
+  const [regionPickMode, setRegionPickMode] = useState<'pos1' | 'pos2' | null>(null);
+  const [regionBounds, setRegionBounds] = useState<Bounds3i | null>(null);
   const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
   const [nudgeStep, setNudgeStep] = useState<1 | 16>(1);
 
@@ -1020,38 +1220,156 @@ export default function EditorIsland() {
     [selectedPlacementId, sessionState.revision]
   );
 
-  const handleVoxelClick = useCallback((hit: VoxelHit, event: React.MouseEvent) => {
-    if (runtime.importWorkflow.getState() === 'ghost-preview') {
-      void runtime.importWorkflow.confirmPlace();
-      return;
-    }
+  const applyCuboidSelection = useCallback(
+    (p1: Vec3i, p2: Vec3i) => {
+      const minX = Math.min(p1[0], p2[0]);
+      const maxX = Math.max(p1[0], p2[0]);
+      const minY = Math.min(p1[1], p2[1]);
+      const maxY = Math.max(p1[1], p2[1]);
+      const minZ = Math.min(p1[2], p2[2]);
+      const maxZ = Math.max(p1[2], p2[2]);
 
-    if (hit.placementId) {
-      setSelectedVoxel((prev) =>
-        prev &&
-        prev.position[0] === hit.position[0] &&
-        prev.position[1] === hit.position[1] &&
-        prev.position[2] === hit.position[2]
-          ? null
-          : hit
-      );
+      const bounds: Bounds3i = {
+        min: [minX, minY, minZ],
+        maxExclusive: [maxX + 1, maxY + 1, maxZ + 1],
+      };
+      setRegionBounds(bounds);
+
+      void runtime.store.execute({
+        type: 'selection:set',
+        selection: createCuboidSelection(
+          { minX, minY, minZ, maxX, maxY, maxZ },
+          { x: p1[0], y: p1[1], z: p1[2] }
+        ),
+      });
+    },
+    [runtime]
+  );
+
+  const handleSetOriginFromSelectedVoxel = useCallback(() => {
+    if (!selectedVoxel?.placementId) return;
+    const project = runtime.store.getSnapshot().project;
+    const placement = project.placements.find((p) => p.id === selectedVoxel.placementId);
+    if (!placement) return;
+    const local = worldBlockToLocal(placement, selectedVoxel.position);
+    const newOrigin: Vec3Half = [local[0] * 2, local[1] * 2, local[2] * 2];
+    void runtime.store.execute({
+      type: 'placement:setOrigin',
+      placementId: placement.id,
+      origin: newOrigin,
+      keepBlocksInPlace: true,
+    });
+  }, [selectedVoxel, runtime]);
+
+  const handleSetPos1FromSelectedVoxel = useCallback(() => {
+    if (!selectedVoxel) return;
+    const pos = selectedVoxel.position;
+    setRegionPos1(pos);
+    if (regionPos2) {
+      applyCuboidSelection(pos, regionPos2);
+      setRegionPickMode(null);
     } else {
-      setSelectedVoxel(null);
+      setRegionPickMode('pos2');
     }
+  }, [selectedVoxel, regionPos2, applyCuboidSelection]);
 
-    const activeTool = runtime.store.getSnapshot().selectedTool;
-    if (['cuboid', 'cuboid-select', 'fill', 'replace', 'walls', 'hollow', 'delete', 'delete-region'].includes(activeTool)) {
-      if (event.shiftKey || runtime.selectionTool.getCorner1()) {
-        void runtime.selectionTool.setCorner2(hit.position);
+  const handleSetPos2FromSelectedVoxel = useCallback(() => {
+    if (!selectedVoxel) return;
+    const pos = selectedVoxel.position;
+    setRegionPos2(pos);
+    if (regionPos1) {
+      applyCuboidSelection(regionPos1, pos);
+      setRegionPickMode(null);
+    } else {
+      setRegionPickMode('pos1');
+    }
+  }, [selectedVoxel, regionPos1, applyCuboidSelection]);
+
+  const handleClearRegionSelection = useCallback(() => {
+    setRegionPos1(null);
+    setRegionPos2(null);
+    setRegionPickMode(null);
+    setRegionBounds(null);
+    void runtime.store.execute({ type: 'selection:clear' });
+  }, [runtime]);
+
+  const handleCancelRegionPick = useCallback(() => {
+    setRegionPickMode(null);
+  }, []);
+
+  const handleVoxelClick = useCallback(
+    (hit: VoxelHit, event: React.MouseEvent) => {
+      if (runtime.importWorkflow.getState() === 'ghost-preview') {
+        void runtime.importWorkflow.confirmPlace();
+        return;
+      }
+
+      if (regionPickMode === 'pos2' && hit) {
+        setRegionPos2(hit.position);
+        if (regionPos1) {
+          applyCuboidSelection(regionPos1, hit.position);
+        }
+        setRegionPickMode(null);
+        setSelectedVoxel(hit);
+        return;
+      }
+
+      if (regionPickMode === 'pos1' && hit) {
+        setRegionPos1(hit.position);
+        if (regionPos2) {
+          applyCuboidSelection(hit.position, regionPos2);
+        }
+        setRegionPickMode(null);
+        setSelectedVoxel(hit);
+        return;
+      }
+
+      if (hit.placementId) {
+        setSelectedVoxel((prev) =>
+          prev &&
+          prev.position[0] === hit.position[0] &&
+          prev.position[1] === hit.position[1] &&
+          prev.position[2] === hit.position[2]
+            ? null
+            : hit
+        );
+      } else {
+        setSelectedVoxel(null);
+      }
+
+      const activeTool = runtime.store.getSnapshot().selectedTool;
+      if (
+        [
+          'cuboid',
+          'cuboid-select',
+          'fill',
+          'replace',
+          'walls',
+          'hollow',
+          'delete',
+          'delete-region',
+        ].includes(activeTool)
+      ) {
+        if (event.shiftKey || runtime.selectionTool.getCorner1()) {
+          void runtime.selectionTool.setCorner2(hit.position);
+        } else {
+          runtime.selectionTool.setCorner1(hit.position);
+        }
+      } else if (['select', 'move', 'rotate'].includes(activeTool) && hit.placementId) {
+        handleSelectPlacement(hit.placementId);
       } else {
         runtime.selectionTool.setCorner1(hit.position);
       }
-    } else if (['select', 'move', 'rotate'].includes(activeTool) && hit.placementId) {
-      handleSelectPlacement(hit.placementId);
-    } else {
-      runtime.selectionTool.setCorner1(hit.position);
-    }
-  }, [runtime, handleSelectPlacement]);
+    },
+    [
+      runtime,
+      regionPickMode,
+      regionPos1,
+      regionPos2,
+      applyCuboidSelection,
+      handleSelectPlacement,
+    ]
+  );
 
   // Clear selected voxel on Escape keydown (when not in a text input)
   useEffect(() => {
@@ -1168,6 +1486,16 @@ export default function EditorIsland() {
               dragSnapStep={nudgeStep}
               selectedVoxelPosition={selectedVoxel?.position ?? null}
               onClearSelectedVoxel={() => setSelectedVoxel(null)}
+              activeSchematicId={activeSchematicId}
+              onSetOriginFromSelectedVoxel={handleSetOriginFromSelectedVoxel}
+              regionPos1={regionPos1}
+              regionPos2={regionPos2}
+              regionPickMode={regionPickMode}
+              regionBounds={regionBounds}
+              onSetPos1FromSelectedVoxel={handleSetPos1FromSelectedVoxel}
+              onSetPos2FromSelectedVoxel={handleSetPos2FromSelectedVoxel}
+              onClearRegionSelection={handleClearRegionSelection}
+              onCancelRegionPick={handleCancelRegionPick}
             />
           </div>
         }

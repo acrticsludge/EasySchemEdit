@@ -147,6 +147,36 @@ function isSameVoxelHit(a: VoxelHit | null, b: VoxelHit | null): boolean {
   );
 }
 
+function createCornerMarkerGroup(name: string, fillColor: number, edgeColor: number): THREE.Group {
+  const group = new THREE.Group();
+  group.name = name;
+  group.visible = false;
+  group.renderOrder = 997;
+
+  const boxGeo = new THREE.BoxGeometry(1.012, 1.012, 1.012);
+  const fillMat = new THREE.MeshBasicMaterial({
+    color: fillColor,
+    transparent: true,
+    opacity: 0.35,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  group.add(new THREE.Mesh(boxGeo, fillMat));
+
+  const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+  const edgeMat = new THREE.LineBasicMaterial({
+    color: edgeColor,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+  });
+  group.add(new THREE.LineSegments(edgesGeo, edgeMat));
+
+  return group;
+}
+
 export interface ViewportCanvasProps {
   session: EditorSession;
   atlasTexture?: THREE.Texture | null;
@@ -166,6 +196,16 @@ export interface ViewportCanvasProps {
   dragSnapStep?: 1 | 16;
   selectedVoxelPosition?: Vec3i | null;
   onClearSelectedVoxel?: () => void;
+  activeSchematicId?: string | null;
+  onSetOriginFromSelectedVoxel?: () => void;
+  regionPos1?: Vec3i | null;
+  regionPos2?: Vec3i | null;
+  regionPickMode?: 'pos1' | 'pos2' | null;
+  regionBounds?: Bounds3i | null;
+  onSetPos1FromSelectedVoxel?: () => void;
+  onSetPos2FromSelectedVoxel?: () => void;
+  onClearRegionSelection?: () => void;
+  onCancelRegionPick?: () => void;
 }
 
 export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
@@ -184,6 +224,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   dragSnapStep = 1,
   selectedVoxelPosition = null,
   onClearSelectedVoxel,
+  activeSchematicId = null,
+  onSetOriginFromSelectedVoxel,
+  regionPos1 = null,
+  regionPos2 = null,
+  regionPickMode = null,
+  regionBounds = null,
+  onSetPos1FromSelectedVoxel,
+  onSetPos2FromSelectedVoxel,
+  onClearRegionSelection,
+  onCancelRegionPick,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -225,8 +275,60 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const groundGridRef = useRef<THREE.GridHelper | null>(null);
   const hoverHighlightRef = useRef<THREE.Group | null>(null);
   const selectedVoxelHighlightRef = useRef<THREE.Group | null>(null);
+  const pos1MarkerRef = useRef<THREE.Group | null>(null);
+  const pos2MarkerRef = useRef<THREE.Group | null>(null);
 
   // Prop refs for stable callbacks
+  const activeSchematicIdRef = useRef<string | null>(activeSchematicId);
+  activeSchematicIdRef.current = activeSchematicId;
+  const suppressAutoFrameForSchematicRef = useRef<string | null>(null);
+  const regionPos1Ref = useRef<Vec3i | null>(regionPos1);
+  regionPos1Ref.current = regionPos1;
+  const regionPos2Ref = useRef<Vec3i | null>(regionPos2);
+  regionPos2Ref.current = regionPos2;
+  const regionBoundsRef = useRef<Bounds3i | null>(regionBounds);
+  regionBoundsRef.current = regionBounds;
+
+  const cameraSaveTimeoutRef = useRef<number | null>(null);
+  const lastSavedCameraJsonRef = useRef<string>('');
+  const prevActiveSchematicIdRef = useRef<string | null>(activeSchematicId ?? null);
+
+  const flushCameraSave = useCallback((schemIdToSave?: string | null) => {
+    const schemId = schemIdToSave ?? activeSchematicIdRef.current;
+    if (!schemId || !cameraCtrlRef.current) return;
+    try {
+      const snap = cameraCtrlRef.current.getSnapshot();
+      const json = JSON.stringify(snap);
+      localStorage.setItem('ese_camera:' + schemId, json);
+      lastSavedCameraJsonRef.current = json;
+    } catch {
+      // Ignore storage errors
+    }
+  }, []);
+
+  const scheduleCameraSave = useCallback(() => {
+    const schemId = activeSchematicIdRef.current;
+    if (!schemId || !cameraCtrlRef.current) return;
+    if (cameraSaveTimeoutRef.current !== null) {
+      window.clearTimeout(cameraSaveTimeoutRef.current);
+    }
+    cameraSaveTimeoutRef.current = window.setTimeout(() => {
+      cameraSaveTimeoutRef.current = null;
+      const currentSchemId = activeSchematicIdRef.current;
+      if (!currentSchemId || !cameraCtrlRef.current) return;
+      try {
+        const snap = cameraCtrlRef.current.getSnapshot();
+        const json = JSON.stringify(snap);
+        if (json !== lastSavedCameraJsonRef.current) {
+          lastSavedCameraJsonRef.current = json;
+          localStorage.setItem('ese_camera:' + currentSchemId, json);
+        }
+      } catch {
+        // Ignore storage errors
+      }
+    }, 250);
+  }, []);
+
   const assetSourceRef = useRef(assetSource);
   assetSourceRef.current = assetSource;
   const uvLookupRef = useRef(uvLookup);
@@ -332,8 +434,31 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(originMarkersGroupRef.current);
 
     // 3. Selection bounds
-    const selection = (session as any).getSelection?.() ?? null;
-    const selBounds = selection?.bounds ?? null;
+    let selBounds: Bounds3i | null = regionBoundsRef.current ?? null;
+    if (!selBounds) {
+      try {
+        const selState = session.query<any>({ type: 'selection:get' });
+        if (selState?.selection?.kind === 'cuboid') {
+          const b = selState.selection.bounds;
+          if (
+            b &&
+            (b.minX !== 0 ||
+              b.maxX !== 0 ||
+              b.minY !== 0 ||
+              b.maxY !== 0 ||
+              b.minZ !== 0 ||
+              b.maxZ !== 0)
+          ) {
+            selBounds = {
+              min: [b.minX, b.minY, b.minZ],
+              maxExclusive: [b.maxX + 1, b.maxY + 1, b.maxZ + 1],
+            };
+          }
+        }
+      } catch {
+        // fallback
+      }
+    }
     if (selectionGroupRef.current) {
       disposeGroupResources(selectionGroupRef.current);
       scene.remove(selectionGroupRef.current);
@@ -506,7 +631,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           maxY = Math.max(maxY, wb.maxExclusive[1]);
           maxZ = Math.max(maxZ, wb.maxExclusive[2]);
         }
-        if (Number.isFinite(minX) && cameraCtrlRef.current) {
+        if (
+          Number.isFinite(minX) &&
+          cameraCtrlRef.current &&
+          suppressAutoFrameForSchematicRef.current !== activeSchematicIdRef.current
+        ) {
           cameraCtrlRef.current.frameBounds({
             min: [minX, minY, minZ],
             maxExclusive: [maxX, maxY, maxZ],
@@ -600,6 +729,119 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       }
     }
   }, [selectedVoxelPosition]);
+
+  // Sync Pos 1 and Pos 2 corner markers
+  useEffect(() => {
+    if (pos1MarkerRef.current) {
+      if (regionPos1) {
+        pos1MarkerRef.current.position.set(
+          regionPos1[0] + 0.5,
+          regionPos1[1] + 0.5,
+          regionPos1[2] + 0.5
+        );
+        pos1MarkerRef.current.visible = true;
+      } else {
+        pos1MarkerRef.current.visible = false;
+      }
+    }
+    if (pos2MarkerRef.current) {
+      if (regionPos2) {
+        pos2MarkerRef.current.position.set(
+          regionPos2[0] + 0.5,
+          regionPos2[1] + 0.5,
+          regionPos2[2] + 0.5
+        );
+        pos2MarkerRef.current.visible = true;
+      } else {
+        pos2MarkerRef.current.visible = false;
+      }
+    }
+  }, [regionPos1, regionPos2]);
+
+  // Sync selectionGroupRef immediately when regionBounds changes
+  useEffect(() => {
+    regionBoundsRef.current = regionBounds;
+    const scene = sceneRef.current;
+    if (!scene) return;
+    if (selectionGroupRef.current) {
+      disposeGroupResources(selectionGroupRef.current);
+      scene.remove(selectionGroupRef.current);
+    }
+    selectionGroupRef.current = buildSelectionBoxMesh(regionBounds ?? null);
+    selectionGroupRef.current.position.set(0, 0, 0);
+    scene.add(selectionGroupRef.current);
+  }, [regionBounds]);
+
+  // Restore camera state per schematic ID & handle camera persistence
+  useEffect(() => {
+    if (prevActiveSchematicIdRef.current && prevActiveSchematicIdRef.current !== activeSchematicId) {
+      flushCameraSave(prevActiveSchematicIdRef.current);
+    }
+    prevActiveSchematicIdRef.current = activeSchematicId ?? null;
+    activeSchematicIdRef.current = activeSchematicId ?? null;
+
+    if (activeSchematicId) {
+      try {
+        const raw = localStorage.getItem('ese_camera:' + activeSchematicId);
+        if (raw) {
+          const snap = JSON.parse(raw);
+          if (snap && typeof snap === 'object' && cameraCtrlRef.current) {
+            cameraCtrlRef.current.restoreSnapshot(snap);
+            if (cameraRef.current) {
+              cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+            }
+            suppressAutoFrameForSchematicRef.current = activeSchematicId;
+            lastSavedCameraJsonRef.current = raw;
+            return;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+      suppressAutoFrameForSchematicRef.current = null;
+    } else {
+      suppressAutoFrameForSchematicRef.current = null;
+    }
+  }, [activeSchematicId, flushCameraSave]);
+
+  // Flush camera save on page beforeunload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      flushCameraSave();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (cameraSaveTimeoutRef.current !== null) {
+        window.clearTimeout(cameraSaveTimeoutRef.current);
+      }
+    };
+  }, [flushCameraSave]);
+
+  // Handle Escape key to cancel region pick mode
+  useEffect(() => {
+    if (!regionPickMode) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const target = e.target as HTMLElement | null;
+        const tagName = target?.tagName?.toUpperCase();
+        if (
+          tagName === 'INPUT' ||
+          tagName === 'TEXTAREA' ||
+          tagName === 'SELECT' ||
+          target?.isContentEditable
+        ) {
+          return;
+        }
+        e.preventDefault();
+        onCancelRegionPick?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [regionPickMode, onCancelRegionPick]);
 
   // --------------------------------------------------------------------------
   // Main Three.js Lifecycle
@@ -767,6 +1009,31 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       const pos = selectedVoxelPositionRef.current;
       selectedVoxelGroup.position.set(pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5);
       selectedVoxelGroup.visible = true;
+    }
+
+    // Pos 1 and Pos 2 corner markers
+    const pos1Group = createCornerMarkerGroup('viewport-pos1-marker', 0x00e5ff, 0x00e5ff);
+    pos1MarkerRef.current = pos1Group;
+    scene.add(pos1Group);
+    if (regionPos1Ref.current) {
+      pos1Group.position.set(
+        regionPos1Ref.current[0] + 0.5,
+        regionPos1Ref.current[1] + 0.5,
+        regionPos1Ref.current[2] + 0.5
+      );
+      pos1Group.visible = true;
+    }
+
+    const pos2Group = createCornerMarkerGroup('viewport-pos2-marker', 0x14f195, 0x39ffaa);
+    pos2MarkerRef.current = pos2Group;
+    scene.add(pos2Group);
+    if (regionPos2Ref.current) {
+      pos2Group.position.set(
+        regionPos2Ref.current[0] + 0.5,
+        regionPos2Ref.current[1] + 0.5,
+        regionPos2Ref.current[2] + 0.5
+      );
+      pos2Group.visible = true;
     }
 
     transformCtrl.addEventListener('dragging-changed', (event: any) => {
@@ -1163,9 +1430,31 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scheduleChunkSync();
     updateOverlays();
 
-    // Auto-frame initial project if placements exist
+    // Restore camera state if saved for active schematic
+    const initSchemId = activeSchematicIdRef.current;
+    if (initSchemId) {
+      try {
+        const raw = localStorage.getItem('ese_camera:' + initSchemId);
+        if (raw) {
+          const snap = JSON.parse(raw);
+          if (snap && typeof snap === 'object') {
+            cameraCtrl.restoreSnapshot(snap);
+            cameraCtrl.syncToThreeCamera(camera);
+            suppressAutoFrameForSchematicRef.current = initSchemId;
+            lastSavedCameraJsonRef.current = raw;
+          }
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    // Auto-frame initial project if placements exist and framing is not suppressed
     const project = session.peekProject();
-    if (project.placements.length > 0) {
+    if (
+      project.placements.length > 0 &&
+      suppressAutoFrameForSchematicRef.current !== initSchemId
+    ) {
       let minX = Infinity, minY = Infinity, minZ = Infinity;
       let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
       for (const p of project.placements) {
@@ -1363,6 +1652,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       selectedEdgesGeo.dispose();
       selectedEdgeMat.dispose();
 
+      if (pos1MarkerRef.current) {
+        disposeGroupResources(pos1MarkerRef.current);
+        scene.remove(pos1MarkerRef.current);
+        pos1MarkerRef.current = null;
+      }
+      if (pos2MarkerRef.current) {
+        disposeGroupResources(pos2MarkerRef.current);
+        scene.remove(pos2MarkerRef.current);
+        pos2MarkerRef.current = null;
+      }
+
       chunkManager.dispose();
       renderer.dispose();
     };
@@ -1555,6 +1855,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         // Fly look
         cameraCtrl.lookFly(-dx * 0.006, dy * 0.006);
       }
+      scheduleCameraSave();
     } else {
       if (transformCtrlRef.current && (transformCtrlRef.current as any).axis) {
         if (lastHoveredVoxelRef.current !== null) {
@@ -1604,6 +1905,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
   const handlePointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     isDraggingRef.current = false;
+    scheduleCameraSave();
     try {
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
@@ -1666,6 +1968,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       const factor = e.deltaY > 0 ? 0.85 : 1.18;
       cameraCtrl.setFlySpeed(cameraCtrl.getFlySpeed() * factor);
     }
+    scheduleCameraSave();
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -1877,6 +2180,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (cameraRef.current) {
       cameraCtrl.syncToThreeCamera(cameraRef.current);
     }
+    scheduleCameraSave();
   };
 
   const handleFrameAll = () => {
@@ -1899,6 +2203,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (Number.isFinite(minX)) {
       cameraCtrl.frameBounds({ min: [minX, minY, minZ], maxExclusive: [maxX, maxY, maxZ] });
       if (cameraRef.current) cameraCtrl.syncToThreeCamera(cameraRef.current);
+      scheduleCameraSave();
     }
   };
 
@@ -1906,6 +2211,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const nextMode: CameraMode = cameraMode === 'orbit' ? 'fly' : 'orbit';
     setCameraMode(nextMode);
     cameraCtrlRef.current?.setMode(nextMode);
+    scheduleCameraSave();
   };
 
   return (
@@ -2133,8 +2439,66 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           </div>
         </div>
       )}
+      {/* Top-Center Viewport Hint Banner for Region Pick Mode */}
+      {regionPickMode && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 25,
+            pointerEvents: 'auto',
+            backgroundColor: '#181820ee',
+            backdropFilter: 'blur(8px)',
+            border: `1px solid ${regionPickMode === 'pos1' ? '#00e5ff' : '#14f195'}`,
+            borderRadius: '6px',
+            padding: '6px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: `0 4px 20px ${regionPickMode === 'pos1' ? 'rgba(0, 229, 255, 0.25)' : 'rgba(20, 241, 149, 0.25)'}`,
+            color: '#e2e2ec',
+            fontSize: '12px',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: regionPickMode === 'pos1' ? '#00e5ff' : '#14f195',
+              boxShadow: `0 0 6px ${regionPickMode === 'pos1' ? '#00e5ff' : '#14f195'}`,
+            }}
+          />
+          <span>
+            {regionPickMode === 'pos2'
+              ? 'Pos 1 set — click any block to set Pos 2'
+              : 'Click any block to set Pos 1'}{' '}
+            <span style={{ color: '#8888aa' }}>(Esc to cancel)</span>
+          </span>
+          <button
+            onClick={() => onCancelRegionPick?.()}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#8888aa',
+              cursor: 'pointer',
+              fontSize: '12px',
+              padding: '0 2px',
+              marginLeft: '4px',
+            }}
+            title="Cancel pick (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Floating Vertical Island for Selected Block Tools */}
-      {selectedVoxelPosition && (
+      {(selectedVoxelPosition || regionPickMode) && (
         <div
           style={{
             position: 'absolute',
@@ -2152,6 +2516,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            padding: '6px 0',
+            gap: '8px',
           }}
         >
           {/* Minimal header with close button */}
@@ -2161,12 +2527,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               alignItems: 'center',
               justifyContent: 'center',
               width: '100%',
-              padding: '6px 0',
+              paddingBottom: '4px',
               borderBottom: '1px solid #2a2a38',
             }}
           >
             <button
-              onClick={() => onClearSelectedVoxel?.()}
+              onClick={() => {
+                onClearSelectedVoxel?.();
+                if (regionPickMode) {
+                  onCancelRegionPick?.();
+                }
+              }}
               style={{
                 background: 'transparent',
                 border: 'none',
@@ -2183,6 +2554,128 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               ✕
             </button>
           </div>
+
+          {/* 1. Set Origin Button */}
+          <button
+            onClick={() => onSetOriginFromSelectedVoxel?.()}
+            disabled={!selectedVoxelPosition}
+            style={{
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#232330',
+              border: '1px solid #3b334a',
+              borderRadius: '4px',
+              cursor: selectedVoxelPosition ? 'pointer' : 'not-allowed',
+              opacity: selectedVoxelPosition ? 1 : 0.4,
+              color: '#a855f7',
+              padding: 0,
+              transition: 'background 0.15s, border-color 0.15s, transform 0.1s',
+            }}
+            title="Set Schematic Origin (Moves placement origin to selected block)"
+            aria-label="Set Schematic Origin"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="8" />
+              <line x1="12" y1="2" x2="12" y2="6" />
+              <line x1="12" y1="18" x2="12" y2="22" />
+              <line x1="2" y1="12" x2="6" y2="12" />
+              <line x1="18" y1="12" x2="22" y2="12" />
+              <circle cx="12" cy="12" r="2" fill="currentColor" />
+            </svg>
+          </button>
+
+          {/* 2. Pos 1 Button */}
+          <button
+            onClick={() => onSetPos1FromSelectedVoxel?.()}
+            disabled={!selectedVoxelPosition && regionPickMode !== 'pos1'}
+            style={{
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: (regionPos1 || regionPickMode === 'pos1') ? 'rgba(0, 229, 255, 0.16)' : '#232330',
+              border: (regionPos1 || regionPickMode === 'pos1') ? '1px solid #00e5ff' : '1px solid #333345',
+              borderRadius: '4px',
+              cursor: (selectedVoxelPosition || regionPickMode === 'pos1') ? 'pointer' : 'not-allowed',
+              opacity: (selectedVoxelPosition || regionPos1 || regionPickMode === 'pos1') ? 1 : 0.4,
+              color: (regionPos1 || regionPickMode === 'pos1') ? '#00e5ff' : '#c8c8dd',
+              boxShadow: (regionPos1 || regionPickMode === 'pos1') ? '0 0 8px rgba(0, 229, 255, 0.35)' : 'none',
+              padding: 0,
+              transition: 'all 0.15s ease',
+            }}
+            title={regionPos1 ? `Pos 1: [${regionPos1.join(', ')}] (Click to reset from selected block)` : 'Set Pos 1 (First corner of region selection)'}
+            aria-label="Set Pos 1"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 10V4h6" />
+              <circle cx="4" cy="4" r="2" fill="currentColor" />
+              <text x="9" y="20" fill="currentColor" stroke="none" fontSize="10" fontWeight="bold" fontFamily="monospace">P1</text>
+            </svg>
+          </button>
+
+          {/* 3. Pos 2 Button */}
+          <button
+            onClick={() => onSetPos2FromSelectedVoxel?.()}
+            disabled={!selectedVoxelPosition && regionPickMode !== 'pos2'}
+            style={{
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: (regionPos2 || regionPickMode === 'pos2') ? 'rgba(20, 241, 149, 0.16)' : '#232330',
+              border: (regionPos2 || regionPickMode === 'pos2') ? '1px solid #14f195' : '1px solid #333345',
+              borderRadius: '4px',
+              cursor: (selectedVoxelPosition || regionPickMode === 'pos2') ? 'pointer' : 'not-allowed',
+              opacity: (selectedVoxelPosition || regionPos2 || regionPickMode === 'pos2') ? 1 : 0.4,
+              color: (regionPos2 || regionPickMode === 'pos2') ? '#14f195' : '#c8c8dd',
+              boxShadow: (regionPos2 || regionPickMode === 'pos2') ? '0 0 8px rgba(20, 241, 149, 0.35)' : 'none',
+              padding: 0,
+              transition: 'all 0.15s ease',
+            }}
+            title={regionPos2 ? `Pos 2: [${regionPos2.join(', ')}] (Click to reset from selected block)` : 'Set Pos 2 (Second corner of region selection)'}
+            aria-label="Set Pos 2"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 14v6h-6" />
+              <circle cx="20" cy="20" r="2" fill="currentColor" />
+              <text x="3" y="14" fill="currentColor" stroke="none" fontSize="10" fontWeight="bold" fontFamily="monospace">P2</text>
+            </svg>
+          </button>
+
+          {/* 4. Clear Region Button */}
+          <button
+            onClick={() => onClearRegionSelection?.()}
+            disabled={!regionPos1 && !regionPos2 && !regionBounds}
+            style={{
+              width: '32px',
+              height: '32px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: '#232330',
+              border: '1px solid #333345',
+              borderRadius: '4px',
+              cursor: (regionPos1 || regionPos2 || regionBounds) ? 'pointer' : 'not-allowed',
+              opacity: (regionPos1 || regionPos2 || regionBounds) ? 1 : 0.35,
+              color: '#ff6666',
+              padding: 0,
+              transition: 'all 0.15s ease',
+            }}
+            title="Clear Region Selection"
+            aria-label="Clear Region Selection"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
+              <line x1="8" y1="8" x2="16" y2="16" />
+              <line x1="16" y1="8" x2="8" y2="16" />
+            </svg>
+          </button>
+
           {/* Empty flex body reserved for future tools */}
           <div style={{ flex: 1 }} />
         </div>

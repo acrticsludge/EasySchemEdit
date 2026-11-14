@@ -133,6 +133,48 @@ export function localBlockToWorld(
   return result.worldBlock;
 }
 
+export function worldBlockToLocal(
+  placement: { transform: Transform; origin: Vec3Half },
+  worldBlock: Vec3i,
+): Vec3i {
+  const [tx, ty, tz] = [
+    placement.transform.translation[0] * 2,
+    placement.transform.translation[1] * 2,
+    placement.transform.translation[2] * 2,
+  ];
+  const [ox, oy, oz] = placement.origin;
+  const worldCenterHalf = [
+    2 * worldBlock[0] + 1,
+    2 * worldBlock[1] + 1,
+    2 * worldBlock[2] + 1,
+  ];
+
+  const dx = worldCenterHalf[0] - tx;
+  const dy = worldCenterHalf[1] - ty;
+  const dz = worldCenterHalf[2] - tz;
+
+  const invRot = ((360 - placement.transform.rotationY) % 360) as 0 | 90 | 180 | 270;
+  const [rx, ry, rz] = applyRotation(dx, dy, dz, invRot);
+  const [mx, my, mz] = applyMirror(rx, ry, rz, placement.transform.mirror);
+
+  const localCenterHalf = [mx + ox, my + oy, mz + oz];
+
+  const valid =
+    Number.isInteger(localCenterHalf[0]) && localCenterHalf[0] % 2 !== 0 &&
+    Number.isInteger(localCenterHalf[1]) && localCenterHalf[1] % 2 !== 0 &&
+    Number.isInteger(localCenterHalf[2]) && localCenterHalf[2] % 2 !== 0;
+
+  if (!valid) {
+    throw new Error(`Block ${worldBlock} is off-grid under inverse transform`);
+  }
+
+  return [
+    (localCenterHalf[0] - 1) / 2,
+    (localCenterHalf[1] - 1) / 2,
+    (localCenterHalf[2] - 1) / 2,
+  ] as Vec3i;
+}
+
 export function placementWorldBounds(
   placement: { transform: Transform; origin: Vec3Half; volume: { bounds: Bounds3i } },
 ): Bounds3i {

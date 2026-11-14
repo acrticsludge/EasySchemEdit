@@ -989,7 +989,8 @@ export class EditorSession {
         } as unknown as T;
       }
 
-      case 'getselection': {
+      case 'getselection':
+      case 'selection:get': {
         return { ...this.selection } as unknown as T;
       }
 

@@ -435,4 +435,53 @@ export class ViewportCameraController {
       flySpeed: this.flySpeed,
     };
   }
+
+  public getSnapshot(): CameraStateSnapshot {
+    return this.snapshot();
+  }
+
+  public restoreSnapshot(snap: Partial<CameraStateSnapshot>): void {
+    if (!snap || typeof snap !== 'object') return;
+
+    if (snap.mode === 'orbit' || snap.mode === 'fly') {
+      this.mode = snap.mode;
+    }
+
+    if (
+      Array.isArray(snap.target) &&
+      snap.target.length === 3 &&
+      snap.target.every(Number.isFinite)
+    ) {
+      this.target = [snap.target[0], snap.target[1], snap.target[2]];
+    }
+
+    if (
+      Array.isArray(snap.position) &&
+      snap.position.length === 3 &&
+      snap.position.every(Number.isFinite)
+    ) {
+      this.flyPosition = [snap.position[0], snap.position[1], snap.position[2]];
+    }
+
+    if (typeof snap.distance === 'number' && Number.isFinite(snap.distance)) {
+      this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, snap.distance));
+      this.targetDistance = this.distance;
+    }
+
+    if (typeof snap.yaw === 'number' && Number.isFinite(snap.yaw)) {
+      this.yaw = snap.yaw;
+    }
+
+    if (typeof snap.pitch === 'number' && Number.isFinite(snap.pitch)) {
+      const maxPitch = Math.PI / 2 - 0.005;
+      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, snap.pitch));
+    }
+
+    if (typeof snap.flySpeed === 'number' && Number.isFinite(snap.flySpeed)) {
+      this.flySpeed = Math.max(2, Math.min(200, snap.flySpeed));
+    }
+
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
+  }
 }

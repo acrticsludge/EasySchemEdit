@@ -139,7 +139,7 @@ export function buildOriginMarkersGroup(placements: Placement[]): THREE.Group {
 }
 
 /**
- * Builds a cyan translucent filled box + wireframe box around current selection bounds.
+ * Builds a vibrant emerald-green translucent filled box + wireframe box around current selection bounds.
  */
 export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
   const group = new THREE.Group();
@@ -157,13 +157,16 @@ export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
   const cy = bounds.min[1] + sy / 2;
   const cz = bounds.min[2] + sz / 2;
 
-  // Translucent inner box
-  const boxGeom = new THREE.BoxGeometry(sx, sy, sz);
+  // Translucent inner box inflated slightly by 0.008 to prevent z-fighting
+  const boxGeom = new THREE.BoxGeometry(sx + 0.008, sy + 0.008, sz + 0.008);
   const boxMat = new THREE.MeshBasicMaterial({
-    color: 0x00e5ff,
+    color: 0x14f195,
     transparent: true,
-    opacity: 0.15,
+    opacity: 0.22,
     depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
     side: THREE.DoubleSide,
   });
   const fillMesh = new THREE.Mesh(boxGeom, boxMat);
@@ -179,9 +182,9 @@ export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
     bounds.maxExclusive[2]
   );
   const lineMat = new THREE.LineBasicMaterial({
-    color: 0x00e5ff,
+    color: 0x39ffaa,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.95,
     depthWrite: false,
   });
   const lineMesh = new THREE.LineSegments(lineGeom, lineMat);

@@ -35,6 +35,7 @@ export {
   mapCellToWorld,
   isLatticeSafe,
   localBlockToWorld,
+  worldBlockToLocal,
   placementWorldBounds,
   rotateAboutPoint,
   localPointToWorld,
