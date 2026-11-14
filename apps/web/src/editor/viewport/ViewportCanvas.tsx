@@ -1193,7 +1193,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         }
       } else {
         // Fly look
-        cameraCtrl.lookFly(-dx * 0.006, -dy * 0.006);
+        cameraCtrl.lookFly(-dx * 0.006, dy * 0.006);
       }
     } else {
       if (transformCtrlRef.current && (transformCtrlRef.current as any).axis) {
