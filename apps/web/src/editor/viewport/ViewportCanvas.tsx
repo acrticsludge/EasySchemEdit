@@ -2138,19 +2138,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         <div
           style={{
             position: 'absolute',
-            top: '56px',
+            top: hudCollapsed ? '72px' : '136px',
             right: '12px',
             bottom: '68px',
-            width: '220px',
+            width: '44px',
             zIndex: 20,
             pointerEvents: 'auto',
             backgroundColor: '#1e1e26f0',
             backdropFilter: 'blur(8px)',
             border: '1px solid #2a2a38',
-            borderRadius: '6px',
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+            borderRadius: '4px',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4)',
             display: 'flex',
             flexDirection: 'column',
+            alignItems: 'center',
           }}
         >
           {/* Minimal header with close button */}
@@ -2158,8 +2159,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'flex-end',
-              padding: '6px 8px',
+              justifyContent: 'center',
+              width: '100%',
+              padding: '6px 0',
               borderBottom: '1px solid #2a2a38',
             }}
           >
