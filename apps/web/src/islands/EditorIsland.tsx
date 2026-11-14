@@ -7,7 +7,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import * as THREE from 'three';
 import '../editor/design-tokens.css';
 import type { Project } from '@easyschemedit/domain';
-import { packVxprojArchive } from '@easyschemedit/persistence';
+import { packVxprojArchive, unpackVxprojArchive } from '@easyschemedit/persistence';
 import {
   createEditorRuntime,
   WorkspaceShell,
@@ -107,14 +107,18 @@ export default function EditorIsland() {
   const [pendingAuthAction, setPendingAuthAction] = useState<'save' | 'projects' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
-  const [, setDirtyVersion] = useState(0);
+  const [dirtyVersion, setDirtyVersion] = useState(0);
+
+  // Re-evaluated on sessionState.revision / dirtyVersion
+  const isDirty = dirtyVersion >= 0 && runtime.persistence.isDirty();
 
   const [workspaceProjects, setWorkspaceProjects] = useState<WorkspaceProjectNode[]>(() =>
     createDefaultGuestProjects(),
   );
   const [activeProjectId, setActiveProjectId] = useState<string | null>(DEFAULT_GUEST_PROJECT_ID);
   const [activeSchematicId, setActiveSchematicId] = useState<string | null>(DEFAULT_GUEST_SCHEMATIC_ID);
-  const guestBuffersRef = useRef<Map<string, Project>>(new Map());
+  const guestBuffersRef = useRef<Map<string, Uint8Array>>(new Map());
+  const isSwitchingSchematicRef = useRef(false);
   const [isFirstProjectOpen, setIsFirstProjectOpen] = useState(false);
 
   // Check current session on mount (non-blocking)
@@ -167,22 +171,37 @@ export default function EditorIsland() {
   }, [runtime]);
 
   const performCloudSave = useCallback(
-    async (userToUse?: AuthUser | null) => {
+    async (userToUse?: AuthUser | null, options?: { silent?: boolean }) => {
       const user = userToUse !== undefined ? userToUse : authUser;
       if (!user) {
-        setPendingAuthAction('save');
-        setIsLoginModalOpen(true);
+        if (!options?.silent) {
+          setPendingAuthAction('save');
+          setIsLoginModalOpen(true);
+        }
         return;
       }
 
       setIsSaving(true);
       try {
-        if (activeSchematicId && !activeSchematicId.startsWith('guest-')) {
+        if (
+          activeSchematicId &&
+          !activeSchematicId.startsWith('guest-') &&
+          !activeSchematicId.startsWith('temp-')
+        ) {
           const summary = await runtime.persistence.saveSchematicToCloud(activeSchematicId);
           setDirtyVersion((v) => v + 1);
           console.info(`Saved schematic "${summary.name}" to cloud.`);
-          const tree = await listWorkspaceTree();
-          setWorkspaceProjects(tree);
+          setWorkspaceProjects((prev) =>
+            prev.map((p) => {
+              const hasSchem = p.schematics.some((s) => s.id === summary.id);
+              if (!hasSchem) return p;
+              return {
+                ...p,
+                updatedAt: new Date().toISOString(),
+                schematics: p.schematics.map((s) => (s.id === summary.id ? summary : s)),
+              };
+            }),
+          );
         } else {
           const summary = await runtime.persistence.saveToCloud();
           setDirtyVersion((v) => v + 1);
@@ -191,13 +210,17 @@ export default function EditorIsland() {
           setWorkspaceProjects(tree);
         }
       } catch (err) {
-        console.error('Failed to save to cloud:', err);
-        if (err instanceof Error && err.message.toLowerCase().includes('unauthorized')) {
-          setAuthUser(null);
-          setPendingAuthAction('save');
-          setIsLoginModalOpen(true);
+        if (options?.silent) {
+          console.warn('Background autosave failed:', err);
         } else {
-          alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          console.error('Failed to save to cloud:', err);
+          if (err instanceof Error && err.message.toLowerCase().includes('unauthorized')) {
+            setAuthUser(null);
+            setPendingAuthAction('save');
+            setIsLoginModalOpen(true);
+          } else {
+            alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
       } finally {
         setIsSaving(false);
@@ -205,6 +228,39 @@ export default function EditorIsland() {
     },
     [authUser, activeSchematicId, runtime],
   );
+
+  // Cloud autosave (debounced 2.5s)
+  useEffect(() => {
+    if (
+      authUser &&
+      activeSchematicId &&
+      !activeSchematicId.startsWith('guest-') &&
+      !activeSchematicId.startsWith('temp-') &&
+      isDirty &&
+      !isSaving &&
+      !isSwitchingSchematicRef.current
+    ) {
+      const timer = window.setTimeout(() => {
+        if (!isSwitchingSchematicRef.current) {
+          void performCloudSave(authUser, { silent: true });
+        }
+      }, 2500);
+      return () => window.clearTimeout(timer);
+    }
+  }, [authUser, activeSchematicId, isDirty, isSaving, sessionState.revision, performCloudSave]);
+
+  // Guest snapshot autosave (debounced 1s)
+  useEffect(() => {
+    if (!authUser && activeSchematicId && isDirty) {
+      const timer = window.setTimeout(() => {
+        guestBuffersRef.current.set(
+          activeSchematicId,
+          packVxprojArchive(runtime.persistence.getCurrentProject()),
+        );
+      }, 1000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [authUser, activeSchematicId, isDirty, sessionState.revision, runtime]);
 
   const handleSave = useCallback(() => {
     if (!authUser) {
@@ -265,9 +321,19 @@ export default function EditorIsland() {
                 projBytes = runtime.persistence.packCurrentProjectBytes();
                 pCount = currentPlacements.length;
               } else if (guestBuffersRef.current.has(gs.id)) {
-                const bProj = guestBuffersRef.current.get(gs.id)!;
-                projBytes = packVxprojArchive(bProj);
-                pCount = bProj.placements.length;
+                const stored = guestBuffersRef.current.get(gs.id)!;
+                if (stored instanceof Uint8Array) {
+                  projBytes = stored;
+                  try {
+                    const unpacked = unpackVxprojArchive(stored);
+                    pCount = unpacked.placements.length;
+                  } catch {
+                    pCount = 0;
+                  }
+                } else {
+                  projBytes = packVxprojArchive(stored as unknown as Project);
+                  pCount = (stored as unknown as Project).placements?.length ?? 0;
+                }
               } else {
                 const empty = createEmptyProjectDocument(gs.name);
                 projBytes = packVxprojArchive(empty);
@@ -341,83 +407,207 @@ export default function EditorIsland() {
   }, [runtime]);
 
   // Explorer Handlers
+  const handleSelectSchematic = useCallback(
+    async (projectId: string, schematicId: string) => {
+      if (schematicId === activeSchematicId) return;
+      if (isSwitchingSchematicRef.current) return;
+      isSwitchingSchematicRef.current = true;
+
+      try {
+        if (!authUser) {
+          if (activeSchematicId) {
+            guestBuffersRef.current.set(
+              activeSchematicId,
+              packVxprojArchive(runtime.persistence.getCurrentProject()),
+            );
+          }
+          let nextBytes = guestBuffersRef.current.get(schematicId);
+          let nextProj: Project;
+          if (nextBytes) {
+            try {
+              nextProj = unpackVxprojArchive(nextBytes);
+            } catch (err) {
+              console.error('Failed to unpack guest schematic:', err);
+              const foundNode = workspaceProjects
+                .flatMap((p) => p.schematics)
+                .find((s) => s.id === schematicId);
+              nextProj = createEmptyProjectDocument(foundNode?.name || 'untitled.schem');
+            }
+          } else {
+            const foundNode = workspaceProjects
+              .flatMap((p) => p.schematics)
+              .find((s) => s.id === schematicId);
+            nextProj = createEmptyProjectDocument(foundNode?.name || 'untitled.schem');
+            guestBuffersRef.current.set(schematicId, packVxprojArchive(nextProj));
+          }
+          await runtime.persistence.replaceProjectInSession(nextProj);
+          setActiveProjectId(projectId);
+          setActiveSchematicId(schematicId);
+          setSelectedPlacementId(null);
+          setSelectedVoxel(null);
+        } else {
+          if (runtime.persistence.isDirty() && activeSchematicId) {
+            const shouldSave = confirm('You have unsaved changes. Save before switching?');
+            if (shouldSave) {
+              await runtime.persistence.saveSchematicToCloud(activeSchematicId);
+            }
+          }
+          await runtime.persistence.openSchematicFromCloud(schematicId);
+          setActiveProjectId(projectId);
+          setActiveSchematicId(schematicId);
+          runtime.persistence.setActiveCloudProjectId(projectId);
+          runtime.persistence.setActiveCloudSchematicId(schematicId);
+          setSelectedPlacementId(null);
+          setSelectedVoxel(null);
+        }
+      } finally {
+        isSwitchingSchematicRef.current = false;
+      }
+    },
+    [authUser, activeSchematicId, workspaceProjects, runtime],
+  );
+
   const handleCreateProject = useCallback(
     async (name: string) => {
       if (!authUser) {
         const newId = `guest-proj-${Date.now()}`;
-        setWorkspaceProjects((prev) => [
-          ...prev,
-          {
-            id: newId,
-            name,
-            revision: 1,
-            placementCount: 0,
-            sizeBytes: 0,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            schematics: [],
-          },
-        ]);
+        const newProj: WorkspaceProjectNode = {
+          id: newId,
+          name,
+          revision: 1,
+          placementCount: 0,
+          sizeBytes: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          schematics: [],
+        };
+        setWorkspaceProjects((prev) => [...prev, newProj]);
+        setActiveProjectId(newId);
       } else {
-        const newProj = await createCloudProject(name);
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
-        setActiveProjectId(newProj.id);
-        runtime.persistence.setActiveCloudProjectId(newProj.id);
+        const tempId = `temp-proj-${Date.now()}`;
+        const optimisticProj: WorkspaceProjectNode = {
+          id: tempId,
+          name,
+          revision: 1,
+          placementCount: 0,
+          sizeBytes: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          schematics: [],
+        };
+        const prevProjects = workspaceProjects;
+        const prevActiveId = activeProjectId;
+        setWorkspaceProjects((prev) => [...prev, optimisticProj]);
+        setActiveProjectId(tempId);
+        runtime.persistence.setActiveCloudProjectId(tempId);
+
+        try {
+          const newProj = await createCloudProject(name);
+          setWorkspaceProjects((prev) =>
+            prev.map((p) =>
+              p.id === tempId ? { ...p, id: newProj.id, revision: newProj.revision } : p,
+            ),
+          );
+          setActiveProjectId((prev) => (prev === tempId ? newProj.id : prev));
+          runtime.persistence.setActiveCloudProjectId(newProj.id);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          setActiveProjectId(prevActiveId);
+          runtime.persistence.setActiveCloudProjectId(prevActiveId);
+          throw err;
+        }
       }
     },
-    [authUser, runtime],
+    [authUser, workspaceProjects, activeProjectId, runtime],
   );
 
   const handleRenameProject = useCallback(
     async (projectId: string, name: string) => {
       if (!authUser) {
         setWorkspaceProjects((prev) =>
-          prev.map((p) => (p.id === projectId ? { ...p, name, updatedAt: new Date().toISOString() } : p)),
+          prev.map((p) =>
+            p.id === projectId ? { ...p, name, updatedAt: new Date().toISOString() } : p,
+          ),
         );
       } else {
-        await renameCloudProject(projectId, name);
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
+        const prevProjects = workspaceProjects;
+        setWorkspaceProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId ? { ...p, name, updatedAt: new Date().toISOString() } : p,
+          ),
+        );
+        try {
+          await renameCloudProject(projectId, name);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          throw err;
+        }
       }
     },
-    [authUser],
+    [authUser, workspaceProjects],
   );
 
   const handleDeleteProject = useCallback(
     async (projectId: string) => {
       if (!authUser) {
-        setWorkspaceProjects((prev) => prev.filter((p) => p.id !== projectId));
+        const remainingProjects = workspaceProjects.filter((p) => p.id !== projectId);
+        setWorkspaceProjects(remainingProjects);
         if (activeProjectId === projectId) {
-          setActiveProjectId(null);
-          setActiveSchematicId(null);
+          const remainingSchematics = remainingProjects.flatMap((p) => p.schematics);
+          if (remainingSchematics.length > 0) {
+            const nextSchem = remainingSchematics[0];
+            void handleSelectSchematic(nextSchem.projectId, nextSchem.id);
+          } else {
+            setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
+            setActiveSchematicId(null);
+            const emptyProj = createEmptyProjectDocument('untitled.schem');
+            await runtime.persistence.replaceProjectInSession(emptyProj);
+          }
         }
       } else {
-        await deleteCloudProject(projectId);
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
+        const prevProjects = workspaceProjects;
+        const prevActiveProj = activeProjectId;
+        const prevActiveSchem = activeSchematicId;
+        const remainingProjects = workspaceProjects.filter((p) => p.id !== projectId);
+        setWorkspaceProjects(remainingProjects);
+
         if (activeProjectId === projectId) {
-          if (tree.length > 0) {
-            const nextProj = tree[0];
-            setActiveProjectId(nextProj.id);
-            runtime.persistence.setActiveCloudProjectId(nextProj.id);
-            if (nextProj.schematics.length > 0) {
-              const nextSchem = nextProj.schematics[0];
-              await runtime.persistence.openSchematicFromCloud(nextSchem.id);
-              setActiveSchematicId(nextSchem.id);
-              runtime.persistence.setActiveCloudSchematicId(nextSchem.id);
-            } else {
-              setActiveSchematicId(null);
-            }
+          const remainingSchematics = remainingProjects.flatMap((p) => p.schematics);
+          if (remainingSchematics.length > 0) {
+            const nextSchem = remainingSchematics[0];
+            await runtime.persistence.openSchematicFromCloud(nextSchem.id);
+            setActiveProjectId(nextSchem.projectId);
+            setActiveSchematicId(nextSchem.id);
+            runtime.persistence.setActiveCloudProjectId(nextSchem.projectId);
+            runtime.persistence.setActiveCloudSchematicId(nextSchem.id);
           } else {
-            setActiveProjectId(null);
+            setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
             setActiveSchematicId(null);
-            setIsFirstProjectOpen(true);
+            runtime.persistence.setActiveCloudProjectId(
+              remainingProjects.length > 0 ? remainingProjects[0].id : null,
+            );
+            runtime.persistence.setActiveCloudSchematicId(null);
+            const emptyProj = createEmptyProjectDocument('untitled.schem');
+            await runtime.persistence.replaceProjectInSession(emptyProj);
+            if (remainingProjects.length === 0) {
+              setIsFirstProjectOpen(true);
+            }
           }
+        }
+
+        try {
+          await deleteCloudProject(projectId);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          setActiveProjectId(prevActiveProj);
+          setActiveSchematicId(prevActiveSchem);
+          runtime.persistence.setActiveCloudProjectId(prevActiveProj);
+          runtime.persistence.setActiveCloudSchematicId(prevActiveSchem);
+          throw err;
         }
       }
     },
-    [authUser, activeProjectId, runtime],
+    [authUser, workspaceProjects, activeProjectId, activeSchematicId, handleSelectSchematic, runtime],
   );
 
   const handleCreateSchematic = useCallback(
@@ -426,7 +616,7 @@ export default function EditorIsland() {
         if (activeSchematicId) {
           guestBuffersRef.current.set(
             activeSchematicId,
-            JSON.parse(JSON.stringify(runtime.persistence.getCurrentProject())),
+            packVxprojArchive(runtime.persistence.getCurrentProject()),
           );
         }
         const newId = `guest-schem-${Date.now()}`;
@@ -446,7 +636,7 @@ export default function EditorIsland() {
           ),
         );
         const emptyProject = createEmptyProjectDocument(name);
-        guestBuffersRef.current.set(newId, emptyProject);
+        guestBuffersRef.current.set(newId, packVxprojArchive(emptyProject));
         await runtime.persistence.replaceProjectInSession(emptyProject);
         setActiveProjectId(projectId);
         setActiveSchematicId(newId);
@@ -459,65 +649,62 @@ export default function EditorIsland() {
             await runtime.persistence.saveSchematicToCloud(activeSchematicId);
           }
         }
-        const emptyProject = createEmptyProjectDocument(name);
-        const archiveBytes = packVxprojArchive(emptyProject);
-        const newSchem = await createSchematic(projectId, name, archiveBytes, {
+        const tempId = `temp-schem-${Date.now()}`;
+        const tempSchem: CloudSchematicSummary = {
+          id: tempId,
+          projectId,
+          name,
           revision: 1,
           placementCount: 0,
-        });
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
+          sizeBytes: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        const prevProjects = workspaceProjects;
+        const prevActiveSchemId = activeSchematicId;
+        const prevActiveProjId = activeProjectId;
+
+        setWorkspaceProjects((prev) =>
+          prev.map((p) =>
+            p.id === projectId ? { ...p, schematics: [...p.schematics, tempSchem] } : p,
+          ),
+        );
+        const emptyProject = createEmptyProjectDocument(name);
         await runtime.persistence.replaceProjectInSession(emptyProject);
         setActiveProjectId(projectId);
-        setActiveSchematicId(newSchem.id);
+        setActiveSchematicId(tempId);
         runtime.persistence.setActiveCloudProjectId(projectId);
-        runtime.persistence.setActiveCloudSchematicId(newSchem.id);
-      }
-    },
-    [authUser, activeSchematicId, runtime],
-  );
+        runtime.persistence.setActiveCloudSchematicId(tempId);
 
-  const handleSelectSchematic = useCallback(
-    async (projectId: string, schematicId: string) => {
-      if (schematicId === activeSchematicId) return;
-
-      if (!authUser) {
-        if (activeSchematicId) {
-          guestBuffersRef.current.set(
-            activeSchematicId,
-            JSON.parse(JSON.stringify(runtime.persistence.getCurrentProject())),
+        try {
+          const archiveBytes = packVxprojArchive(emptyProject);
+          const newSchem = await createSchematic(projectId, name, archiveBytes, {
+            revision: 1,
+            placementCount: 0,
+          });
+          setWorkspaceProjects((prev) =>
+            prev.map((p) =>
+              p.id === projectId
+                ? {
+                    ...p,
+                    schematics: p.schematics.map((s) => (s.id === tempId ? newSchem : s)),
+                  }
+                : p,
+            ),
           );
+          setActiveSchematicId((prev) => (prev === tempId ? newSchem.id : prev));
+          runtime.persistence.setActiveCloudSchematicId(newSchem.id);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          setActiveProjectId(prevActiveProjId);
+          setActiveSchematicId(prevActiveSchemId);
+          runtime.persistence.setActiveCloudProjectId(prevActiveProjId);
+          runtime.persistence.setActiveCloudSchematicId(prevActiveSchemId);
+          throw err;
         }
-        let nextProj = guestBuffersRef.current.get(schematicId);
-        if (!nextProj) {
-          const foundNode = workspaceProjects
-            .flatMap((p) => p.schematics)
-            .find((s) => s.id === schematicId);
-          nextProj = createEmptyProjectDocument(foundNode?.name || 'untitled.schem');
-          guestBuffersRef.current.set(schematicId, nextProj);
-        }
-        await runtime.persistence.replaceProjectInSession(nextProj);
-        setActiveProjectId(projectId);
-        setActiveSchematicId(schematicId);
-        setSelectedPlacementId(null);
-        setSelectedVoxel(null);
-      } else {
-        if (runtime.persistence.isDirty() && activeSchematicId) {
-          const shouldSave = confirm('You have unsaved changes. Save before switching?');
-          if (shouldSave) {
-            await runtime.persistence.saveSchematicToCloud(activeSchematicId);
-          }
-        }
-        await runtime.persistence.openSchematicFromCloud(schematicId);
-        setActiveProjectId(projectId);
-        setActiveSchematicId(schematicId);
-        runtime.persistence.setActiveCloudProjectId(projectId);
-        runtime.persistence.setActiveCloudSchematicId(schematicId);
-        setSelectedPlacementId(null);
-        setSelectedVoxel(null);
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, runtime],
+    [authUser, activeSchematicId, workspaceProjects, activeProjectId, runtime],
   );
 
   const handleRenameSchematic = useCallback(
@@ -535,31 +722,46 @@ export default function EditorIsland() {
           (runtime.store as any).updateSnapshotAndNotify?.();
         }
       } else {
-        await renameSchematic(schematicId, name);
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
+        const prevProjects = workspaceProjects;
+        const prevProjName = runtime.store.getSnapshot().project.name;
+        setWorkspaceProjects((prev) =>
+          prev.map((p) => ({
+            ...p,
+            schematics: p.schematics.map((s) => (s.id === schematicId ? { ...s, name } : s)),
+          })),
+        );
         if (activeSchematicId === schematicId) {
           const currentProj = runtime.store.getSnapshot().project;
           currentProj.name = name;
           (runtime.store as any).updateSnapshotAndNotify?.();
         }
+        try {
+          await renameSchematic(schematicId, name);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          if (activeSchematicId === schematicId) {
+            const currentProj = runtime.store.getSnapshot().project;
+            currentProj.name = prevProjName;
+            (runtime.store as any).updateSnapshotAndNotify?.();
+          }
+          throw err;
+        }
       }
     },
-    [authUser, activeSchematicId, runtime],
+    [authUser, activeSchematicId, workspaceProjects, runtime],
   );
 
   const handleDeleteSchematic = useCallback(
     async (schematicId: string) => {
       if (!authUser) {
         guestBuffersRef.current.delete(schematicId);
-        setWorkspaceProjects((prev) =>
-          prev.map((p) => ({
-            ...p,
-            schematics: p.schematics.filter((s) => s.id !== schematicId),
-          })),
-        );
+        const updatedProjects = workspaceProjects.map((p) => ({
+          ...p,
+          schematics: p.schematics.filter((s) => s.id !== schematicId),
+        }));
+        setWorkspaceProjects(updatedProjects);
         if (activeSchematicId === schematicId) {
-          const remaining = workspaceProjects
+          const remaining = updatedProjects
             .flatMap((p) => p.schematics)
             .filter((s) => s.id !== schematicId);
           if (remaining.length > 0) {
@@ -571,11 +773,17 @@ export default function EditorIsland() {
           }
         }
       } else {
-        await deleteSchematic(schematicId);
-        const tree = await listWorkspaceTree();
-        setWorkspaceProjects(tree);
+        const prevProjects = workspaceProjects;
+        const prevActiveSchem = activeSchematicId;
+        const prevActiveProj = activeProjectId;
+        const updatedProjects = workspaceProjects.map((p) => ({
+          ...p,
+          schematics: p.schematics.filter((s) => s.id !== schematicId),
+        }));
+        setWorkspaceProjects(updatedProjects);
+
         if (activeSchematicId === schematicId) {
-          const remaining = tree.flatMap((p) => p.schematics);
+          const remaining = updatedProjects.flatMap((p) => p.schematics);
           if (remaining.length > 0) {
             const next = remaining[0];
             await runtime.persistence.openSchematicFromCloud(next.id);
@@ -585,14 +793,28 @@ export default function EditorIsland() {
             runtime.persistence.setActiveCloudSchematicId(next.id);
           } else {
             setActiveSchematicId(null);
-            if (tree.length === 0) {
+            runtime.persistence.setActiveCloudSchematicId(null);
+            const empty = createEmptyProjectDocument('untitled.schem');
+            await runtime.persistence.replaceProjectInSession(empty);
+            if (updatedProjects.length === 0) {
               setIsFirstProjectOpen(true);
             }
           }
         }
+
+        try {
+          await deleteSchematic(schematicId);
+        } catch (err) {
+          setWorkspaceProjects(prevProjects);
+          setActiveProjectId(prevActiveProj);
+          setActiveSchematicId(prevActiveSchem);
+          runtime.persistence.setActiveCloudProjectId(prevActiveProj);
+          runtime.persistence.setActiveCloudSchematicId(prevActiveSchem);
+          throw err;
+        }
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, handleSelectSchematic, runtime],
+    [authUser, activeSchematicId, workspaceProjects, activeProjectId, handleSelectSchematic, runtime],
   );
 
   // Shortcut Ctrl+S / Cmd+S
@@ -901,7 +1123,7 @@ export default function EditorIsland() {
         onBake={() => setIsBakeOpen(true)}
         onSave={handleSave}
         onOpenProjects={handleOpenProjects}
-        isDirty={runtime.persistence.isDirty()}
+        isDirty={isDirty}
         isSaving={isSaving}
         authUser={authUser}
         onSignIn={() => {
@@ -919,7 +1141,7 @@ export default function EditorIsland() {
             projects={workspaceProjects}
             activeProjectId={activeProjectId}
             activeSchematicId={activeSchematicId}
-            isDirty={runtime.persistence.isDirty()}
+            isDirty={isDirty}
             onCreateProject={handleCreateProject}
             onRenameProject={handleRenameProject}
             onDeleteProject={handleDeleteProject}

@@ -352,6 +352,23 @@ async function runTests() {
   const treeAfterDelete = await listWorkspaceTree();
   assert(treeAfterDelete[0].schematics.length === 0, 'Schematic deleted from tree');
 
+  console.log('Test 5: Guest buffer Uint8Array serialization preserves Map instances...');
+  const guestDoc = createSampleProject('guest-circuit.schem');
+  assert(guestDoc.placements[0].volume.chunks instanceof Map, 'Original has Map chunks');
+  assert(guestDoc.placements[0].ancillary.blockEntities instanceof Map, 'Original has Map blockEntities');
+
+  // Verify that packing to Uint8Array and unpacking preserves Map instances (unlike JSON.stringify)
+  const guestBytes = packVxprojArchive(guestDoc);
+  assert(guestBytes instanceof Uint8Array, 'Packed archive is Uint8Array');
+  assert(guestBytes.byteLength > 0, 'Packed archive is non-empty');
+
+  const restoredGuestDoc = unpackVxprojArchive(guestBytes);
+  assert(restoredGuestDoc.name === 'guest-circuit.schem', 'Restored guest document name matches');
+  assert(restoredGuestDoc.placements.length === 1, 'Restored placement count matches');
+  assert(restoredGuestDoc.placements[0].volume.chunks instanceof Map, 'Restored volume.chunks remains a Map');
+  assert(restoredGuestDoc.placements[0].ancillary.blockEntities instanceof Map, 'Restored blockEntities remains a Map');
+  assert(restoredGuestDoc.placements[0].eraseTombstones instanceof Set, 'Restored eraseTombstones remains a Set');
+
   controller.dispose();
   console.log('✓ All Slice E-2 Project Explorer & Schematic Persistence tests passed!');
 }

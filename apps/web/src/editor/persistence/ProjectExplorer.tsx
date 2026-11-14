@@ -2,7 +2,7 @@
 // 3-level tree explorer: <username | guest> -> Project folders -> Schematic files.
 // Dark S&box aesthetic adhering to EXPLORER_PLAN.md.
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import type { WorkspaceProjectNode, CloudSchematicSummary } from '../../client/projects-client.ts';
 
 export interface ProjectExplorerProps {
@@ -44,6 +44,28 @@ export function ProjectExplorer({
     return initial;
   });
 
+  // Auto-expand newly created projects when `projects` grows
+  const prevProjectIdsRef = useRef<Set<string>>(new Set(projects.map((p) => p.id)));
+  useEffect(() => {
+    const prevIds = prevProjectIdsRef.current;
+    const currentIds = new Set(projects.map((p) => p.id));
+    const newlyAdded: Record<string, boolean> = {};
+    let hasNew = false;
+    for (const p of projects) {
+      if (!prevIds.has(p.id)) {
+        newlyAdded[p.id] = true;
+        hasNew = true;
+      }
+    }
+    prevProjectIdsRef.current = currentIds;
+    if (hasNew) {
+      setExpandedProjects((prev) => ({ ...prev, ...newlyAdded }));
+    }
+  }, [projects]);
+
+  // Inline error message banner state
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   // Inline creation / editing states
   const [isCreatingProject, setIsCreatingProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -69,9 +91,15 @@ export function ProjectExplorer({
     e?.preventDefault();
     const name = newProjectName.trim();
     if (name) {
-      await onCreateProject(name);
-      setNewProjectName('');
+      // Close inline inputs immediately on submit so UI never freezes
       setIsCreatingProject(false);
+      setNewProjectName('');
+      setIsRootExpanded(true);
+      try {
+        await onCreateProject(name);
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      }
     }
   };
 
@@ -82,10 +110,15 @@ export function ProjectExplorer({
       if (!name.endsWith('.schem') && !name.endsWith('.litematic')) {
         name += '.schem';
       }
-      await onCreateSchematic(projectId, name);
-      setNewSchematicName('');
+      // Close inline inputs immediately on submit
       setCreatingSchematicInProject(null);
+      setNewSchematicName('');
       setExpandedProjects((prev) => ({ ...prev, [projectId]: true }));
+      try {
+        await onCreateSchematic(projectId, name);
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      }
     }
   };
 
@@ -93,9 +126,14 @@ export function ProjectExplorer({
     e?.preventDefault();
     const name = editingProjectName.trim();
     if (name) {
-      await onRenameProject(projectId, name);
+      // Close inline rename input immediately
       setEditingProjectId(null);
       setEditingProjectName('');
+      try {
+        await onRenameProject(projectId, name);
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      }
     }
   };
 
@@ -106,9 +144,14 @@ export function ProjectExplorer({
       if (!name.endsWith('.schem') && !name.endsWith('.litematic')) {
         name += '.schem';
       }
-      await onRenameSchematic(schematicId, name);
+      // Close inline rename input immediately
       setEditingSchematicId(null);
       setEditingSchematicName('');
+      try {
+        await onRenameSchematic(schematicId, name);
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      }
     }
   };
 
@@ -197,6 +240,52 @@ export function ProjectExplorer({
             padding: '4px 0',
           }}
         >
+          {/* Dismissible Inline Error Banner */}
+          {errorMessage && (
+            <div
+              style={{
+                margin: '2px 8px 6px 8px',
+                padding: '4px 8px',
+                backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                border: '1px solid #ef4444',
+                borderRadius: '3px',
+                color: '#fca5a5',
+                fontSize: '11px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px',
+              }}
+            >
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+                title={errorMessage}
+              >
+                {errorMessage}
+              </span>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#fca5a5',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '11px',
+                  lineHeight: 1,
+                }}
+                title="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           {/* Root Level: <rootLabel> */}
           <div
             style={{
@@ -392,13 +481,17 @@ export function ProjectExplorer({
                             <button
                               type="button"
                               title="Delete Project"
-                              onClick={() => {
+                              onClick={async () => {
                                 if (
                                   confirm(
                                     `Delete project "${project.name}" and all its schematics? This cannot be undone.`,
                                   )
                                 ) {
-                                  void onDeleteProject(project.id);
+                                  try {
+                                    await onDeleteProject(project.id);
+                                  } catch (err) {
+                                    setErrorMessage(err instanceof Error ? err.message : String(err));
+                                  }
                                 }
                               }}
                               style={{ ...actionButtonStyle, color: '#ef4444' }}
@@ -468,9 +561,13 @@ export function ProjectExplorer({
                                 <div
                                   key={schematic.id}
                                   className="schematic-row"
-                                  onClick={() => {
+                                  onClick={async () => {
                                     if (!isActive) {
-                                      void onSelectSchematic(project.id, schematic.id);
+                                      try {
+                                        await onSelectSchematic(project.id, schematic.id);
+                                      } catch (err) {
+                                        setErrorMessage(err instanceof Error ? err.message : String(err));
+                                      }
                                     }
                                   }}
                                   style={{
@@ -557,13 +654,17 @@ export function ProjectExplorer({
                                       <button
                                         type="button"
                                         title="Delete Schematic"
-                                        onClick={() => {
+                                        onClick={async () => {
                                           if (
                                             confirm(
                                               `Delete schematic "${schematic.name}"? This cannot be undone.`,
                                             )
                                           ) {
-                                            void onDeleteSchematic(schematic.id);
+                                            try {
+                                              await onDeleteSchematic(schematic.id);
+                                            } catch (err) {
+                                              setErrorMessage(err instanceof Error ? err.message : String(err));
+                                            }
                                           }
                                         }}
                                         style={{ ...actionButtonStyle, color: '#ef4444' }}

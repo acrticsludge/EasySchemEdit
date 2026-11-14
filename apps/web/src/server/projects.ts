@@ -467,19 +467,20 @@ export async function handleListWorkspaceTree(
     return errorJson('Unauthorized', 401);
   }
 
-  const projectRows = (await sql`
-    SELECT id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
-    FROM projects
-    WHERE user_id = ${session.userId}
-    ORDER BY updated_at DESC
-  `) as Record<string, any>[];
-
-  const schematicRows = (await sql`
-    SELECT id, project_id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
-    FROM schematics
-    WHERE user_id = ${session.userId}
-    ORDER BY updated_at DESC
-  `) as Record<string, any>[];
+  const [projectRows, schematicRows] = (await Promise.all([
+    sql`
+      SELECT id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
+      FROM projects
+      WHERE user_id = ${session.userId}
+      ORDER BY updated_at DESC
+    `,
+    sql`
+      SELECT id, project_id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
+      FROM schematics
+      WHERE user_id = ${session.userId}
+      ORDER BY updated_at DESC
+    `,
+  ])) as [Record<string, any>[], Record<string, any>[]];
 
   const schematicsByProject = new Map<string, CloudSchematicSummary[]>();
   for (const sRow of schematicRows) {
@@ -772,25 +773,26 @@ export async function handleSaveSchematicArchive(
     },
   });
 
-  const updatedRows = (await sql`
-    UPDATE schematics
-    SET
-      name = ${newName},
-      revision = ${newRevision},
-      placement_count = ${newPlacementCount},
-      size_bytes = ${buf.byteLength},
-      r2_key = ${r2Key},
-      updated_at = now()
-    WHERE id = ${schematicId} AND user_id = ${session.userId}
-    RETURNING id, project_id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
-  `) as Record<string, any>[];
-
-  // Touch parent project
-  await sql`
-    UPDATE projects
-    SET updated_at = now()
-    WHERE id = ${existing.project_id} AND user_id = ${session.userId}
-  `;
+  const [updatedRows] = (await Promise.all([
+    sql`
+      UPDATE schematics
+      SET
+        name = ${newName},
+        revision = ${newRevision},
+        placement_count = ${newPlacementCount},
+        size_bytes = ${buf.byteLength},
+        r2_key = ${r2Key},
+        updated_at = now()
+      WHERE id = ${schematicId} AND user_id = ${session.userId}
+      RETURNING id, project_id, user_id, name, revision, placement_count, r2_key, size_bytes, created_at, updated_at
+    `,
+    // Touch parent project
+    sql`
+      UPDATE projects
+      SET updated_at = now()
+      WHERE id = ${existing.project_id} AND user_id = ${session.userId}
+    `,
+  ])) as [Record<string, any>[], any];
 
   return json({ schematic: formatSchematicSummary(updatedRows[0]) }, 200);
 }
