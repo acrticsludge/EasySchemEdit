@@ -140,7 +140,7 @@ export class ChunkSceneManager {
     });
 
     const configureBlockGridMaterial = (mat: THREE.MeshBasicMaterial) => {
-      mat.customProgramCacheKey = () => 'block-grid-v2';
+      mat.customProgramCacheKey = () => 'block-grid-v3';
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.uShowBlockGrid = this.blockGridUniform;
         shader.vertexShader = shader.vertexShader.replace(
@@ -162,13 +162,13 @@ if (uShowBlockGrid > 0.5) {
   vec3 f = fract(vBlockPos);
   vec3 d = min(f, 1.0 - f);
   vec3 fw = fwidth(vBlockPos);
-  vec3 isNormalAxis = step(fw, vec3(1e-5));
-  vec3 edgeWidth = max(fw * 1.25, vec3(0.05));
-  vec3 a = smoothstep(vec3(0.0), edgeWidth, d) + isNormalAxis;
-  float edge = 1.0 - clamp(min(a.x, min(a.y, a.z)), 0.0, 1.0);
   float maxFw = max(fw.x, max(fw.y, fw.z));
-  float distFade = 1.0 - smoothstep(0.35, 0.75, maxFw);
-  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.48 * edge * distFade);
+  vec3 isNormalAxis = step(fw, vec3(max(1e-3, maxFw * 0.05)));
+  vec3 w = max(fw * 0.85, vec3(0.035));
+  vec3 a = smoothstep(w * 0.65, w, d) + isNormalAxis;
+  float edge = 1.0 - clamp(min(a.x, min(a.y, a.z)), 0.0, 1.0);
+  float distFade = 1.0 - smoothstep(0.30, 0.65, maxFw);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.38 * edge * distFade);
 }`
         );
       };
