@@ -450,7 +450,11 @@ if (uShowChunkGrid > 0.5) {
       batchedMesh.name = `${placementId}:${pass}:batch-${buckets.length}`;
       batchedMesh.matrixAutoUpdate = false;
       batchedMesh.updateMatrix();
-      batchedMesh.frustumCulled = true;
+      // BatchedMesh does not auto-recompute its outer boundingSphere as geometries/instances are added/modified,
+      // which causes WebGLRenderer to incorrectly cull the entire bucket when zooming in closely.
+      // Setting frustumCulled = false bypasses the top-level outer sphere cull while perObjectFrustumCulled = true
+      // preserves accurate frustum culling per individual chunk instance.
+      batchedMesh.frustumCulled = false;
       batchedMesh.perObjectFrustumCulled = true;
       groupEntry.inner.add(batchedMesh);
 
