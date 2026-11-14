@@ -34,7 +34,6 @@ interface ToolDefinition {
 const TOOLS: ToolDefinition[] = [
   { id: 'select', label: 'Select Placement', shortcut: '1', icon: '⬚', category: 'pointer' },
   { id: 'move', label: 'Move Placement', shortcut: 'W', icon: '✥', category: 'pointer' },
-  { id: 'rotate', label: 'Rotate Placement', shortcut: 'E', icon: '↻', category: 'pointer' },
 ];
 
 export function Toolbar({
@@ -55,7 +54,7 @@ export function Toolbar({
   const projectName = snapshot.project?.name || 'Untitled Schematic';
 
   const handleSelectTool = (toolId: string) => {
-    const nextTool = (toolId === 'move' || toolId === 'rotate') && selectedTool === toolId ? 'select' : toolId;
+    const nextTool = toolId === 'move' && selectedTool === toolId ? 'select' : toolId;
     store.setSelectedTool(nextTool);
     controllers?.statusBar.setToolMode(nextTool);
   };

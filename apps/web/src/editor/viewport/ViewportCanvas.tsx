@@ -1379,7 +1379,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (isGizmoDraggingRef.current) return;
 
     const tool = selectedTool ?? activeTool;
-    if (selectedPlacementIds?.size === 1 && (tool === 'move' || tool === 'rotate')) {
+    if (selectedPlacementIds?.size === 1 && tool === 'move') {
       const pId = Array.from(selectedPlacementIds)[0]!;
       const placement = session.peekProject().placements.find((p) => p.id === pId);
       if (placement && !placement.locked) {
@@ -1392,7 +1392,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         gizmoProxy.rotation.set(0, (placement.transform.rotationY * Math.PI) / 180, 0);
         gizmoProxy.scale.set(1, 1, 1);
 
-        transformCtrl.setMode(tool === 'rotate' ? 'rotate' : 'translate');
+        transformCtrl.setMode('translate');
         transformCtrl.showY = true;
         transformCtrl.showX = true;
         transformCtrl.showZ = true;
