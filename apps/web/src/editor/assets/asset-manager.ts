@@ -71,7 +71,10 @@ export interface BrowserAssetManagerSnapshot {
   textureCount: number;
   atlasDimensions: { width: number; height: number; pages: number };
   availableBlockCount: number;
+  atlasRevision: number;
 }
+
+export type AssetManagerSnapshot = BrowserAssetManagerSnapshot;
 
 export const FALLBACK_BLOCK_IDS: readonly string[] = [
   'minecraft:air',
@@ -237,6 +240,7 @@ export class BrowserAssetManager {
   private uvLookup: (textureLocation: string) => TextureUvInfo | undefined = createFallbackUvLookup();
   private atlas: AtlasPackOutput | null = null;
   private availableBlockIds: string[] = [...FALLBACK_BLOCK_IDS];
+  private atlasRevision = 0;
   private listeners: Set<() => void> = new Set();
 
   constructor(options?: BrowserAssetManagerOptions) {
@@ -294,7 +298,16 @@ export class BrowserAssetManager {
       textureCount: this.atlas?.rects.size ?? 0,
       atlasDimensions: atlasDim,
       availableBlockCount: this.availableBlockIds.length,
+      atlasRevision: this.atlasRevision,
     };
+  }
+
+  public getSnapshot(): BrowserAssetManagerSnapshot {
+    return this.getStateSnapshot();
+  }
+
+  public getAtlasRevision(): number {
+    return this.atlasRevision;
   }
 
   public getAssetSource(): AssetSource {
@@ -551,7 +564,9 @@ export class BrowserAssetManager {
     const extracted = extractAllAssetsSync(zipBytes);
     const files = new Map<string, Uint8Array>();
     for (const a of extracted.assets) {
-      files.set(a.path, a.data);
+      const assetsIdx = a.path.indexOf('assets/');
+      const normalizedPath = assetsIdx > 0 ? a.path.slice(assetsIdx) : a.path;
+      files.set(normalizedPath, a.data);
     }
 
     const id = `pack_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -628,6 +643,7 @@ export class BrowserAssetManager {
    * and creates UV lookup map.
    */
   private rebuildBundleAndAtlas(): void {
+    this.atlasRevision++;
     const base: ExtractedAssets = this.vanillaAssets ?? { files: new Map() };
     const enabledPacks = this.resourcePacks.filter((p) => p.enabled).map((p) => p.assets);
 
@@ -731,3 +747,5 @@ export class BrowserAssetManager {
     this.availableBlockIds = ids.size > 0 ? Array.from(ids).sort() : [...FALLBACK_BLOCK_IDS].sort();
   }
 }
+
+export { BrowserAssetManager as AssetManager };

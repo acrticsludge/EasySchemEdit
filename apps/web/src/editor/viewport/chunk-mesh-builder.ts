@@ -126,6 +126,10 @@ export class ChunkSceneManager {
       side: THREE.DoubleSide,
       alphaTest: 0.5,
       transparent: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      depthFunc: THREE.LessEqualDepth,
     });
     const translucentMat = new THREE.MeshBasicMaterial({
       vertexColors: true,

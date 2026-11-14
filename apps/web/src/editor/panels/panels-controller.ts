@@ -91,6 +91,8 @@ export class ConflictsPanelController {
   private active: boolean = true;
   private dirty: boolean = false;
   private lastRevision: number = -1;
+  private overlayEnabled: boolean = true;
+  private refreshTimeout: any = null;
 
   constructor(
     store: IEditorSessionStore,
@@ -109,12 +111,42 @@ export class ConflictsPanelController {
       if (revision === this.lastRevision) {
         return;
       }
-      if (!this.active) {
+      const placements = snapshot.project?.placements ?? [];
+      const visiblePlacements = placements.filter((p: any) => p.visible !== false);
+      if (visiblePlacements.length <= 1) {
+        if (this.refreshTimeout) {
+          clearTimeout(this.refreshTimeout);
+          this.refreshTimeout = null;
+        }
+        this.conflictResult = {
+          category: 'clean',
+          entries: [],
+          hasConflicts: false,
+          cleanPositions: [],
+          sameStatePositions: [],
+          stateConflictPositions: [],
+        };
+        this.rebuildNavigator();
+        this.notify();
+        return;
+      }
+      const shouldRefresh = this.active || (this.overlayEnabled && this.overlayMode !== 'off');
+      if (!shouldRefresh) {
         this.dirty = true;
         return;
       }
-      void this.refresh();
+      this.scheduleRefresh(150);
     });
+  }
+
+  private scheduleRefresh(delayMs = 150): void {
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+    }
+    this.refreshTimeout = setTimeout(() => {
+      this.refreshTimeout = null;
+      void this.refresh();
+    }, delayMs);
   }
 
   public setActive(active: boolean): void {
@@ -123,6 +155,29 @@ export class ConflictsPanelController {
     if (active && (this.dirty || this.conflictResult === null)) {
       void this.refresh();
     }
+  }
+
+  public isOverlayEnabled(): boolean {
+    return this.overlayEnabled;
+  }
+
+  public setOverlayEnabled(enabled: boolean): void {
+    if (this.overlayEnabled === enabled) return;
+    this.overlayEnabled = enabled;
+    if (enabled && (this.dirty || this.conflictResult === null)) {
+      this.scheduleRefresh(150);
+    }
+    this.notify();
+  }
+
+  public getOverlayPositions(): { sameState: Vec3i[]; stateConflict: Vec3i[] } | undefined {
+    if (!this.overlayEnabled || this.overlayMode === 'off' || !this.conflictResult) {
+      return undefined;
+    }
+    return {
+      sameState: this.overlayMode === 'all' ? (this.conflictResult.sameStatePositions ?? []) : [],
+      stateConflict: this.conflictResult.stateConflictPositions ?? [],
+    };
   }
 
   public isActive(): boolean {
@@ -186,6 +241,8 @@ export class ConflictsPanelController {
       const result = await this.store.query<ConflictResult>({
         type: 'detectConflicts',
         overlapPolicy: this.overlapPolicy,
+        includeClean: false,
+        maxEntries: 25000,
       });
       this.conflictResult = result;
       this.rebuildNavigator();
@@ -400,6 +457,10 @@ export class ConflictsPanelController {
   }
 
   public dispose(): void {
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+      this.refreshTimeout = null;
+    }
     if (this.unsubscribeStore) {
       this.unsubscribeStore();
       this.unsubscribeStore = undefined;
@@ -546,6 +607,7 @@ export class MaterialListController {
   private active: boolean = true;
   private dirty: boolean = false;
   private lastRevision: number = -1;
+  private refreshTimeout: any = null;
 
   constructor(store: IEditorSessionStore, options?: MaterialListControllerOptions) {
     this.store = store;
@@ -561,8 +623,18 @@ export class MaterialListController {
         this.dirty = true;
         return;
       }
-      void this.refresh();
+      this.scheduleRefresh(150);
     });
+  }
+
+  private scheduleRefresh(delayMs = 150): void {
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+    }
+    this.refreshTimeout = setTimeout(() => {
+      this.refreshTimeout = null;
+      void this.refresh();
+    }, delayMs);
   }
 
   public setActive(active: boolean): void {
@@ -775,6 +847,10 @@ export class MaterialListController {
   }
 
   public dispose(): void {
+    if (this.refreshTimeout) {
+      clearTimeout(this.refreshTimeout);
+      this.refreshTimeout = null;
+    }
     if (this.unsubscribeStore) {
       this.unsubscribeStore();
       this.unsubscribeStore = undefined;

@@ -1019,13 +1019,23 @@ export class EditorSession {
       }
 
       case 'detectconflicts': {
-        const query = q as { bounds?: Bounds3i; proposedState?: BlockStateId; overlapPolicy?: 'top-wins' | 'bottom-wins' };
+        const query = q as {
+          bounds?: Bounds3i;
+          proposedState?: BlockStateId;
+          overlapPolicy?: 'top-wins' | 'bottom-wins';
+          includeClean?: boolean;
+          maxEntries?: number;
+        };
         const b = query.bounds ?? getProjectBounds(this.project);
         return detectConflicts(
           this.project,
           b,
           query.proposedState,
           query.overlapPolicy ?? this.project.overlapPolicy,
+          {
+            includeClean: query.includeClean,
+            maxEntries: query.maxEntries,
+          },
         ) as unknown as T;
       }
 

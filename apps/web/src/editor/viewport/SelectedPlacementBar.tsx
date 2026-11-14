@@ -29,8 +29,12 @@ export function SelectedPlacementBar({
   const isMoveActive = sessionSnap.selectedTool === 'move';
 
   const handleSelectMove = useCallback(() => {
-    store.setSelectedTool('move');
-  }, [store]);
+    if (sessionSnap.selectedTool === 'move') {
+      store.setSelectedTool('select');
+    } else {
+      store.setSelectedTool('move');
+    }
+  }, [sessionSnap.selectedTool, store]);
 
   const handleRotate = useCallback(async () => {
     if (placement.locked) return;
@@ -179,8 +183,8 @@ export function SelectedPlacementBar({
       <button
         type="button"
         onClick={handleSelectMove}
-        title="Move Gizmo (W)"
-        aria-label="Move Gizmo (W)"
+        title={isMoveActive ? 'Exit Move Gizmo (W)' : 'Move Gizmo (W)'}
+        aria-label={isMoveActive ? 'Exit Move Gizmo (W)' : 'Move Gizmo (W)'}
         style={{
           ...actionButtonStyle,
           backgroundColor: isMoveActive ? '#3b82f6' : '#2a2a38',

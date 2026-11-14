@@ -409,12 +409,12 @@ function computeBlockInfo(
   const pass = classifyPass(block.name, 'none', { properties: block.properties });
 
   // Check full cube criteria:
-  // - exactly 1 part with exactly 1 element
-  // - from: [0, 0, 0] and to: [16, 16, 16]
+  // - exactly 1 part with at least 1 element
+  // - base element: from: [0, 0, 0] and to: [16, 16, 16]
   // - no element rotation
   // - all 6 faces present
   let isFullCube = false;
-  if (parts.length === 1 && parts[0]!.elements.length === 1) {
+  if (parts.length === 1 && parts[0]!.elements.length >= 1) {
     const el = parts[0]!.elements[0]!;
     if (
       !el.rotation &&
@@ -1074,7 +1074,13 @@ export function meshChunk(input: ChunkMeshInput): ChunkMeshOutput {
 
               // Determine pass for this face/texture
               const texInfo = getTextureUv ? getTextureUv(face.texture) : undefined;
-              const hasAlpha = texInfo?.hasAlpha ?? 'none';
+              let hasAlpha = texInfo?.hasAlpha ?? 'none';
+              if (
+                hasAlpha === 'none' &&
+                (face.texture.includes('overlay') || face.texture.includes('grass_block_side_overlay'))
+              ) {
+                hasAlpha = 'binary';
+              }
               const facePass =
                 hasAlpha === 'none'
                   ? info.pass

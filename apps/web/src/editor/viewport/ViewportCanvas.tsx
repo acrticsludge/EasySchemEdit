@@ -58,6 +58,17 @@ function isTransformOrMetadataEvent(kind: string): boolean {
   );
 }
 
+function makeAlignmentPoint(
+  axis: number,
+  alignVal: number,
+  u: number,
+  v: number
+): [number, number, number] {
+  if (axis === 0) return [alignVal, u, v];
+  if (axis === 1) return [u, alignVal, v];
+  return [u, v, alignVal];
+}
+
 export interface ViewportCanvasProps {
   session: EditorSession;
   atlasTexture?: THREE.Texture | null;
@@ -109,6 +120,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const dragStartRotationYRef = useRef<number>(0);
   const dragStartGizmoPosRef = useRef<THREE.Vector3>(new THREE.Vector3());
   const dragStartGizmoRotRef = useRef<number>(0);
+  const dragSnappedTranslationRef = useRef<[number, number, number] | null>(null);
+  const dragStartBoundsRef = useRef<Bounds3i | null>(null);
+  const alignGuidesLineRef = useRef<THREE.LineSegments | null>(null);
   const onSelectPlacementRef = useRef(onSelectPlacement);
   onSelectPlacementRef.current = onSelectPlacement;
   const selectedToolRef = useRef(selectedTool);
@@ -429,7 +443,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
     // Transform Controls & Gizmo Proxy (Slice E3.2, three@0.187.0)
     const transformCtrl = new TransformControls(camera, renderer.domElement);
-    transformCtrl.setTranslationSnap(1);
+    transformCtrl.setTranslationSnap(null);
     transformCtrl.setRotationSnap(Math.PI / 2);
     scene.add(transformCtrl.getHelper());
     transformCtrlRef.current = transformCtrl;
@@ -438,6 +452,21 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     gizmoProxy.name = 'viewport-gizmo-proxy';
     scene.add(gizmoProxy);
     gizmoProxyRef.current = gizmoProxy;
+
+    // Alignment Guides LineSegments (Move gizmo snapping & magnetic guides)
+    const alignGuidesGeometry = new THREE.BufferGeometry();
+    const alignGuidesMaterial = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.85,
+      depthTest: false,
+    });
+    const alignGuidesLine = new THREE.LineSegments(alignGuidesGeometry, alignGuidesMaterial);
+    alignGuidesLine.name = 'viewport-align-guides';
+    alignGuidesLine.renderOrder = 998;
+    alignGuidesLine.visible = false;
+    scene.add(alignGuidesLine);
+    alignGuidesLineRef.current = alignGuidesLine;
 
     transformCtrl.addEventListener('dragging-changed', (event: any) => {
       const isDragging = Boolean(event.value);
@@ -454,9 +483,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             dragStartRotationYRef.current = p.transform.rotationY;
             dragStartGizmoPosRef.current.copy(gizmoProxy.position);
             dragStartGizmoRotRef.current = gizmoProxy.rotation.y;
+            dragStartBoundsRef.current = placementWorldBounds(p);
+            dragSnappedTranslationRef.current = null;
           }
         }
       } else {
+        if (alignGuidesLineRef.current) {
+          alignGuidesLineRef.current.visible = false;
+          alignGuidesLineRef.current.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
+          alignGuidesLineRef.current.geometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+        }
         const placementId = dragStartPlacementIdRef.current;
         if (placementId) {
           const p = session.peekProject().placements.find((pl) => pl.id === placementId);
@@ -496,12 +532,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               const dy = Math.round(rawDy / snap) * snap;
               const dz = Math.round(rawDz / snap) * snap;
 
-              if (dx !== 0 || dy !== 0 || dz !== 0) {
-                const finalTranslation: [number, number, number] = [
-                  dragStartTranslationRef.current[0] + dx,
-                  dragStartTranslationRef.current[1] + dy,
-                  dragStartTranslationRef.current[2] + dz,
-                ];
+              const finalTranslation: [number, number, number] = dragSnappedTranslationRef.current
+                ? [...dragSnappedTranslationRef.current]
+                : [
+                    dragStartTranslationRef.current[0] + dx,
+                    dragStartTranslationRef.current[1] + dy,
+                    dragStartTranslationRef.current[2] + dz,
+                  ];
+              dragSnappedTranslationRef.current = null;
+
+              if (
+                finalTranslation[0] !== dragStartTranslationRef.current[0] ||
+                finalTranslation[1] !== dragStartTranslationRef.current[1] ||
+                finalTranslation[2] !== dragStartTranslationRef.current[2]
+              ) {
                 session.execute({
                   type: 'placement:transform',
                   placementId,
@@ -518,6 +562,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             }
           }
           dragStartPlacementIdRef.current = null;
+          dragStartBoundsRef.current = null;
         }
       }
     });
@@ -541,14 +586,200 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         const dx = gizmoProxy.position.x - dragStartGizmoPosRef.current.x;
         const dy = gizmoProxy.position.y - dragStartGizmoPosRef.current.y;
         const dz = gizmoProxy.position.z - dragStartGizmoPosRef.current.z;
-        const previewPos: [number, number, number] = [
-          dragStartTranslationRef.current[0] + dx,
-          dragStartTranslationRef.current[1] + dy,
-          dragStartTranslationRef.current[2] + dz,
-        ];
+
+        const isShift =
+          shiftKeyRef.current ||
+          keysDownRef.current.has('ShiftLeft') ||
+          keysDownRef.current.has('ShiftRight');
+        const step = isShift ? 16 : 1;
+
+        let sx = Math.round((dragStartTranslationRef.current[0] + dx) / step) * step;
+        let sy = Math.round((dragStartTranslationRef.current[1] + dy) / step) * step;
+        let sz = Math.round((dragStartTranslationRef.current[2] + dz) / step) * step;
+
+        const startBounds = dragStartBoundsRef.current;
+        const project = session.peekProject();
+        const siblings = project.placements.filter(
+          (pl) => pl.id !== placementId && pl.visible !== false
+        );
+
+        const linePositions: number[] = [];
+        const lineColors: number[] = [];
+
+        if (startBounds && siblings.length > 0 && !isShift) {
+          const startTx = dragStartTranslationRef.current[0];
+          const startTy = dragStartTranslationRef.current[1];
+          const startTz = dragStartTranslationRef.current[2];
+
+          const curMin: [number, number, number] = [
+            startBounds.min[0] + (sx - startTx),
+            startBounds.min[1] + (sy - startTy),
+            startBounds.min[2] + (sz - startTz),
+          ];
+          const curMax: [number, number, number] = [
+            startBounds.maxExclusive[0] + (sx - startTx),
+            startBounds.maxExclusive[1] + (sy - startTy),
+            startBounds.maxExclusive[2] + (sz - startTz),
+          ];
+
+          interface AlignedRecord {
+            axis: number;
+            alignVal: number;
+            isFlush: boolean;
+            siblingBounds: Bounds3i;
+          }
+          const alignedRecords: AlignedRecord[] = [];
+
+          const curCenterX = (curMin[0] + curMax[0]) / 2;
+          const curCenterY = (curMin[1] + curMax[1]) / 2;
+          const curCenterZ = (curMin[2] + curMax[2]) / 2;
+
+          for (let axis = 0; axis < 3; axis++) {
+            let bestDelta = 0;
+            let minAbsDelta = Infinity;
+            let closestDistSq = Infinity;
+
+            for (const sib of siblings) {
+              const sb = placementWorldBounds(sib);
+              const sbCenterX = (sb.min[0] + sb.maxExclusive[0]) / 2;
+              const sbCenterY = (sb.min[1] + sb.maxExclusive[1]) / 2;
+              const sbCenterZ = (sb.min[2] + sb.maxExclusive[2]) / 2;
+              const distSq =
+                (sbCenterX - curCenterX) ** 2 +
+                (sbCenterY - curCenterY) ** 2 +
+                (sbCenterZ - curCenterZ) ** 2;
+
+              const cMin = curMin[axis];
+              const cMax = curMax[axis];
+
+              const candidates = [
+                { delta: sb.min[axis] - cMin, alignVal: sb.min[axis], isFlush: false },
+                { delta: sb.maxExclusive[axis] - cMax, alignVal: sb.maxExclusive[axis], isFlush: false },
+                { delta: sb.maxExclusive[axis] - cMin, alignVal: sb.maxExclusive[axis], isFlush: true },
+                { delta: sb.min[axis] - cMax, alignVal: sb.min[axis], isFlush: true },
+              ];
+
+              for (const c of candidates) {
+                const absD = Math.abs(c.delta);
+                if (absD <= 2) {
+                  if (absD < minAbsDelta || (absD === minAbsDelta && distSq < closestDistSq)) {
+                    minAbsDelta = absD;
+                    bestDelta = c.delta;
+                    closestDistSq = distSq;
+                  }
+                }
+              }
+            }
+
+            if (minAbsDelta <= 2) {
+              if (axis === 0) sx += bestDelta;
+              else if (axis === 1) sy += bestDelta;
+              else if (axis === 2) sz += bestDelta;
+
+              curMin[axis] += bestDelta;
+              curMax[axis] += bestDelta;
+
+              // Record all matching targets for this axis
+              for (const sib of siblings) {
+                const sb = placementWorldBounds(sib);
+                const curMinBefore = curMin[axis] - bestDelta;
+                const curMaxBefore = curMax[axis] - bestDelta;
+
+                const candidates = [
+                  { delta: sb.min[axis] - curMinBefore, alignVal: sb.min[axis], isFlush: false },
+                  { delta: sb.maxExclusive[axis] - curMaxBefore, alignVal: sb.maxExclusive[axis], isFlush: false },
+                  { delta: sb.maxExclusive[axis] - curMinBefore, alignVal: sb.maxExclusive[axis], isFlush: true },
+                  { delta: sb.min[axis] - curMaxBefore, alignVal: sb.min[axis], isFlush: true },
+                ];
+
+                for (const c of candidates) {
+                  if (c.delta === bestDelta) {
+                    alignedRecords.push({
+                      axis,
+                      alignVal: c.alignVal,
+                      isFlush: c.isFlush,
+                      siblingBounds: sb,
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          if (alignedRecords.length > 0) {
+            const addedLines = new Set<string>();
+            const addSegment = (
+              p1: [number, number, number],
+              p2: [number, number, number],
+              color: [number, number, number]
+            ) => {
+              const k1 = `${p1[0]},${p1[1]},${p1[2]}-${p2[0]},${p2[1]},${p2[2]}`;
+              const k2 = `${p2[0]},${p2[1]},${p2[2]}-${p1[0]},${p1[1]},${p1[2]}`;
+              if (addedLines.has(k1) || addedLines.has(k2)) return;
+              addedLines.add(k1);
+              linePositions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
+              lineColors.push(color[0], color[1], color[2], color[0], color[1], color[2]);
+            };
+
+            for (const rec of alignedRecords) {
+              const { axis, alignVal, isFlush, siblingBounds } = rec;
+              // Cyan for co-planar edge alignment, Magenta for flush / adjacent docking
+              const color: [number, number, number] = isFlush
+                ? [1.0, 0.1, 0.7]
+                : [0.0, 0.95, 1.0];
+
+              const uAxis = axis === 0 ? 1 : 0;
+              const vAxis = axis === 2 ? 1 : 2;
+
+              const uMin = Math.min(curMin[uAxis], siblingBounds.min[uAxis]) - 1;
+              const uMax = Math.max(curMax[uAxis], siblingBounds.maxExclusive[uAxis]) + 1;
+              const vMin = Math.min(curMin[vAxis], siblingBounds.min[vAxis]) - 1;
+              const vMax = Math.max(curMax[vAxis], siblingBounds.maxExclusive[vAxis]) + 1;
+
+              const vValues = new Set<number>([
+                curMin[vAxis],
+                curMax[vAxis],
+                siblingBounds.min[vAxis],
+                siblingBounds.maxExclusive[vAxis],
+              ]);
+              for (const v of vValues) {
+                const p1 = makeAlignmentPoint(axis, alignVal, uMin, v);
+                const p2 = makeAlignmentPoint(axis, alignVal, uMax, v);
+                addSegment(p1, p2, color);
+              }
+
+              const uValues = new Set<number>([
+                curMin[uAxis],
+                curMax[uAxis],
+                siblingBounds.min[uAxis],
+                siblingBounds.maxExclusive[uAxis],
+              ]);
+              for (const u of uValues) {
+                const p1 = makeAlignmentPoint(axis, alignVal, u, vMin);
+                const p2 = makeAlignmentPoint(axis, alignVal, u, vMax);
+                addSegment(p1, p2, color);
+              }
+            }
+          }
+        }
+
+        const alignGuidesLine = alignGuidesLineRef.current;
+        if (alignGuidesLine) {
+          if (linePositions.length > 0) {
+            const geom = alignGuidesLine.geometry;
+            geom.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
+            geom.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
+            geom.computeBoundingSphere();
+            alignGuidesLine.visible = true;
+          } else {
+            alignGuidesLine.visible = false;
+          }
+        }
+
+        dragSnappedTranslationRef.current = [sx, sy, sz];
         chunkManager.previewPlacementTransform(
           placementId,
-          previewPos,
+          [sx, sy, sz],
           dragStartRotationYRef.current
         );
       }
@@ -678,6 +909,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         scene.remove(gizmoProxyRef.current);
         gizmoProxyRef.current = null;
       }
+      if (alignGuidesLineRef.current) {
+        scene.remove(alignGuidesLineRef.current);
+        alignGuidesLineRef.current.geometry.dispose();
+        (alignGuidesLineRef.current.material as THREE.Material).dispose();
+        alignGuidesLineRef.current = null;
+      }
       groundGridRef.current = null;
 
       chunkManager.dispose();
@@ -720,6 +957,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
     if (transformCtrl.object) {
       transformCtrl.detach();
+      if (alignGuidesLineRef.current) {
+        alignGuidesLineRef.current.visible = false;
+      }
     }
   }, [selectedPlacementIds, selectedTool, activeTool, sessionRevision, session]);
 
@@ -1278,11 +1518,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         )}
       </div>
 
-      {/* Bottom Floating Hover Readout */}
+      {/* Floating Hover Readout (top-left so it never overlaps SelectedPlacementBar at bottom-center) */}
       <div
         style={{
           position: 'absolute',
-          bottom: 12,
+          top: 12,
           left: 12,
           backgroundColor: '#1e1e2edd',
           backdropFilter: 'blur(8px)',

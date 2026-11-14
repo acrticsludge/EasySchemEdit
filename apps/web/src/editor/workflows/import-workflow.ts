@@ -228,12 +228,32 @@ export class ImportWorkflowController {
       const runner = this.parseFn ?? importSchematic;
       const output = await runner(bytes, fileName, options);
 
+      const baseName = fileName.replace(/\.[^/.]+$/, '') || 'imported';
+      if (output.placements) {
+        for (const placement of output.placements) {
+          if (!placement.source) {
+            (placement as any).source = { format: 'schem-v3', diagnostics: [] };
+          }
+          if (!placement.source.filename) {
+            placement.source.filename = fileName;
+          }
+          if (
+            !placement.name ||
+            /^(sponge-v2|sponge-v3|unnamed|schematic|untitled)$/i.test(placement.name.trim())
+          ) {
+            placement.name =
+              output.placements.length > 1
+                ? `${baseName} (${placement.source.regionName || placement.name || 'region'})`
+                : baseName;
+          }
+        }
+      }
+
       // Ensure import group is tracked for multi-region imports if not already set
       if (!output.group && output.importGroups && output.importGroups.length > 0) {
         output.group = output.importGroups[0];
       }
       if (!output.group && output.placements && output.placements.length > 1) {
-        const baseName = fileName.replace(/\.[^/.]+$/, '') || 'imported';
         output.group = {
           id: `group_${baseName}`,
           name: baseName,

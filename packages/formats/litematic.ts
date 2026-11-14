@@ -303,9 +303,8 @@ export class LitematicAdapter implements FormatAdapter {
       // Build volume: chunks of CHUNK_SIZE
       const bounds = { min: [0, 0, 0] as const, maxExclusive: [width, height, length] as const };
       const chunks = new Map<string, any>();
+      const chunkStateMaps = new Map<string, Map<string, number>>();
       let regionNonAir = 0;
-      const chunkPalette: BlockStateId[] = [CANONICAL_AIR];
-      const chunkIndexByState = new Map<string, number>([[CANONICAL_AIR.id, 0]]);
 
       for (let y = 0; y < height; y++) {
         for (let z = 0; z < length; z++) {
@@ -314,21 +313,30 @@ export class LitematicAdapter implements FormatAdapter {
             const flat = linearIndex(nc.x, nc.z, nc.y, ax, az);
             const stateIdx = Number(indices[flat]);
             const state = palette[stateIdx] ?? CANONICAL_AIR;
-            if (!VANILLA_AIR_LIKE.has(state.id)) regionNonAir++;
+            if (VANILLA_AIR_LIKE.has(state.id)) {
+              continue;
+            }
+            regionNonAir++;
 
             const cx = Math.floor(x / CHUNK_SIZE);
             const cy = Math.floor(y / CHUNK_SIZE);
             const cz = Math.floor(z / CHUNK_SIZE);
             const ckey = `${cx}_${cy}_${cz}`;
             let chunk = chunks.get(ckey);
+            let stateMap = chunkStateMaps.get(ckey);
             if (!chunk) {
               chunk = {
                 key: ckey,
-                palette: [...chunkPalette],
+                palette: [CANONICAL_AIR],
                 indices: new Uint16Array(CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE),
                 revision: 0,
               };
               chunks.set(ckey, chunk);
+              stateMap = new Map<string, number>([
+                [CANONICAL_AIR.id, 0],
+                [`${CANONICAL_AIR.id}:{}`, 0],
+              ]);
+              chunkStateMaps.set(ckey, stateMap);
             }
             const localX = x % CHUNK_SIZE;
             const localY = y % CHUNK_SIZE;
@@ -336,11 +344,11 @@ export class LitematicAdapter implements FormatAdapter {
             const li = (localY * CHUNK_SIZE + localZ) * CHUNK_SIZE + localX;
 
             const stateKey = `${state.id}:${JSON.stringify(state.props)}`;
-            let stateIdxInChunk = chunkIndexByState.get(stateKey);
+            let stateIdxInChunk = stateMap!.get(stateKey);
             if (stateIdxInChunk === undefined) {
               const newIdx = chunk.palette.length;
               chunk.palette.push(state);
-              chunkIndexByState.set(stateKey, newIdx);
+              stateMap!.set(stateKey, newIdx);
               stateIdxInChunk = newIdx;
             }
             chunk.indices[li] = stateIdxInChunk;
@@ -354,11 +362,11 @@ export class LitematicAdapter implements FormatAdapter {
         chunkSize: CHUNK_SIZE,
         chunks,
         nonAirCount: regionNonAir,
-        paletteCardinality: chunkPalette.length,
+        paletteCardinality: chunks.size > 0 ? Array.from(chunks.values())[0].palette.length : 1,
       };
 
       const transform: Transform = { translation: [pos[0]!, pos[1]!, pos[2]!], rotationY: 0, mirror: 'none' };
-      const origin: [number, number, number] = [pos[0]! * 2, pos[1]! * 2, pos[2]! * 2];
+      const origin: [number, number, number] = [0, 0, 0];
 
       const ancillary = {
         blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),

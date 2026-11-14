@@ -62,8 +62,9 @@ export function Toolbar({
   const projectName = snapshot.project?.name || 'Untitled Schematic';
 
   const handleSelectTool = (toolId: string) => {
-    store.setSelectedTool(toolId);
-    controllers?.statusBar.setToolMode(toolId);
+    const nextTool = (toolId === 'move' || toolId === 'rotate') && selectedTool === toolId ? 'select' : toolId;
+    store.setSelectedTool(nextTool);
+    controllers?.statusBar.setToolMode(nextTool);
   };
 
   const handleUndo = () => {

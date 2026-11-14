@@ -13,6 +13,7 @@ export interface OutlinerPanelProps {
   onCollapse?: () => void;
   className?: string;
   onSelectPlacement?: (id: string | null) => void;
+  selectedPlacementId?: string | null;
 }
 
 export function OutlinerPanel({
@@ -21,12 +22,15 @@ export function OutlinerPanel({
   onCollapse,
   className = '',
   onSelectPlacement,
+  selectedPlacementId: propSelectedId,
 }: OutlinerPanelProps) {
   const [filterText, setFilterText] = useState('');
   const snapshot = store.getSnapshot();
   const placements = snapshot.project?.placements ?? [];
   const importGroups = snapshot.project?.importGroups ?? [];
-  const selectedPlacementId = controllers?.inspector.context().selectedPlacementId ?? null;
+  const selectedPlacementId = propSelectedId !== undefined
+    ? propSelectedId
+    : (controllers?.inspector.context().selectedPlacementId ?? null);
 
   // Filtered placements
   const filteredPlacements = useMemo(() => {
@@ -36,9 +40,16 @@ export function OutlinerPanel({
   }, [placements, filterText]);
 
   const handleSelectPlacement = (id: string) => {
-    controllers?.selectPlacement(id);
-    controllers?.outliner.select(id, 'replace');
-    onSelectPlacement?.(id);
+    const nextId = id === selectedPlacementId ? null : id;
+    if (nextId === null) {
+      controllers?.selectPlacement(null);
+      controllers?.outliner.clearSelection?.();
+      onSelectPlacement?.(null);
+    } else {
+      controllers?.selectPlacement(nextId);
+      controllers?.outliner.select(nextId, 'replace');
+      onSelectPlacement?.(nextId);
+    }
   };
 
   const handleToggleVisibility = (e: React.MouseEvent, id: string) => {
@@ -82,6 +93,7 @@ export function OutlinerPanel({
     });
     if (selectedPlacementId === id) {
       controllers?.selectPlacement(null);
+      controllers?.outliner.clearSelection?.();
       onSelectPlacement?.(null);
     }
   };

@@ -1,6 +1,10 @@
 // Slice b-4: Litematic adapter
 import { LitematicAdapter } from '../litematic.ts';
 import { encodeNbt } from '../nbts.ts';
+import { encodePackedBlockStates } from '../litematic-packed.ts';
+import { linearIndex } from '../litematic-size.ts';
+import { blockStateId } from '../../domain/block-state.ts';
+import { getBlock } from '../../domain/volume-api.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
@@ -156,6 +160,126 @@ const adapter = new LitematicAdapter();
     const state0 = chunk.palette[idx0];
     check(state0.id === 'minecraft:dirt', 'negative ax reversal: chunk position 0 = dirt');
   }
+}
+
+function buildLitematic32x16x16(): Uint8Array {
+  const palette = compound([
+    ['minecraft:air', compound([
+      ['Name', str('minecraft:air')],
+      ['Properties', compound([])],
+    ])],
+    ['minecraft:stone', compound([
+      ['Name', str('minecraft:stone')],
+      ['Properties', compound([])],
+    ])],
+  ]);
+
+  const width = 32;
+  const height = 16;
+  const length = 16;
+  const totalEntries = width * height * length; // 8192
+  const indices = new Uint16Array(totalEntries); // all 0 = air
+
+  // Stone in chunk 0_0_0 at (0, 0, 0): flat index = linearIndex(0, 0, 0, 32, 16) = 0
+  indices[linearIndex(0, 0, 0, width, length)] = 1;
+
+  // Stone in chunk 1_0_0 at (16, 0, 0): flat index = linearIndex(16, 0, 0, 32, 16) = 16
+  indices[linearIndex(16, 0, 0, width, length)] = 1;
+
+  const paletteStates = [
+    blockStateId('minecraft:air'),
+    blockStateId('minecraft:stone'),
+  ];
+  const packedBytes = encodePackedBlockStates(paletteStates, indices, 2);
+  const wordCount = Math.floor(packedBytes.byteLength / 8);
+  const packedLongs = new BigInt64Array(wordCount);
+  const dv = new DataView(packedBytes.buffer, packedBytes.byteOffset, packedBytes.byteLength);
+  for (let i = 0; i < wordCount; i++) {
+    packedLongs[i] = dv.getBigInt64(i * 8, true);
+  }
+
+  const blockStates = { type: 'longArray', value: packedLongs } as NbtTag;
+
+  const region = compound([
+    ['Position', list([int(0), int(0), int(0)])],
+    ['Size', list([int(width), int(height), int(length)])],
+    ['BlockStatePalette', palette],
+    ['BlockStates', blockStates],
+    ['TileEntities', list([])],
+    ['Entities', list([])],
+  ]);
+
+  const regions = compound([['multi_chunk_region', region]]);
+  const metadata = compound([
+    ['Name', str('multi-chunk')],
+    ['Author', str('test')],
+    ['Description', str('')],
+  ]);
+
+  const root = compound([
+    ['Version', int(1)],
+    ['SubVersion', int(1)],
+    ['MinecraftDataVersion', int(3345)],
+    ['Metadata', metadata],
+    ['Regions', regions],
+  ]);
+
+  return encodeNbt(root, passthrough);
+}
+
+// 4. Multi-chunk regression test: stone in both chunk 0_0_0 and chunk 1_0_0
+{
+  const bytes = buildLitematic32x16x16();
+  const result = await adapter.import(bytes, {
+    preserveSourceOrigin: false,
+    autoArrange: false,
+    strict: false,
+    maxCompressedBytes: 50 * 1024 * 1024,
+    maxDecompressedBytes: 200 * 1024 * 1024,
+    maxTotalVolume: 65535n * 65535n * 65535n,
+    maxNonAirBlocks: 10_000_000,
+    maxNbtNestingDepth: 512,
+    maxNbtTagCount: 1_000_000,
+  });
+
+  check(result.placements.length === 1, 'multi-chunk: one placement');
+  const placement = result.placements[0];
+  check(placement.volume.nonAirCount === 2, 'multi-chunk: nonAirCount=2');
+  check(placement.volume.chunks.size === 2, 'multi-chunk: exactly 2 non-empty chunks');
+
+  // Verify chunk 0_0_0
+  const chunk0 = placement.volume.chunks.get('0_0_0');
+  check(!!chunk0, 'chunk 0_0_0 exists');
+  if (chunk0) {
+    const idx0 = chunk0.indices[0]; // local (0, 0, 0)
+    const state0 = chunk0.palette[idx0];
+    check(state0 !== undefined, 'chunk 0_0_0 palette entry is defined');
+    check(state0?.id === 'minecraft:stone', 'chunk 0_0_0 local (0,0,0) is stone');
+  }
+
+  // Verify chunk 1_0_0
+  const chunk1 = placement.volume.chunks.get('1_0_0');
+  check(!!chunk1, 'chunk 1_0_0 exists');
+  if (chunk1) {
+    const idx1 = chunk1.indices[0]; // local (0, 0, 0) in chunk 1 (x=16)
+    const state1 = chunk1.palette[idx1];
+    check(state1 !== undefined, 'chunk 1_0_0 palette entry is not undefined');
+    check(state1?.id === 'minecraft:stone', 'chunk 1_0_0 local (0,0,0) is stone (not air or undefined)');
+  }
+
+  // Verify using getBlock from domain
+  const blockAtChunk0 = getBlock(placement.volume, [0, 0, 0]);
+  check(blockAtChunk0.id === 'minecraft:stone', 'getBlock([0,0,0]) is stone');
+
+  const blockAtChunk1 = getBlock(placement.volume, [16, 0, 0]);
+  check(blockAtChunk1.id === 'minecraft:stone', 'getBlock([16,0,0]) is stone');
+
+  // Verify air blocks in both chunks return air
+  const airAtChunk0 = getBlock(placement.volume, [1, 0, 0]);
+  check(airAtChunk0.id === 'minecraft:air', 'getBlock([1,0,0]) is air');
+
+  const airAtChunk1 = getBlock(placement.volume, [17, 0, 0]);
+  check(airAtChunk1.id === 'minecraft:air', 'getBlock([17,0,0]) is air');
 }
 
 console.log(failures === 0 ? 'All slice b-4 litematic tests passed.' : failures + ' failure(s)');

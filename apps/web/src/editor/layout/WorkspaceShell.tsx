@@ -43,6 +43,8 @@ export interface WorkspaceShellProps {
   hoveredBlockName?: string | null;
   cursorCoordinates?: { x: number; y: number; z: number } | null;
   className?: string;
+  selectedPlacementId?: string | null;
+  onSelectPlacement?: (id: string | null) => void;
 }
 
 export function WorkspaceShell({
@@ -64,6 +66,8 @@ export function WorkspaceShell({
   hoveredBlockName = null,
   cursorCoordinates = null,
   className = '',
+  selectedPlacementId: controlledSelectedPlacementId,
+  onSelectPlacement,
 }: WorkspaceShellProps) {
   // Sync with store state
   const sessionSnap = useEditorSession(store);
@@ -83,22 +87,33 @@ export function WorkspaceShell({
   }, []);
 
   const inspectorSelectedId = controllers?.inspector.context().selectedPlacementId ?? null;
-  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(inspectorSelectedId);
+  const [localSelectedPlacementId, setLocalSelectedPlacementId] = useState<string | null>(inspectorSelectedId);
 
   useEffect(() => {
-    setSelectedPlacementId(controllers?.inspector.context().selectedPlacementId ?? null);
+    setLocalSelectedPlacementId(controllers?.inspector.context().selectedPlacementId ?? null);
   }, [controllers, sessionSnap.revision]);
 
-  const activeSelectedId = selectedPlacementId ?? inspectorSelectedId;
-  const selectedPlacement = sessionSnap.project?.placements.find((p) => p.id === activeSelectedId);
+  useEffect(() => {
+    if (controlledSelectedPlacementId !== undefined) {
+      if (controllers?.inspector.context().selectedPlacementId !== controlledSelectedPlacementId) {
+        controllers?.selectPlacement(controlledSelectedPlacementId);
+      }
+    }
+  }, [controllers, controlledSelectedPlacementId]);
+
+  const effectiveSelectedId = controlledSelectedPlacementId !== undefined
+    ? controlledSelectedPlacementId
+    : localSelectedPlacementId;
+  const selectedPlacement = sessionSnap.project?.placements.find((p) => p.id === effectiveSelectedId);
 
   const handleSelectPlacement = useCallback(
     (id: string | null) => {
       controllers.selectPlacement(id);
-      setSelectedPlacementId(id);
+      setLocalSelectedPlacementId(id);
+      onSelectPlacement?.(id);
       forceLayoutUpdate();
     },
-    [controllers, forceLayoutUpdate]
+    [controllers, onSelectPlacement, forceLayoutUpdate]
   );
 
   const layoutState = controllers.layout.state();
@@ -286,6 +301,7 @@ export function WorkspaceShell({
             <OutlinerPanel
               store={store}
               controllers={controllers}
+              selectedPlacementId={effectiveSelectedId}
               onSelectPlacement={handleSelectPlacement}
               onCollapse={() => {
                 controllers.layout.collapsePanel('hierarchy');
@@ -331,7 +347,7 @@ export function WorkspaceShell({
             <SelectedPlacementBar
               store={store}
               placement={selectedPlacement}
-              onSelectPlacement={(id) => handleSelectPlacement(id)}
+              onSelectPlacement={handleSelectPlacement}
             />
           )}
         </div>

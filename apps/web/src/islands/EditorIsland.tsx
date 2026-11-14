@@ -3,7 +3,7 @@
 
 'use client';
 
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import * as THREE from 'three';
 import '../editor/design-tokens.css';
 import {
@@ -127,15 +127,15 @@ export default function EditorIsland() {
     return () => {
       cancelled = true;
     };
-  }, [assetSnap.state, assetSnap.textureCount, runtime]);
+  }, [assetSnap.state, assetSnap.textureCount, assetSnap.atlasRevision, runtime]);
 
   const assetSource = useMemo(
     () => runtime.assetManager.getAssetSource(),
-    [runtime, assetSnap.state, assetSnap.textureCount]
+    [assetSnap.state, assetSnap.textureCount, assetSnap.atlasRevision, runtime]
   );
   const uvLookup = useMemo(
     () => runtime.assetManager.getUvLookup(),
-    [runtime, assetSnap.state, assetSnap.textureCount]
+    [assetSnap.state, assetSnap.textureCount, assetSnap.atlasRevision, runtime]
   );
 
   const ghostPreview: GhostPreviewSpec | null = useMemo(() => {
@@ -168,18 +168,63 @@ export default function EditorIsland() {
     [runtime]
   );
 
+  const prevPlacementIdsRef = useRef<Set<string>>(
+    new Set(sessionState.project.placements.map((p) => p.id))
+  );
+
   useEffect(() => {
     const placements = sessionState.project.placements;
-    if (!selectedPlacementId && placements.length > 0) {
-      const nextId = placements[placements.length - 1]!.id;
-      runtime.workspace.selectPlacement(nextId);
-      setSelectedPlacementId(nextId);
-    } else if (selectedPlacementId && !placements.some((p) => p.id === selectedPlacementId)) {
+    const currentIds = new Set(placements.map((p) => p.id));
+    const prevIds = prevPlacementIdsRef.current;
+
+    let newlyAddedId: string | null = null;
+    for (const p of placements) {
+      if (!prevIds.has(p.id)) {
+        newlyAddedId = p.id;
+      }
+    }
+
+    prevPlacementIdsRef.current = currentIds;
+
+    if (newlyAddedId) {
+      runtime.workspace.selectPlacement(newlyAddedId);
+      setSelectedPlacementId(newlyAddedId);
+    } else if (selectedPlacementId && !currentIds.has(selectedPlacementId)) {
       const nextId = placements.length > 0 ? placements[placements.length - 1]!.id : null;
       runtime.workspace.selectPlacement(nextId);
       setSelectedPlacementId(nextId);
     }
   }, [sessionState.project.placements, selectedPlacementId, runtime]);
+
+  const [activeOverlays, setActiveOverlays] = useState({
+    chunk: false,
+    section: false,
+    block: false,
+    conflicts: true,
+  });
+
+  const handleToggleOverlay = useCallback(
+    (overlay: 'chunk' | 'section' | 'block' | 'conflicts') => {
+      setActiveOverlays((prev) => {
+        const next = { ...prev, [overlay]: !prev[overlay] };
+        if (overlay === 'conflicts') {
+          runtime.conflictsController.setOverlayEnabled(next.conflicts);
+        }
+        return next;
+      });
+    },
+    [runtime]
+  );
+
+  const [conflictOverlayPositions, setConflictOverlayPositions] = useState(() =>
+    runtime.conflictsController.getOverlayPositions()
+  );
+
+  useEffect(() => {
+    return runtime.conflictsController.subscribe(() => {
+      setConflictOverlayPositions(runtime.conflictsController.getOverlayPositions());
+    });
+  }, [runtime]);
 
   const selectedPlacementIds = useMemo(
     () => (selectedPlacementId ? new Set([selectedPlacementId]) : undefined),
@@ -230,6 +275,10 @@ export default function EditorIsland() {
         controllers={runtime.workspace}
         conflictsController={runtime.conflictsController}
         materialListController={runtime.materialListController}
+        selectedPlacementId={selectedPlacementId}
+        onSelectPlacement={handleSelectPlacement}
+        activeOverlays={activeOverlays}
+        onToggleOverlay={handleToggleOverlay}
         onImport={() => setIsImportOpen(true)}
         onExport={() => setIsExportOpen(true)}
         onBake={() => setIsBakeOpen(true)}
@@ -247,6 +296,7 @@ export default function EditorIsland() {
               onSelectPlacement={handleSelectPlacement}
               ghostPreview={ghostPreview}
               selectedPlacementIds={selectedPlacementIds}
+              conflictOverlayPositions={conflictOverlayPositions}
               onVoxelClick={handleVoxelClick}
               onVoxelHover={handleVoxelHover}
             />
