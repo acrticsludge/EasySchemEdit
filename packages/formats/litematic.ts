@@ -310,7 +310,7 @@ export class LitematicAdapter implements FormatAdapter {
         for (let z = 0; z < length; z++) {
           for (let x = 0; x < width; x++) {
             const nc = rawToNormalizedCoord(x, y, z, { ax, ay, az });
-            const flat = linearIndex(nc.x, nc.z, nc.y, ax, az);
+            const flat = linearIndex(nc.x, nc.z, nc.y, width, length);
             const stateIdx = Number(indices[flat]);
             const state = palette[stateIdx] ?? CANONICAL_AIR;
             if (VANILLA_AIR_LIKE.has(state.id)) {

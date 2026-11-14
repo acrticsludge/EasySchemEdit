@@ -249,7 +249,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(gridGroupRef.current);
 
     if (groundGridRef.current) {
-      groundGridRef.current.visible = project.placements.length === 0;
+      groundGridRef.current.visible = project.placements.length === 0 && !gPrefs.chunkBorders;
     }
 
     // 5. Conflicts
@@ -431,7 +431,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     // Ground helper
     const groundGrid = new THREE.GridHelper(128, 128, 0x444466, 0x252538);
     groundGrid.position.y = -0.01;
-    groundGrid.visible = session.peekProject().placements.length === 0;
+    groundGrid.visible = session.peekProject().placements.length === 0 && !gridPrefsRef.current.chunkBorders;
     groundGridRef.current = groundGrid;
     scene.add(groundGrid);
 
@@ -865,6 +865,21 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
       cameraCtrl.stepDamping(dt);
       cameraCtrl.syncToThreeCamera(camera);
+
+      // Snap infinite chunk floor grid position to 16x16 chunk boundaries and update camera position uniform
+      if (gridGroupRef.current) {
+        const floorGrid = gridGroupRef.current.getObjectByName('infinite-chunk-floor-grid') as THREE.Mesh | undefined;
+        if (floorGrid) {
+          const target = (cameraCtrl as any).target ?? cameraCtrl.getTarget();
+          floorGrid.position.x = Math.floor(target[0] / 16) * 16;
+          floorGrid.position.z = Math.floor(target[2] / 16) * 16;
+          const mat = floorGrid.material as THREE.ShaderMaterial;
+          if (mat.uniforms?.uCameraPos) {
+            mat.uniforms.uCameraPos.value.copy(camera.position);
+          }
+        }
+      }
+
       renderer.render(scene, camera);
 
       animFrameIdRef.current = requestAnimationFrame(animate);

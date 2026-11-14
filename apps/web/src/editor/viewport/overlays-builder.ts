@@ -197,8 +197,86 @@ export interface GridBordersPrefs {
 }
 
 /**
+ * Builds an infinite horizontal floor grid at floorY featuring:
+ * - 16x16 chunk borders in warm gold/amber (#ffaa00)
+ * - 1x1 block sub-grid in subtle slate/cool-blue (#6688aa) with anti-moiré far zoom fade
+ * - Smooth distance fade out past ~1200 blocks
+ */
+export function buildInfiniteChunkFloorGrid(floorY: number): THREE.Mesh {
+  const geom = new THREE.PlaneGeometry(4096, 4096);
+  geom.rotateX(-Math.PI / 2);
+
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uCameraPos: { value: new THREE.Vector3() },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+
+      void main() {
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vWorldPos = worldPos.xyz;
+        gl_Position = projectionMatrix * viewMatrix * worldPos;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uCameraPos;
+      varying vec3 vWorldPos;
+
+      void main() {
+        vec2 fw = fwidth(vWorldPos.xz);
+
+        // 16-block Chunk Grid: warm gold/amber #ffaa00 with ~0.78 alpha
+        vec2 cCoord = vWorldPos.xz / 16.0;
+        vec2 cDist = min(fract(cCoord), 1.0 - fract(cCoord)) * 16.0;
+        vec2 cLineWidth = max(fw * 1.25, vec2(0.04));
+        vec2 cLineAlpha = 1.0 - smoothstep(vec2(0.0), cLineWidth, cDist);
+        float cFactor = max(cLineAlpha.x, cLineAlpha.y);
+
+        // Smooth distance fade out past ~1200 blocks from uCameraPos.xz
+        float dist = length(vWorldPos.xz - uCameraPos.xz);
+        float distFade = 1.0 - smoothstep(800.0, 1200.0, dist);
+
+        float cAlpha = cFactor * 0.78 * distFade;
+        vec3 cColor = vec3(1.0, 0.667, 0.0);
+
+        // 1-block Sub-Grid (16x16 inside each chunk): subtle slate/cool-blue #6688aa with ~0.18 alpha
+        vec2 bDist = min(fract(vWorldPos.xz), 1.0 - fract(vWorldPos.xz));
+        vec2 bLineWidth = max(fw * 0.85, vec2(0.02));
+        vec2 bLineAlpha = 1.0 - smoothstep(vec2(0.0), bLineWidth, bDist);
+        float bFactor = max(bLineAlpha.x, bLineAlpha.y);
+
+        // Fading out cleanly at far zoom (smoothstep on fwidth(vWorldPos.xz)) so it never causes moiré noise
+        float maxFw = max(fw.x, fw.y);
+        float bZoomFade = 1.0 - smoothstep(0.08, 0.28, maxFw);
+        float bAlpha = bFactor * 0.18 * bZoomFade * distFade;
+        vec3 bColor = vec3(0.4, 0.533, 0.667);
+
+        float finalAlpha = cAlpha + bAlpha * (1.0 - cAlpha);
+        if (finalAlpha < 0.002) {
+          discard;
+        }
+
+        vec3 finalColor = (cColor * cAlpha + bColor * bAlpha * (1.0 - cAlpha)) / max(finalAlpha, 1e-4);
+        gl_FragColor = vec4(finalColor, finalAlpha);
+      }
+    `,
+  });
+
+  const mesh = new THREE.Mesh(geom, mat);
+  mesh.name = 'infinite-chunk-floor-grid';
+  mesh.renderOrder = -1;
+  mesh.position.set(0, floorY, 0);
+
+  return mesh;
+}
+
+/**
  * Builds grid borders group:
- * - Chunk borders: vertical 16x16 column lines in yellow (0xffaa00).
+ * - Chunk borders: infinite horizontal floor grid at minY - 0.02.
  * - Section borders: horizontal 16-high plane lines in blue (0x0088ff).
  *
  * If all preferences are false, returns an empty THREE.Group with 0 children.
@@ -217,33 +295,10 @@ export function buildGridBordersGroup(
   const [x0, y0, z0] = bounds.min;
   const [x1, y1, z1] = bounds.maxExclusive;
 
-  // 1. Chunk column borders (every 16 on X and Z)
+  // 1. Chunk floor grid (horizontal floor at bounds.min[1] - 0.02)
   if (prefs.chunkBorders) {
-    const chunkPositions: number[] = [];
-    const minCx = Math.floor(x0 / 16) * 16;
-    const maxCx = Math.ceil(x1 / 16) * 16;
-    const minCz = Math.floor(z0 / 16) * 16;
-    const maxCz = Math.ceil(z1 / 16) * 16;
-    const minY = Math.floor(y0 / 16) * 16;
-    const maxY = Math.ceil(y1 / 16) * 16;
-
-    for (let cx = minCx; cx <= maxCx; cx += 16) {
-      for (let cz = minCz; cz <= maxCz; cz += 16) {
-        chunkPositions.push(cx, minY, cz, cx, maxY, cz);
-      }
-    }
-
-    if (chunkPositions.length > 0) {
-      const geom = new THREE.BufferGeometry();
-      geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(chunkPositions), 3));
-      const mat = new THREE.LineBasicMaterial({
-        color: 0xffaa00,
-        transparent: true,
-        opacity: 0.75,
-        depthWrite: false,
-      });
-      group.add(new THREE.LineSegments(geom, mat));
-    }
+    const floorY = bounds.min[1] - 0.02;
+    group.add(buildInfiniteChunkFloorGrid(floorY));
   }
 
   // 2. Section horizontal borders (every 16 on Y)

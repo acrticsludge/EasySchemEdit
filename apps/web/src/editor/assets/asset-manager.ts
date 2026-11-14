@@ -677,7 +677,7 @@ export class BrowserAssetManager {
     if (entries.length > 0) {
       this.atlas = packAtlas(entries, {
         maxSize: 2048,
-        padding: 1,
+        padding: 4,
         powerOfTwo: true,
       });
     } else {
