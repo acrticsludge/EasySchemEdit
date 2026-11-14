@@ -585,4 +585,63 @@ console.log('--- Test 7: Placement Transform Preview & Session Execution ---');
   console.log('✓ Test 7 passed: previewPlacementTransform live-updates position and rotation without chunk rebuilds.');
 }
 
+// ============================================================================
+// Test 8: Selected Voxel Highlight Mesh & Overlay Contracts
+// ============================================================================
+console.log('--- Test 8: Selected Voxel Highlight Mesh & Overlay Contracts ---');
+{
+  const selectedVoxelGroup = new THREE.Group();
+  selectedVoxelGroup.name = 'viewport-selected-voxel-highlight';
+  selectedVoxelGroup.visible = false;
+  selectedVoxelGroup.renderOrder = 998;
+
+  const selectedBoxGeo = new THREE.BoxGeometry(1.01, 1.01, 1.01);
+  const selectedFillMat = new THREE.MeshBasicMaterial({
+    color: 0x7dff4a,
+    transparent: true,
+    opacity: 0.42,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -1,
+    polygonOffsetUnits: -1,
+  });
+  const fillMesh = new THREE.Mesh(selectedBoxGeo, selectedFillMat);
+  selectedVoxelGroup.add(fillMesh);
+
+  const selectedEdgesGeo = new THREE.EdgesGeometry(selectedBoxGeo);
+  const selectedEdgeMat = new THREE.LineBasicMaterial({
+    color: 0xaaff77,
+    transparent: true,
+    opacity: 1.0,
+    depthWrite: false,
+  });
+  const edgeLines = new THREE.LineSegments(selectedEdgesGeo, selectedEdgeMat);
+  selectedVoxelGroup.add(edgeLines);
+
+  assertEqual(selectedVoxelGroup.name, 'viewport-selected-voxel-highlight', 'Group name must match');
+  assertEqual(selectedVoxelGroup.renderOrder, 998, 'RenderOrder must be 998 to render above hover highlight (997)');
+  assertEqual(selectedFillMat.color.getHex(), 0x7dff4a, 'Fill material must be neon green #7dff4a');
+  assertEqual(selectedFillMat.opacity, 0.42, 'Fill material opacity must be 0.42');
+  assertEqual(selectedEdgeMat.color.getHex(), 0xaaff77, 'Edge material must be bright lime #aaff77');
+  assertEqual(selectedEdgeMat.opacity, 1.0, 'Edge material opacity must be 1.0');
+
+  // Test position transform to voxel center (+0.5)
+  const targetVoxel: [number, number, number] = [12, -4, 45];
+  selectedVoxelGroup.position.set(targetVoxel[0] + 0.5, targetVoxel[1] + 0.5, targetVoxel[2] + 0.5);
+  selectedVoxelGroup.visible = true;
+
+  assert(selectedVoxelGroup.visible, 'Group must be visible when voxel is selected');
+  assertEqual(selectedVoxelGroup.position.x, 12.5, 'X position must be centered');
+  assertEqual(selectedVoxelGroup.position.y, -3.5, 'Y position must be centered');
+  assertEqual(selectedVoxelGroup.position.z, 45.5, 'Z position must be centered');
+
+  // Dispose resources
+  selectedBoxGeo.dispose();
+  selectedFillMat.dispose();
+  selectedEdgesGeo.dispose();
+  selectedEdgeMat.dispose();
+
+  console.log('✓ Test 8 passed: Selected voxel highlight mesh properties and positioning verified.');
+}
+
 console.log('\nAll Slice E3.2 Viewport tests passed successfully!');

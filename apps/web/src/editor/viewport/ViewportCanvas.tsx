@@ -164,6 +164,8 @@ export interface ViewportCanvasProps {
   };
   selectedPlacementIds?: Set<string>;
   dragSnapStep?: 1 | 16;
+  selectedVoxelPosition?: Vec3i | null;
+  onClearSelectedVoxel?: () => void;
 }
 
 export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
@@ -180,6 +182,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   conflictOverlayPositions,
   selectedPlacementIds = EMPTY_STRING_SET,
   dragSnapStep = 1,
+  selectedVoxelPosition = null,
+  onClearSelectedVoxel,
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -218,6 +222,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const conflictGroupRef = useRef<THREE.Group | null>(null);
   const ghostGroupRef = useRef<THREE.Group | null>(null);
   const groundGridRef = useRef<THREE.GridHelper | null>(null);
+  const hoverHighlightRef = useRef<THREE.Group | null>(null);
+  const selectedVoxelHighlightRef = useRef<THREE.Group | null>(null);
 
   // Prop refs for stable callbacks
   const assetSourceRef = useRef(assetSource);
@@ -226,6 +232,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   uvLookupRef.current = uvLookup;
   const selectedPlacementIdsRef = useRef(selectedPlacementIds);
   selectedPlacementIdsRef.current = selectedPlacementIds;
+  const selectedVoxelPositionRef = useRef(selectedVoxelPosition);
+  selectedVoxelPositionRef.current = selectedVoxelPosition;
+  const onClearSelectedVoxelRef = useRef(onClearSelectedVoxel);
+  onClearSelectedVoxelRef.current = onClearSelectedVoxel;
   const gridPrefsRef = useRef<GridBordersPrefs>({
     chunkBorders: false,
     sectionBorders: false,
@@ -496,6 +506,52 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scheduleChunkSync();
   }, [scheduleChunkSync, assetSource, uvLookup, atlasTexture]);
 
+  const updateHoverHighlight = useCallback((hit: VoxelHit | null) => {
+    if (!hoverHighlightRef.current) return;
+    if (hit) {
+      hoverHighlightRef.current.position.set(
+        hit.position[0] + 0.5,
+        hit.position[1] + 0.5,
+        hit.position[2] + 0.5
+      );
+      hoverHighlightRef.current.visible = true;
+    } else {
+      hoverHighlightRef.current.visible = false;
+    }
+  }, []);
+
+  // Update hover highlight overlay when hoveredVoxel changes
+  useEffect(() => {
+    if (hoverHighlightRef.current) {
+      if (hoveredVoxel) {
+        hoverHighlightRef.current.position.set(
+          hoveredVoxel.position[0] + 0.5,
+          hoveredVoxel.position[1] + 0.5,
+          hoveredVoxel.position[2] + 0.5
+        );
+        hoverHighlightRef.current.visible = true;
+      } else {
+        hoverHighlightRef.current.visible = false;
+      }
+    }
+  }, [hoveredVoxel]);
+
+  // Sync selected voxel highlight overlay when selectedVoxelPosition changes
+  useEffect(() => {
+    if (selectedVoxelHighlightRef.current) {
+      if (selectedVoxelPosition) {
+        selectedVoxelHighlightRef.current.position.set(
+          selectedVoxelPosition[0] + 0.5,
+          selectedVoxelPosition[1] + 0.5,
+          selectedVoxelPosition[2] + 0.5
+        );
+        selectedVoxelHighlightRef.current.visible = true;
+      } else {
+        selectedVoxelHighlightRef.current.visible = false;
+      }
+    }
+  }, [selectedVoxelPosition]);
+
   // --------------------------------------------------------------------------
   // Main Three.js Lifecycle
   // --------------------------------------------------------------------------
@@ -598,9 +654,78 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(alignGuidesLine);
     alignGuidesLineRef.current = alignGuidesLine;
 
+    // Hover Highlight Overlay (Slice neon-green block overlay #39ff14)
+    const hoverGroup = new THREE.Group();
+    hoverGroup.name = 'viewport-hover-highlight';
+    hoverGroup.visible = false;
+    hoverGroup.renderOrder = 997;
+
+    const hoverBoxGeo = new THREE.BoxGeometry(1.008, 1.008, 1.008);
+    const hoverFillMat = new THREE.MeshBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    hoverGroup.add(new THREE.Mesh(hoverBoxGeo, hoverFillMat));
+
+    const hoverEdgesGeo = new THREE.EdgesGeometry(hoverBoxGeo);
+    const hoverEdgeMat = new THREE.LineBasicMaterial({
+      color: 0x39ff14,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    hoverGroup.add(new THREE.LineSegments(hoverEdgesGeo, hoverEdgeMat));
+
+    hoverHighlightRef.current = hoverGroup;
+    scene.add(hoverGroup);
+
+    // Selected Voxel Highlight Overlay (Slice neon-green block overlay #7dff4a)
+    const selectedVoxelGroup = new THREE.Group();
+    selectedVoxelGroup.name = 'viewport-selected-voxel-highlight';
+    selectedVoxelGroup.visible = false;
+    selectedVoxelGroup.renderOrder = 998;
+
+    const selectedBoxGeo = new THREE.BoxGeometry(1.01, 1.01, 1.01);
+    const selectedFillMat = new THREE.MeshBasicMaterial({
+      color: 0x7dff4a,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    });
+    selectedVoxelGroup.add(new THREE.Mesh(selectedBoxGeo, selectedFillMat));
+
+    const selectedEdgesGeo = new THREE.EdgesGeometry(selectedBoxGeo);
+    const selectedEdgeMat = new THREE.LineBasicMaterial({
+      color: 0xaaff77,
+      transparent: true,
+      opacity: 1.0,
+      depthWrite: false,
+    });
+    selectedVoxelGroup.add(new THREE.LineSegments(selectedEdgesGeo, selectedEdgeMat));
+
+    selectedVoxelHighlightRef.current = selectedVoxelGroup;
+    scene.add(selectedVoxelGroup);
+
+    if (selectedVoxelPositionRef.current) {
+      const pos = selectedVoxelPositionRef.current;
+      selectedVoxelGroup.position.set(pos[0] + 0.5, pos[1] + 0.5, pos[2] + 0.5);
+      selectedVoxelGroup.visible = true;
+    }
+
     transformCtrl.addEventListener('dragging-changed', (event: any) => {
       const isDragging = Boolean(event.value);
       isGizmoDraggingRef.current = isDragging;
+      if (isDragging && hoverHighlightRef.current) {
+        hoverHighlightRef.current.visible = false;
+      }
 
       if (isDragging) {
         const selIds = selectedPlacementIdsRef.current;
@@ -1154,6 +1279,24 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       }
       groundGridRef.current = null;
 
+      if (hoverHighlightRef.current) {
+        scene.remove(hoverHighlightRef.current);
+        hoverHighlightRef.current = null;
+      }
+      hoverBoxGeo.dispose();
+      hoverFillMat.dispose();
+      hoverEdgesGeo.dispose();
+      hoverEdgeMat.dispose();
+
+      if (selectedVoxelHighlightRef.current) {
+        scene.remove(selectedVoxelHighlightRef.current);
+        selectedVoxelHighlightRef.current = null;
+      }
+      selectedBoxGeo.dispose();
+      selectedFillMat.dispose();
+      selectedEdgesGeo.dispose();
+      selectedEdgeMat.dispose();
+
       chunkManager.dispose();
       renderer.dispose();
     };
@@ -1301,6 +1444,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
+      if (hoverHighlightRef.current) {
+        hoverHighlightRef.current.visible = false;
+      }
       return;
     }
     isDraggingRef.current = true;
@@ -1348,6 +1494,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         if (lastHoveredVoxelRef.current !== null) {
           lastHoveredVoxelRef.current = null;
           setHoveredVoxel(null);
+          updateHoverHighlight(null);
           onVoxelHoverRef.current?.(null);
         }
         return;
@@ -1369,6 +1516,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         if (!isSameVoxelHit(lastHoveredVoxelRef.current, hit)) {
           lastHoveredVoxelRef.current = hit;
           setHoveredVoxel(hit);
+          updateHoverHighlight(hit);
           onVoxelHoverRef.current?.(hit);
         }
       } else {
@@ -1380,6 +1528,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           if (!isSameVoxelHit(lastHoveredVoxelRef.current, hit)) {
             lastHoveredVoxelRef.current = hit;
             setHoveredVoxel(hit);
+            updateHoverHighlight(hit);
             onVoxelHoverRef.current?.(hit);
           }
         }, remaining);
@@ -1466,6 +1615,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const hit = performRaycast(e.clientX, e.clientY);
     if (hit) {
       onVoxelClick?.(hit, e);
+    } else {
+      onClearSelectedVoxel?.();
     }
   };
 
@@ -1716,6 +1867,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           if (lastHoveredVoxelRef.current !== null) {
             lastHoveredVoxelRef.current = null;
             setHoveredVoxel(null);
+            updateHoverHighlight(null);
             onVoxelHoverRef.current?.(null);
           }
         }}
@@ -1913,6 +2065,58 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               <span style={{ color: '#8888aa' }}> · {hoveredVoxel.placementId}</span>
             )}
           </div>
+        </div>
+      )}
+      {/* Floating Vertical Island for Selected Block Tools */}
+      {selectedVoxelPosition && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '56px',
+            right: '12px',
+            bottom: '68px',
+            width: '220px',
+            zIndex: 20,
+            pointerEvents: 'auto',
+            backgroundColor: '#1e1e26f0',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid #2a2a38',
+            borderRadius: '6px',
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          {/* Minimal header with close button */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              padding: '6px 8px',
+              borderBottom: '1px solid #2a2a38',
+            }}
+          >
+            <button
+              onClick={() => onClearSelectedVoxel?.()}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#8e8ea8',
+                cursor: 'pointer',
+                fontSize: '13px',
+                lineHeight: 1,
+                padding: '2px 6px',
+                borderRadius: '4px',
+              }}
+              title="Close"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          {/* Empty flex body reserved for future tools */}
+          <div style={{ flex: 1 }} />
         </div>
       )}
     </div>

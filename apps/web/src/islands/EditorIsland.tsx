@@ -41,6 +41,7 @@ export default function EditorIsland() {
 
   const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
   const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [selectedVoxel, setSelectedVoxel] = useState<VoxelHit | null>(null);
   const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
   const [nudgeStep, setNudgeStep] = useState<1 | 16>(1);
 
@@ -233,6 +234,12 @@ export default function EditorIsland() {
       return;
     }
 
+    if (hit.placementId) {
+      setSelectedVoxel(hit);
+    } else {
+      setSelectedVoxel(null);
+    }
+
     const activeTool = runtime.store.getSnapshot().selectedTool;
     if (['cuboid', 'cuboid-select', 'fill', 'replace', 'walls', 'hollow', 'delete', 'delete-region'].includes(activeTool)) {
       if (event.shiftKey || runtime.selectionTool.getCorner1()) {
@@ -246,6 +253,43 @@ export default function EditorIsland() {
       runtime.selectionTool.setCorner1(hit.position);
     }
   }, [runtime, handleSelectPlacement]);
+
+  // Clear selected voxel on Escape keydown (when not in a text input)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const target = e.target as HTMLElement | null;
+        const tagName = target?.tagName?.toUpperCase();
+        if (
+          tagName === 'INPUT' ||
+          tagName === 'TEXTAREA' ||
+          tagName === 'SELECT' ||
+          target?.isContentEditable
+        ) {
+          return;
+        }
+        setSelectedVoxel(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Clear selected voxel when placements clear or when selected placement is deleted
+  useEffect(() => {
+    if (sessionState.project.placements.length === 0) {
+      setSelectedVoxel(null);
+    } else if (selectedVoxel?.placementId) {
+      const placementStillExists = sessionState.project.placements.some(
+        (p) => p.id === selectedVoxel.placementId
+      );
+      if (!placementStillExists) {
+        setSelectedVoxel(null);
+      }
+    }
+  }, [sessionState.project.placements, selectedVoxel]);
 
   const handleVoxelHover = useCallback((hit: VoxelHit | null) => {
     if (!hit) {
@@ -298,6 +342,8 @@ export default function EditorIsland() {
               onVoxelClick={handleVoxelClick}
               onVoxelHover={handleVoxelHover}
               dragSnapStep={nudgeStep}
+              selectedVoxelPosition={selectedVoxel?.position ?? null}
+              onClearSelectedVoxel={() => setSelectedVoxel(null)}
             />
           </div>
         }
