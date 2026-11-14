@@ -31,3 +31,18 @@ export {
   ProjectExplorer,
   type ProjectExplorerProps,
 } from './ProjectExplorer.tsx';
+
+export {
+  saveSchematicSelection,
+  loadSchematicSelection,
+  saveUiPrefs,
+  loadUiPrefs,
+  copySchematicState,
+  deleteSchematicState,
+  isSelectionEmpty,
+  type PersistedSelectionState,
+  type PersistedUiPrefs,
+  SELECTION_STORAGE_PREFIX,
+  CAMERA_STORAGE_PREFIX,
+  UI_PREFS_STORAGE_KEY,
+} from './selection-storage.ts';

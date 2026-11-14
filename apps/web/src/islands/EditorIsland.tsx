@@ -16,6 +16,16 @@ import {
 } from '@easyschemedit/domain';
 import { createCuboidSelection } from '@easyschemedit/operations';
 import { packVxprojArchive, unpackVxprojArchive } from '@easyschemedit/persistence';
+import { toBlockStateId } from '../editor/viewport/region-hit.ts';
+import {
+  saveSchematicSelection,
+  loadSchematicSelection,
+  saveUiPrefs,
+  loadUiPrefs,
+  copySchematicState,
+  deleteSchematicState,
+  type PersistedSelectionState,
+} from '../editor/persistence/selection-storage.ts';
 import {
   createEditorRuntime,
   WorkspaceShell,
@@ -152,6 +162,135 @@ export default function EditorIsland() {
   const isSwitchingSchematicRef = useRef(false);
   const [isFirstProjectOpen, setIsFirstProjectOpen] = useState(false);
 
+  // Selection & overlay preferences state
+  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(
+    () => runtime.workspace.inspector.context().selectedPlacementId
+  );
+  const [selectedVoxel, setSelectedVoxel] = useState<VoxelHit | null>(null);
+  const [regionPos1, setRegionPos1] = useState<Vec3i | null>(null);
+  const [regionPos2, setRegionPos2] = useState<Vec3i | null>(null);
+  const [regionPickMode, setRegionPickMode] = useState<'pos1' | 'pos2' | null>(null);
+  const [regionBounds, setRegionBounds] = useState<Bounds3i | null>(null);
+
+  const [nudgeStep, setNudgeStep] = useState<1 | 16>(() => {
+    const prefs = loadUiPrefs();
+    return prefs?.nudgeStep === 16 ? 16 : 1;
+  });
+
+  const [activeOverlays, setActiveOverlays] = useState(() => {
+    const prefs = loadUiPrefs();
+    return {
+      chunk: prefs?.activeOverlays?.chunk ?? false,
+      section: prefs?.activeOverlays?.section ?? false,
+      block: prefs?.activeOverlays?.block ?? false,
+      conflicts: prefs?.activeOverlays?.conflicts ?? true,
+    };
+  });
+
+  const isRestoringSelectionRef = useRef(false);
+  const currentSchematicForSelectionRef = useRef<string | null>(null);
+
+  const restoreSelectionForSchematic = useCallback(
+    (schemId: string | null) => {
+      isRestoringSelectionRef.current = true;
+      currentSchematicForSelectionRef.current = schemId;
+
+      if (!schemId) {
+        setRegionPos1(null);
+        setRegionPos2(null);
+        setRegionPickMode(null);
+        setRegionBounds(null);
+        setSelectedVoxel(null);
+        setSelectedPlacementId(null);
+        runtime.workspace.selectPlacement(null);
+        void runtime.store.execute({ type: 'selection:clear' });
+        return;
+      }
+
+      const saved = loadSchematicSelection(schemId);
+      if (saved) {
+        setRegionPos1(saved.pos1);
+        setRegionPos2(saved.pos2);
+        setRegionPickMode(null);
+        setRegionBounds(saved.bounds);
+        setSelectedVoxel(saved.selectedVoxel);
+        setSelectedPlacementId(saved.selectedPlacementId);
+        runtime.workspace.selectPlacement(saved.selectedPlacementId);
+
+        if (saved.bounds) {
+          const minX = Math.min(saved.bounds.min[0], saved.bounds.maxExclusive[0] - 1);
+          const minY = Math.min(saved.bounds.min[1], saved.bounds.maxExclusive[1] - 1);
+          const minZ = Math.min(saved.bounds.min[2], saved.bounds.maxExclusive[2] - 1);
+          const maxX = Math.max(saved.bounds.min[0], saved.bounds.maxExclusive[0] - 1);
+          const maxY = Math.max(saved.bounds.min[1], saved.bounds.maxExclusive[1] - 1);
+          const maxZ = Math.max(saved.bounds.min[2], saved.bounds.maxExclusive[2] - 1);
+          const anchor = saved.pos1
+            ? { x: saved.pos1[0], y: saved.pos1[1], z: saved.pos1[2] }
+            : { x: minX, y: minY, z: minZ };
+
+          void runtime.store.execute({
+            type: 'selection:set',
+            selection: createCuboidSelection({ minX, minY, minZ, maxX, maxY, maxZ }, anchor),
+          });
+        } else {
+          void runtime.store.execute({ type: 'selection:clear' });
+        }
+      } else {
+        setRegionPos1(null);
+        setRegionPos2(null);
+        setRegionPickMode(null);
+        setRegionBounds(null);
+        setSelectedVoxel(null);
+        setSelectedPlacementId(null);
+        runtime.workspace.selectPlacement(null);
+        void runtime.store.execute({ type: 'selection:clear' });
+      }
+    },
+    [runtime]
+  );
+
+  // Save UI preferences on change
+  useEffect(() => {
+    saveUiPrefs({
+      activeOverlays,
+      nudgeStep,
+    });
+  }, [activeOverlays, nudgeStep]);
+
+  // Sync conflicts overlay controller with UI preferences
+  useEffect(() => {
+    runtime.conflictsController.setOverlayEnabled(activeOverlays.conflicts);
+  }, [runtime, activeOverlays.conflicts]);
+
+  // Persist selection for active schematic whenever it changes
+  useEffect(() => {
+    if (!activeSchematicId) return;
+
+    if (currentSchematicForSelectionRef.current !== activeSchematicId) {
+      return;
+    }
+
+    if (isRestoringSelectionRef.current) {
+      isRestoringSelectionRef.current = false;
+      return;
+    }
+
+    saveSchematicSelection(activeSchematicId, {
+      pos1: regionPos1,
+      pos2: regionPos2,
+      bounds: regionBounds,
+      selectedVoxel,
+      selectedPlacementId,
+    });
+  }, [
+    activeSchematicId,
+    regionPos1,
+    regionPos2,
+    regionBounds,
+    selectedVoxel,
+    selectedPlacementId,
+  ]);
+
   // Check current session on mount (non-blocking)
   useEffect(() => {
     let active = true;
@@ -201,6 +340,7 @@ export default function EditorIsland() {
                 if (active) {
                   setActiveSchematicId(schemToOpen.id);
                   runtime.persistence.setActiveCloudSchematicId(schemToOpen.id);
+                  restoreSelectionForSchematic(schemToOpen.id);
                 }
               }
             }
@@ -240,9 +380,14 @@ export default function EditorIsland() {
                     await runtime.persistence.replaceProjectInSession(proj);
                     runtime.persistence.markClean();
                     restoredGuest = true;
+                    if (active) {
+                      restoreSelectionForSchematic(gSchemId);
+                    }
                   } catch {
                     // ignore unpack error
                   }
+                } else if (gSchemId && active) {
+                  restoreSelectionForSchematic(gSchemId);
                 }
               }
             }
@@ -254,6 +399,7 @@ export default function EditorIsland() {
             setWorkspaceProjects(createDefaultGuestProjects());
             setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
             setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+            restoreSelectionForSchematic(DEFAULT_GUEST_SCHEMATIC_ID);
           }
         }
       })
@@ -290,11 +436,16 @@ export default function EditorIsland() {
                     const proj = unpackVxprojArchive(buf);
                     void runtime.persistence.replaceProjectInSession(proj).then(() => {
                       runtime.persistence.markClean();
+                      if (active) {
+                        restoreSelectionForSchematic(gSchemId);
+                      }
                     });
                     restoredGuest = true;
                   } catch {
                     // ignore
                   }
+                } else if (gSchemId && active) {
+                  restoreSelectionForSchematic(gSchemId);
                 }
               }
             }
@@ -306,13 +457,14 @@ export default function EditorIsland() {
             setWorkspaceProjects(createDefaultGuestProjects());
             setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
             setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
+            restoreSelectionForSchematic(DEFAULT_GUEST_SCHEMATIC_ID);
           }
         }
       });
     return () => {
       active = false;
     };
-  }, [runtime]);
+  }, [restoreSelectionForSchematic, runtime]);
 
   const performCloudSave = useCallback(
     async (userToUse?: AuthUser | null, options?: { silent?: boolean }) => {
@@ -482,6 +634,16 @@ export default function EditorIsland() {
 
         if (hasGuestWork) {
           console.info('Migrating guest work to user cloud storage...');
+          if (activeSchematicId && currentSchematicForSelectionRef.current === activeSchematicId) {
+            saveSchematicSelection(activeSchematicId, {
+              pos1: regionPos1,
+              pos2: regionPos2,
+              bounds: regionBounds,
+              selectedVoxel,
+              selectedPlacementId,
+            });
+          }
+
           let newActiveProjectId: string | null = null;
           let newActiveSchematicId: string | null = null;
 
@@ -523,6 +685,9 @@ export default function EditorIsland() {
                 placementCount: pCount,
               });
 
+              copySchematicState(gs.id, cloudSchem.id);
+              deleteSchematicState(gs.id);
+
               if (gs.id === activeSchematicId) {
                 newActiveProjectId = cloudProj.id;
                 newActiveSchematicId = cloudSchem.id;
@@ -542,6 +707,7 @@ export default function EditorIsland() {
             setActiveSchematicId(newActiveSchematicId);
             runtime.persistence.setActiveCloudProjectId(newActiveProjectId);
             runtime.persistence.setActiveCloudSchematicId(newActiveSchematicId);
+            restoreSelectionForSchematic(newActiveSchematicId);
             runtime.persistence.markClean();
           }
         } else {
@@ -560,6 +726,7 @@ export default function EditorIsland() {
               await runtime.persistence.openSchematicFromCloud(firstSchem.id);
               setActiveSchematicId(firstSchem.id);
               runtime.persistence.setActiveCloudSchematicId(firstSchem.id);
+              restoreSelectionForSchematic(firstSchem.id);
             }
           }
         }
@@ -573,10 +740,32 @@ export default function EditorIsland() {
         console.error('Error during post-auth migration/load:', err);
       }
     },
-    [pendingAuthAction, workspaceProjects, activeProjectId, activeSchematicId, performCloudSave, runtime],
+    [
+      pendingAuthAction,
+      workspaceProjects,
+      activeProjectId,
+      activeSchematicId,
+      regionPos1,
+      regionPos2,
+      regionBounds,
+      selectedVoxel,
+      selectedPlacementId,
+      restoreSelectionForSchematic,
+      performCloudSave,
+      runtime,
+    ],
   );
 
   const handleSignOut = useCallback(async () => {
+    if (activeSchematicId && currentSchematicForSelectionRef.current === activeSchematicId) {
+      saveSchematicSelection(activeSchematicId, {
+        pos1: regionPos1,
+        pos2: regionPos2,
+        bounds: regionBounds,
+        selectedVoxel,
+        selectedPlacementId,
+      });
+    }
     await logout();
     setAuthUser(null);
     guestBuffersRef.current.clear();
@@ -586,13 +775,19 @@ export default function EditorIsland() {
     setWorkspaceProjects(createDefaultGuestProjects());
     setActiveProjectId(DEFAULT_GUEST_PROJECT_ID);
     setActiveSchematicId(DEFAULT_GUEST_SCHEMATIC_ID);
-    setRegionPos1(null);
-    setRegionPos2(null);
-    setRegionPickMode(null);
-    setRegionBounds(null);
+    restoreSelectionForSchematic(DEFAULT_GUEST_SCHEMATIC_ID);
     const emptyProj = createEmptyProjectDocument('untitled.schem');
     await runtime.persistence.replaceProjectInSession(emptyProj);
-  }, [runtime]);
+  }, [
+    activeSchematicId,
+    regionPos1,
+    regionPos2,
+    regionBounds,
+    selectedVoxel,
+    selectedPlacementId,
+    restoreSelectionForSchematic,
+    runtime,
+  ]);
 
   // Explorer Handlers
   const handleSelectSchematic = useCallback(
@@ -602,6 +797,16 @@ export default function EditorIsland() {
       isSwitchingSchematicRef.current = true;
 
       try {
+        if (activeSchematicId && currentSchematicForSelectionRef.current === activeSchematicId) {
+          saveSchematicSelection(activeSchematicId, {
+            pos1: regionPos1,
+            pos2: regionPos2,
+            bounds: regionBounds,
+            selectedVoxel,
+            selectedPlacementId,
+          });
+        }
+
         if (!authUser) {
           if (activeSchematicId) {
             guestBuffersRef.current.set(
@@ -631,12 +836,7 @@ export default function EditorIsland() {
           await runtime.persistence.replaceProjectInSession(nextProj);
           setActiveProjectId(projectId);
           setActiveSchematicId(schematicId);
-          setSelectedPlacementId(null);
-          setSelectedVoxel(null);
-          setRegionPos1(null);
-          setRegionPos2(null);
-          setRegionPickMode(null);
-          setRegionBounds(null);
+          restoreSelectionForSchematic(schematicId);
         } else {
           if (runtime.persistence.isDirty() && activeSchematicId) {
             const shouldSave = confirm('You have unsaved changes. Save before switching?');
@@ -649,18 +849,24 @@ export default function EditorIsland() {
           setActiveSchematicId(schematicId);
           runtime.persistence.setActiveCloudProjectId(projectId);
           runtime.persistence.setActiveCloudSchematicId(schematicId);
-          setSelectedPlacementId(null);
-          setSelectedVoxel(null);
-          setRegionPos1(null);
-          setRegionPos2(null);
-          setRegionPickMode(null);
-          setRegionBounds(null);
+          restoreSelectionForSchematic(schematicId);
         }
       } finally {
         isSwitchingSchematicRef.current = false;
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, runtime],
+    [
+      authUser,
+      activeSchematicId,
+      regionPos1,
+      regionPos2,
+      regionBounds,
+      selectedVoxel,
+      selectedPlacementId,
+      workspaceProjects,
+      restoreSelectionForSchematic,
+      runtime,
+    ],
   );
 
   const handleCreateProject = useCallback(
@@ -745,6 +951,13 @@ export default function EditorIsland() {
 
   const handleDeleteProject = useCallback(
     async (projectId: string) => {
+      const projToDelete = workspaceProjects.find((p) => p.id === projectId);
+      if (projToDelete) {
+        for (const s of projToDelete.schematics) {
+          deleteSchematicState(s.id);
+        }
+      }
+
       if (!authUser) {
         const remainingProjects = workspaceProjects.filter((p) => p.id !== projectId);
         setWorkspaceProjects(remainingProjects);
@@ -756,6 +969,7 @@ export default function EditorIsland() {
           } else {
             setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
             setActiveSchematicId(null);
+            restoreSelectionForSchematic(null);
             const emptyProj = createEmptyProjectDocument('untitled.schem');
             await runtime.persistence.replaceProjectInSession(emptyProj);
           }
@@ -776,6 +990,7 @@ export default function EditorIsland() {
             setActiveSchematicId(nextSchem.id);
             runtime.persistence.setActiveCloudProjectId(nextSchem.projectId);
             runtime.persistence.setActiveCloudSchematicId(nextSchem.id);
+            restoreSelectionForSchematic(nextSchem.id);
           } else {
             setActiveProjectId(remainingProjects.length > 0 ? remainingProjects[0].id : null);
             setActiveSchematicId(null);
@@ -783,6 +998,7 @@ export default function EditorIsland() {
               remainingProjects.length > 0 ? remainingProjects[0].id : null,
             );
             runtime.persistence.setActiveCloudSchematicId(null);
+            restoreSelectionForSchematic(null);
             const emptyProj = createEmptyProjectDocument('untitled.schem');
             await runtime.persistence.replaceProjectInSession(emptyProj);
             if (remainingProjects.length === 0) {
@@ -803,7 +1019,7 @@ export default function EditorIsland() {
         }
       }
     },
-    [authUser, workspaceProjects, activeProjectId, activeSchematicId, handleSelectSchematic, runtime],
+    [authUser, workspaceProjects, activeProjectId, activeSchematicId, handleSelectSchematic, restoreSelectionForSchematic, runtime],
   );
 
   const handleCreateSchematic = useCallback(
@@ -836,6 +1052,7 @@ export default function EditorIsland() {
         await runtime.persistence.replaceProjectInSession(emptyProject);
         setActiveProjectId(projectId);
         setActiveSchematicId(newId);
+        restoreSelectionForSchematic(newId);
       } else {
         if (runtime.persistence.isDirty() && activeSchematicId) {
           const shouldSave = confirm(
@@ -869,6 +1086,7 @@ export default function EditorIsland() {
         await runtime.persistence.replaceProjectInSession(emptyProject);
         setActiveProjectId(projectId);
         setActiveSchematicId(tempId);
+        restoreSelectionForSchematic(tempId);
         runtime.persistence.setActiveCloudProjectId(projectId);
         runtime.persistence.setActiveCloudSchematicId(tempId);
 
@@ -878,6 +1096,8 @@ export default function EditorIsland() {
             revision: 1,
             placementCount: 0,
           });
+          copySchematicState(tempId, newSchem.id);
+          deleteSchematicState(tempId);
           setWorkspaceProjects((prev) =>
             prev.map((p) =>
               p.id === projectId
@@ -890,6 +1110,7 @@ export default function EditorIsland() {
           );
           setActiveSchematicId((prev) => (prev === tempId ? newSchem.id : prev));
           runtime.persistence.setActiveCloudSchematicId(newSchem.id);
+          restoreSelectionForSchematic(newSchem.id);
         } catch (err) {
           setWorkspaceProjects(prevProjects);
           setActiveProjectId(prevActiveProjId);
@@ -900,7 +1121,7 @@ export default function EditorIsland() {
         }
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, activeProjectId, runtime],
+    [authUser, activeSchematicId, workspaceProjects, activeProjectId, restoreSelectionForSchematic, runtime],
   );
 
   const handleRenameSchematic = useCallback(
@@ -949,6 +1170,7 @@ export default function EditorIsland() {
 
   const handleDeleteSchematic = useCallback(
     async (schematicId: string) => {
+      deleteSchematicState(schematicId);
       if (!authUser) {
         guestBuffersRef.current.delete(schematicId);
         const updatedProjects = workspaceProjects.map((p) => ({
@@ -966,6 +1188,7 @@ export default function EditorIsland() {
             const empty = createEmptyProjectDocument('untitled.schem');
             await runtime.persistence.replaceProjectInSession(empty);
             setActiveSchematicId(null);
+            restoreSelectionForSchematic(null);
           }
         }
       } else {
@@ -987,9 +1210,11 @@ export default function EditorIsland() {
             setActiveSchematicId(next.id);
             runtime.persistence.setActiveCloudProjectId(next.projectId);
             runtime.persistence.setActiveCloudSchematicId(next.id);
+            restoreSelectionForSchematic(next.id);
           } else {
             setActiveSchematicId(null);
             runtime.persistence.setActiveCloudSchematicId(null);
+            restoreSelectionForSchematic(null);
             const empty = createEmptyProjectDocument('untitled.schem');
             await runtime.persistence.replaceProjectInSession(empty);
             if (updatedProjects.length === 0) {
@@ -1010,7 +1235,7 @@ export default function EditorIsland() {
         }
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, activeProjectId, handleSelectSchematic, runtime],
+    [authUser, activeSchematicId, workspaceProjects, activeProjectId, handleSelectSchematic, restoreSelectionForSchematic, runtime],
   );
 
   // Shortcut Ctrl+S / Cmd+S
@@ -1029,13 +1254,8 @@ export default function EditorIsland() {
 
   const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
   const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
-  const [selectedVoxel, setSelectedVoxel] = useState<VoxelHit | null>(null);
-  const [regionPos1, setRegionPos1] = useState<Vec3i | null>(null);
-  const [regionPos2, setRegionPos2] = useState<Vec3i | null>(null);
-  const [regionPickMode, setRegionPickMode] = useState<'pos1' | 'pos2' | null>(null);
-  const [regionBounds, setRegionBounds] = useState<Bounds3i | null>(null);
+  const [hasRegionClipboard, setHasRegionClipboard] = useState<boolean>(false);
   const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
-  const [nudgeStep, setNudgeStep] = useState<1 | 16>(1);
 
   // Crash recovery check on mount
   useEffect(() => {
@@ -1145,10 +1365,6 @@ export default function EditorIsland() {
     };
   }, [importState]);
 
-  const [selectedPlacementId, setSelectedPlacementId] = useState<string | null>(
-    () => runtime.workspace.inspector.context().selectedPlacementId
-  );
-
   const handleSelectPlacement = useCallback(
     (id: string | null) => {
       runtime.workspace.selectPlacement(id);
@@ -1184,13 +1400,6 @@ export default function EditorIsland() {
       setSelectedPlacementId(nextId);
     }
   }, [sessionState.project.placements, selectedPlacementId, runtime]);
-
-  const [activeOverlays, setActiveOverlays] = useState({
-    chunk: false,
-    section: false,
-    block: false,
-    conflicts: true,
-  });
 
   const handleToggleOverlay = useCallback(
     (overlay: 'chunk' | 'section' | 'block' | 'conflicts') => {
@@ -1296,6 +1505,111 @@ export default function EditorIsland() {
   const handleCancelRegionPick = useCallback(() => {
     setRegionPickMode(null);
   }, []);
+
+  const handleRegionFill = useCallback(
+    (blockId: string) => {
+      if (!regionBounds) return;
+      const block = toBlockStateId(blockId);
+      void runtime.store.execute({
+        type: 'region:fill',
+        bounds: regionBounds,
+        block,
+      });
+    },
+    [regionBounds, runtime]
+  );
+
+  const handleRegionReplace = useCallback(
+    (fromId: string, toId: string) => {
+      if (!regionBounds) return;
+      const parsedFrom = toBlockStateId(fromId);
+      const replacement = toBlockStateId(toId);
+      const hasProps = Object.keys(parsedFrom.props).length > 0;
+      const matcher = hasProps
+        ? { mode: 'exact' as const, blockId: parsedFrom.id, properties: parsedFrom.props }
+        : { mode: 'block-id-only' as const, blockId: parsedFrom.id };
+      void runtime.store.execute({
+        type: 'region:replace',
+        bounds: regionBounds,
+        matcher,
+        replacement,
+        preserveProperties: false,
+      });
+    },
+    [regionBounds, runtime]
+  );
+
+  const handleRegionWalls = useCallback(
+    (blockId: string) => {
+      if (!regionBounds) return;
+      const wallBlock = toBlockStateId(blockId);
+      void runtime.store.execute({
+        type: 'region:walls',
+        bounds: regionBounds,
+        wallBlock,
+        fillInterior: null,
+        includeTop: true,
+        includeBottom: true,
+      });
+    },
+    [regionBounds, runtime]
+  );
+
+  const handleRegionHollow = useCallback(() => {
+    if (!regionBounds) return;
+    void runtime.store.execute({
+      type: 'region:hollow',
+      bounds: regionBounds,
+      shellThickness: 1,
+    });
+  }, [regionBounds, runtime]);
+
+  const handleRegionCopy = useCallback(() => {
+    if (!regionBounds) return;
+    void runtime.store.execute({
+      type: 'clipboard:copy',
+      selection: {
+        kind: 'cuboid',
+        bounds: regionBounds,
+      },
+      scope: 'effective-composite',
+    }).then((res) => {
+      if (res.ok) {
+        setHasRegionClipboard(true);
+      }
+    });
+  }, [regionBounds, runtime]);
+
+  const handleRegionCut = useCallback(() => {
+    if (!regionBounds) return;
+    void runtime.store.execute({
+      type: 'clipboard:cut',
+      selection: {
+        kind: 'cuboid',
+        bounds: regionBounds,
+      },
+    }).then((res) => {
+      if (res.ok) {
+        setHasRegionClipboard(true);
+      }
+    });
+  }, [regionBounds, runtime]);
+
+  const handleRegionPaste = useCallback(() => {
+    if (!regionBounds) return;
+    void runtime.store.execute({
+      type: 'clipboard:paste',
+      targetPosition: regionBounds.min,
+    });
+  }, [regionBounds, runtime]);
+
+  const handleRegionDelete = useCallback(() => {
+    if (!regionBounds) return;
+    void runtime.store.execute({
+      type: 'region:delete',
+      bounds: regionBounds,
+    });
+  }, [regionBounds, runtime]);
 
   const handleVoxelClick = useCallback(
     (hit: VoxelHit, event: React.MouseEvent) => {
@@ -1496,6 +1810,16 @@ export default function EditorIsland() {
               onSetPos2FromSelectedVoxel={handleSetPos2FromSelectedVoxel}
               onClearRegionSelection={handleClearRegionSelection}
               onCancelRegionPick={handleCancelRegionPick}
+              onRegionFill={handleRegionFill}
+              onRegionReplace={handleRegionReplace}
+              onRegionWalls={handleRegionWalls}
+              onRegionHollow={handleRegionHollow}
+              onRegionCopy={handleRegionCopy}
+              onRegionCut={handleRegionCut}
+              onRegionPaste={handleRegionPaste}
+              onRegionDelete={handleRegionDelete}
+              hasRegionClipboard={hasRegionClipboard}
+              defaultBlockId={selectedVoxel?.state?.id || 'minecraft:stone'}
             />
           </div>
         }
@@ -1545,8 +1869,10 @@ export default function EditorIsland() {
               setActiveProjectId(currentCloudId);
               const foundProj = tree.find((p) => p.id === currentCloudId);
               if (foundProj && foundProj.schematics.length > 0) {
-                setActiveSchematicId(foundProj.schematics[0].id);
-                runtime.persistence.setActiveCloudSchematicId(foundProj.schematics[0].id);
+                const nextSchemId = foundProj.schematics[0].id;
+                setActiveSchematicId(nextSchemId);
+                runtime.persistence.setActiveCloudSchematicId(nextSchemId);
+                restoreSelectionForSchematic(nextSchemId);
               }
             }
           } catch (err) {
@@ -1573,6 +1899,7 @@ export default function EditorIsland() {
           setActiveSchematicId(cloudSchem.id);
           runtime.persistence.setActiveCloudProjectId(cloudProj.id);
           runtime.persistence.setActiveCloudSchematicId(cloudSchem.id);
+          restoreSelectionForSchematic(cloudSchem.id);
           runtime.persistence.markClean();
           setIsFirstProjectOpen(false);
           if (thenImport) {

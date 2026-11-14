@@ -19,6 +19,8 @@ import {
   buildConflictOverlayGroup,
   type GridBordersPrefs,
 } from './overlays-builder.ts';
+import { isRayHoveringRegion, intersectRayAABB } from './region-hit.ts';
+import { RegionContextMenu } from './RegionContextMenu.tsx';
 
 export interface GhostPreviewSpec {
   bounds: Bounds3i;
@@ -92,49 +94,6 @@ function makeAlignmentPoint(
   return [u, v, alignVal];
 }
 
-function intersectRayAABB(
-  orig: [number, number, number],
-  dir: [number, number, number],
-  bounds: Bounds3i
-): { minT: number; maxT: number } | null {
-  if (
-    bounds.min[0] >= bounds.maxExclusive[0] ||
-    bounds.min[1] >= bounds.maxExclusive[1] ||
-    bounds.min[2] >= bounds.maxExclusive[2]
-  ) {
-    return null;
-  }
-
-  let tMin = -Infinity;
-  let tMax = Infinity;
-
-  for (let i = 0; i < 3; i++) {
-    const o = orig[i];
-    const d = dir[i];
-    const minVal = bounds.min[i];
-    const maxVal = bounds.maxExclusive[i];
-
-    if (Math.abs(d) < 1e-8) {
-      if (o < minVal || o > maxVal) return null;
-    } else {
-      const invD = 1 / d;
-      let t1 = (minVal - o) * invD;
-      let t2 = (maxVal - o) * invD;
-      if (t1 > t2) {
-        const tmp = t1;
-        t1 = t2;
-        t2 = tmp;
-      }
-      tMin = Math.max(tMin, t1);
-      tMax = Math.min(tMax, t2);
-      if (tMin > tMax) return null;
-    }
-  }
-
-  if (tMax < 0) return null;
-  return { minT: Math.max(0, tMin), maxT: tMax };
-}
-
 function isSameVoxelHit(a: VoxelHit | null, b: VoxelHit | null): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
@@ -206,6 +165,16 @@ export interface ViewportCanvasProps {
   onSetPos2FromSelectedVoxel?: () => void;
   onClearRegionSelection?: () => void;
   onCancelRegionPick?: () => void;
+  onRegionFill?: (blockId: string) => void;
+  onRegionReplace?: (fromId: string, toId: string) => void;
+  onRegionWalls?: (blockId: string) => void;
+  onRegionHollow?: () => void;
+  onRegionCopy?: () => void;
+  onRegionCut?: () => void;
+  onRegionPaste?: () => void;
+  onRegionDelete?: () => void;
+  hasRegionClipboard?: boolean;
+  defaultBlockId?: string;
 }
 
 export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
@@ -234,6 +203,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   onSetPos2FromSelectedVoxel,
   onClearRegionSelection,
   onCancelRegionPick,
+  onRegionFill,
+  onRegionReplace,
+  onRegionWalls,
+  onRegionHollow,
+  onRegionCopy,
+  onRegionCut,
+  onRegionPaste,
+  onRegionDelete,
+  hasRegionClipboard = false,
+  defaultBlockId = 'minecraft:stone',
 }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -263,6 +242,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   selectedToolRef.current = selectedTool;
   const shiftKeyRef = useRef<boolean>(false);
   const [sessionRevision, setSessionRevision] = useState<number>(() => session.peekProject().revision);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!regionBounds) {
+      setContextMenuPos(null);
+    }
+  }, [regionBounds]);
 
   // Overlay root groups
   const placementBoundsGroupRef = useRef<THREE.Group | null>(null);
@@ -1809,6 +1795,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   );
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (contextMenuPos !== null) {
+      setContextMenuPos(null);
+    }
     if (isGizmoDraggingRef.current || (transformCtrlRef.current && (transformCtrlRef.current as any).axis)) {
       if (hoverHighlightRef.current) {
         hoverHighlightRef.current.visible = false;
@@ -1910,6 +1899,51 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       (e.target as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
       // Ignored if pointer was not captured
+    }
+
+    if (e.button === 2) {
+      const dist = Math.hypot(
+        e.clientX - pointerDownPosRef.current.x,
+        e.clientY - pointerDownPosRef.current.y
+      );
+      if (dist <= 5 && regionBoundsRef.current) {
+        const canvas = canvasRef.current;
+        const camera = cameraRef.current;
+        if (canvas && camera) {
+          const rect = canvas.getBoundingClientRect();
+          const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+          const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+          const raycaster = new THREE.Raycaster();
+          raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+          const rayOrigin: [number, number, number] = [
+            raycaster.ray.origin.x,
+            raycaster.ray.origin.y,
+            raycaster.ray.origin.z,
+          ];
+          const rayDir: [number, number, number] = [
+            raycaster.ray.direction.x,
+            raycaster.ray.direction.y,
+            raycaster.ray.direction.z,
+          ];
+
+          const hit = performRaycast(e.clientX, e.clientY);
+          const solidHit = hit && hit.placementId !== null ? hit : null;
+          const hovering = isRayHoveringRegion(
+            rayOrigin,
+            rayDir,
+            regionBoundsRef.current,
+            solidHit ? solidHit.distance : null,
+            solidHit ? solidHit.position : null
+          );
+
+          if (hovering) {
+            const containerRect = containerRef.current?.getBoundingClientRect();
+            const menuX = containerRect ? e.clientX - containerRect.left : e.clientX;
+            const menuY = containerRect ? e.clientY - containerRect.top : e.clientY;
+            setContextMenuPos({ x: menuX, y: menuY });
+          }
+        }
+      }
     }
   };
 
@@ -2679,6 +2713,29 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           {/* Empty flex body reserved for future tools */}
           <div style={{ flex: 1 }} />
         </div>
+      )}
+
+      {/* Region Right-Click Context Menu */}
+      {contextMenuPos && regionBounds && (
+        <RegionContextMenu
+          x={contextMenuPos.x}
+          y={contextMenuPos.y}
+          containerWidth={containerRef.current?.clientWidth || 800}
+          containerHeight={containerRef.current?.clientHeight || 600}
+          bounds={regionBounds}
+          defaultBlockId={defaultBlockId}
+          hasClipboard={hasRegionClipboard}
+          onFill={(blockId) => onRegionFill?.(blockId)}
+          onReplace={(fromId, toId) => onRegionReplace?.(fromId, toId)}
+          onWalls={(blockId) => onRegionWalls?.(blockId)}
+          onHollow={() => onRegionHollow?.()}
+          onCopy={() => onRegionCopy?.()}
+          onCut={() => onRegionCut?.()}
+          onPaste={() => onRegionPaste?.()}
+          onDelete={() => onRegionDelete?.()}
+          onDeselect={() => onClearRegionSelection?.()}
+          onClose={() => setContextMenuPos(null)}
+        />
       )}
     </div>
   );
