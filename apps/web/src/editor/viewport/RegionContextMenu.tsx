@@ -12,6 +12,7 @@ export interface RegionContextMenuProps {
   bounds: Bounds3i;
   defaultBlockId?: string;
   hasClipboard?: boolean;
+  regionCount?: number;
   onFill: (blockId: string) => void;
   onReplace: (fromId: string, toId: string) => void;
   onWalls: (blockId: string) => void;
@@ -21,6 +22,7 @@ export interface RegionContextMenuProps {
   onPaste: () => void;
   onDelete: () => void;
   onDeselect: () => void;
+  onDeselectAll?: () => void;
   onClose: () => void;
 }
 
@@ -34,6 +36,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
   bounds,
   defaultBlockId = 'minecraft:stone',
   hasClipboard = false,
+  regionCount = 0,
   onFill,
   onReplace,
   onWalls,
@@ -43,6 +46,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
   onPaste,
   onDelete,
   onDeselect,
+  onDeselectAll,
   onClose,
 }) => {
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -83,8 +87,9 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
   const totalVolume = dx * dy * dz;
 
   // Clamping to stay inside the viewport container
+  const hasMultiple = regionCount > 1 && !!onDeselectAll;
   const estimatedMenuWidth = 260;
-  const estimatedMenuHeight = inlineMode === 'none' ? 360 : 420;
+  const estimatedMenuHeight = inlineMode === 'none' ? (hasMultiple ? 395 : 360) : 420;
   const clampedX = Math.max(8, Math.min(x, containerWidth - estimatedMenuWidth - 8));
   const clampedY = Math.max(8, Math.min(y, containerHeight - estimatedMenuHeight - 8));
 
@@ -467,7 +472,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
       {/* Divider */}
       <div style={{ height: '1px', backgroundColor: '#2a2f3a', margin: '4px 0' }} />
 
-      {/* Deselect */}
+      {/* Deselect Region */}
       <div style={{ padding: '0 4px' }}>
         <button
           type="button"
@@ -492,6 +497,34 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           </span>
         </button>
       </div>
+
+      {/* Deselect All (when regionCount > 1) */}
+      {regionCount > 1 && onDeselectAll && (
+        <div style={{ padding: '0 4px' }}>
+          <button
+            type="button"
+            onClick={() => {
+              onDeselectAll();
+              onClose();
+            }}
+            style={{
+              ...menuItemStyle,
+              color: '#94a3b8',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" strokeDasharray="3 3" />
+                <path d="m15 9-6 6" />
+                <path d="m9 9 6 6" />
+              </svg>
+              Deselect All ({regionCount})
+            </span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

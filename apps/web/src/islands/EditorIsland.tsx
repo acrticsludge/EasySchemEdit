@@ -246,8 +246,8 @@ export default function EditorIsland() {
         const p2 = activeReg ? activeReg.pos2 : saved.pos2;
         const bounds = activeReg ? activeReg.bounds : saved.bounds;
 
-        setRegionPos1(p1);
-        setRegionPos2(p2);
+        setRegionPos1(loadedRegions.length > 0 ? null : p1);
+        setRegionPos2(loadedRegions.length > 0 ? null : p2);
         setRegionPickMode(null);
         setRegionBounds(bounds);
         setSelectedVoxel(saved.selectedVoxel);
@@ -1513,8 +1513,8 @@ export default function EditorIsland() {
         min: [minX, minY, minZ],
         maxExclusive: [maxX + 1, maxY + 1, maxZ + 1],
       };
-      setRegionPos1(p1);
-      setRegionPos2(p2);
+      setRegionPos1(null);
+      setRegionPos2(null);
       setRegionBounds(bounds);
 
       void runtime.store.execute({
@@ -1526,31 +1526,28 @@ export default function EditorIsland() {
       });
 
       setSavedRegions((prev) => {
-        const isAdding = addingNewRegionRef.current || !activeRegionId;
         addingNewRegionRef.current = false;
-
-        if (isAdding) {
-          const nextNum = prev.length + 1;
-          const newId = `region-${Date.now()}-${nextNum}`;
-          const newReg: SavedRegion = {
-            id: newId,
-            name: `R${nextNum}`,
-            pos1: p1,
-            pos2: p2,
-            bounds,
-          };
-          setActiveRegionId(newId);
-          return [...prev, newReg];
-        }
-
-        return prev.map((r) =>
-          r.id === activeRegionId
-            ? { ...r, pos1: p1, pos2: p2, bounds }
-            : r
-        );
+        const existingNums = prev
+          .map((r) => {
+            const m = /^R(\d+)$/.exec(r.name);
+            return m ? parseInt(m[1]!, 10) : 0;
+          })
+          .filter((n) => !isNaN(n) && n > 0);
+        const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+        const nextNum = Math.max(prev.length + 1, maxNum + 1);
+        const newId = `region-${Date.now()}-${nextNum}`;
+        const newReg: SavedRegion = {
+          id: newId,
+          name: `R${nextNum}`,
+          pos1: p1,
+          pos2: p2,
+          bounds,
+        };
+        setActiveRegionId(newId);
+        return [...prev, newReg];
       });
     },
-    [runtime, activeRegionId]
+    [runtime]
   );
 
   const handleAddNewRegion = useCallback(() => {
@@ -1566,8 +1563,8 @@ export default function EditorIsland() {
       const target = savedRegions.find((r) => r.id === regionId);
       if (!target) return;
       setActiveRegionId(target.id);
-      setRegionPos1(target.pos1);
-      setRegionPos2(target.pos2);
+      setRegionPos1(null);
+      setRegionPos2(null);
       setRegionBounds(target.bounds);
       setRegionPickMode(null);
       addingNewRegionRef.current = false;
@@ -1598,8 +1595,8 @@ export default function EditorIsland() {
           const nextActive = remaining[remaining.length - 1] ?? null;
           if (nextActive) {
             setActiveRegionId(nextActive.id);
-            setRegionPos1(nextActive.pos1);
-            setRegionPos2(nextActive.pos2);
+            setRegionPos1(null);
+            setRegionPos2(null);
             setRegionBounds(nextActive.bounds);
             const minX = Math.min(nextActive.pos1[0], nextActive.pos2[0]);
             const maxX = Math.max(nextActive.pos1[0], nextActive.pos2[0]);
@@ -1646,11 +1643,11 @@ export default function EditorIsland() {
   const handleSetPos1FromSelectedVoxel = useCallback(() => {
     if (!selectedVoxel) return;
     const pos = selectedVoxel.position;
-    setRegionPos1(pos);
     if (regionPos2) {
       applyCuboidSelection(pos, regionPos2);
       setRegionPickMode(null);
     } else {
+      setRegionPos1(pos);
       setRegionPickMode('pos2');
     }
   }, [selectedVoxel, regionPos2, applyCuboidSelection]);
@@ -1658,11 +1655,11 @@ export default function EditorIsland() {
   const handleSetPos2FromSelectedVoxel = useCallback(() => {
     if (!selectedVoxel) return;
     const pos = selectedVoxel.position;
-    setRegionPos2(pos);
     if (regionPos1) {
       applyCuboidSelection(regionPos1, pos);
       setRegionPickMode(null);
     } else {
+      setRegionPos2(pos);
       setRegionPickMode('pos1');
     }
   }, [selectedVoxel, regionPos1, applyCuboidSelection]);
@@ -1677,14 +1674,22 @@ export default function EditorIsland() {
     void runtime.store.execute({ type: 'selection:clear' });
   }, [runtime]);
 
+  const handleDeselectActiveRegion = useCallback(() => {
+    if (activeRegionId) {
+      handleRemoveRegion(activeRegionId);
+    } else {
+      handleClearRegionSelection();
+    }
+  }, [activeRegionId, handleRemoveRegion, handleClearRegionSelection]);
+
   const handleCancelRegionPick = useCallback(() => {
     setRegionPickMode(null);
+    setRegionPos1(null);
+    setRegionPos2(null);
     if (addingNewRegionRef.current) {
       addingNewRegionRef.current = false;
       const currentActive = savedRegions.find((r) => r.id === activeRegionId);
       if (currentActive) {
-        setRegionPos1(currentActive.pos1);
-        setRegionPos2(currentActive.pos2);
         setRegionBounds(currentActive.bounds);
       }
     }
@@ -1850,9 +1855,10 @@ export default function EditorIsland() {
       }
 
       if (regionPickMode === 'pos2' && hit) {
-        setRegionPos2(hit.position);
         if (regionPos1) {
           applyCuboidSelection(regionPos1, hit.position);
+        } else {
+          setRegionPos2(hit.position);
         }
         setRegionPickMode(null);
         setSelectedVoxel(hit);
@@ -1860,9 +1866,10 @@ export default function EditorIsland() {
       }
 
       if (regionPickMode === 'pos1' && hit) {
-        setRegionPos1(hit.position);
         if (regionPos2) {
           applyCuboidSelection(hit.position, regionPos2);
+        } else {
+          setRegionPos1(hit.position);
         }
         setRegionPickMode(null);
         setSelectedVoxel(hit);
@@ -2042,6 +2049,7 @@ export default function EditorIsland() {
               onSelectRegion={handleSelectRegion}
               onAddNewRegion={handleAddNewRegion}
               onRemoveRegion={handleRemoveRegion}
+              onDeselectActiveRegion={handleDeselectActiveRegion}
               clipboardEntries={clipboardEntries}
               activePasteEntryId={activePasteEntryId}
               onSelectPasteEntry={setActivePasteEntryId}

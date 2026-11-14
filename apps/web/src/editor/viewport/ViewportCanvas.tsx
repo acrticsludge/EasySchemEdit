@@ -178,6 +178,7 @@ export interface ViewportCanvasProps {
   onSetPos1FromSelectedVoxel?: () => void;
   onSetPos2FromSelectedVoxel?: () => void;
   onClearRegionSelection?: () => void;
+  onDeselectActiveRegion?: () => void;
   onCancelRegionPick?: () => void;
   onRegionFill?: (blockId: string) => void;
   onRegionReplace?: (fromId: string, toId: string) => void;
@@ -227,6 +228,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   onSetPos1FromSelectedVoxel,
   onSetPos2FromSelectedVoxel,
   onClearRegionSelection,
+  onDeselectActiveRegion,
   onCancelRegionPick,
   onRegionFill,
   onRegionReplace,
@@ -3046,6 +3048,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           bounds={(contextMenuBounds || regionBounds)!}
           defaultBlockId={defaultBlockId}
           hasClipboard={hasRegionClipboard}
+          regionCount={savedRegions?.length ?? 0}
           onFill={(blockId) => onRegionFill?.(blockId)}
           onReplace={(fromId, toId) => onRegionReplace?.(fromId, toId)}
           onWalls={(blockId) => onRegionWalls?.(blockId)}
@@ -3054,7 +3057,24 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           onCut={() => onRegionCut?.()}
           onPaste={() => onRegionPaste?.()}
           onDelete={() => onRegionDelete?.()}
-          onDeselect={() => onClearRegionSelection?.()}
+          onDeselect={() => {
+            if (onDeselectActiveRegion) {
+              onDeselectActiveRegion();
+            } else {
+              onClearRegionSelection?.();
+            }
+            setContextMenuPos(null);
+            setContextMenuBounds(null);
+          }}
+          onDeselectAll={
+            savedRegions && savedRegions.length > 1
+              ? () => {
+                  onClearRegionSelection?.();
+                  setContextMenuPos(null);
+                  setContextMenuBounds(null);
+                }
+              : undefined
+          }
           onClose={() => {
             setContextMenuPos(null);
             setContextMenuBounds(null);
