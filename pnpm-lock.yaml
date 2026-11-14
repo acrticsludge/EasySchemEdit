@@ -59,6 +59,9 @@ importers:
       '@easyschemedit/workers':
         specifier: workspace:*
         version: link:../../packages/workers
+      '@neondatabase/serverless':
+        specifier: ^1.2.1
+        version: 1.2.1
       astro:
         specifier: ^5.0.0
         version: 5.18.2(@types/node@26.6.6)(rollup@4.68.2)(typescript@5.9.3)
@@ -84,6 +87,9 @@ importers:
       '@types/three':
         specifier: ^0.187.0
         version: 0.187.0
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
@@ -1154,6 +1160,10 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
+
+  '@neondatabase/serverless@1.2.1':
+    resolution: {integrity: sha512-PI2JjuyEFE7oZDTkV/s6WP4KEceCwnjQHClfunhysuIATtvcVTBLdA4UgHTnJo7C0mkK+OZ6U7SV1NDnYa0HgA==}
+    engines: {node: '>=19.0.0'}
 
   '@oslojs/encoding@1.1.0':
     resolution: {integrity: sha512-70wQhgYmndg4GCPxPPxPGevRKqTIJ2Nh4OkiMWmDAVYsTQ+Ta7Sq+rPevXyXGdzr30/qZBnyOalCszoMxlyldQ==}
@@ -3582,6 +3592,8 @@ snapshots:
       zod-to-json-schema: 3.25.2(zod@3.25.76)
     transitivePeerDependencies:
       - supports-color
+
+  '@neondatabase/serverless@1.2.1': {}
 
   '@oslojs/encoding@1.1.0': {}
 

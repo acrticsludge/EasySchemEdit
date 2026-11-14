@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import LoginPageIsland from '../islands/LoginPageIsland.tsx';
+
+const title = 'Sign In — EasySchemEdit';
+---
+
+<BaseLayout title={title}>
+  <main class="login-shell">
+    <LoginPageIsland client:load />
+  </main>
+</BaseLayout>
+
+<style>
+  .login-shell {
+    height: 100dvh;
+    width: 100vw;
+    margin: 0;
+    padding: 16px;
+    overflow-y: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+  }
+</style>

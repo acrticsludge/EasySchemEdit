@@ -14,6 +14,7 @@ import {
   ImportDialog,
   ExportDialog,
   BakeDialog,
+  ProjectDialog,
   MaterialListPanel,
   ConflictsPanel,
   useImportWorkflow,
@@ -21,6 +22,8 @@ import {
   type VoxelHit,
 } from '../editor/index.ts';
 import { useEditorSession } from '../editor/session-store.ts';
+import { getMe, logout, type AuthUser } from '../client/auth-client.ts';
+import { LoginModal } from '../components/LoginModal.tsx';
 
 export default function EditorIsland() {
   const runtime = useMemo(() => createEditorRuntime(), []);
@@ -38,6 +41,120 @@ export default function EditorIsland() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isBakeOpen, setIsBakeOpen] = useState(false);
+  const [isProjectsOpen, setIsProjectsOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [pendingAuthAction, setPendingAuthAction] = useState<'save' | 'projects' | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [, setDirtyVersion] = useState(0);
+
+  // Check current session on mount (non-blocking)
+  useEffect(() => {
+    let active = true;
+    getMe()
+      .then((user) => {
+        if (active) setAuthUser(user);
+      })
+      .catch(() => {
+        if (active) setAuthUser(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const performCloudSave = useCallback(
+    async (userToUse?: AuthUser | null) => {
+      const user = userToUse !== undefined ? userToUse : authUser;
+      if (!user) {
+        setPendingAuthAction('save');
+        setIsLoginModalOpen(true);
+        return;
+      }
+
+      const proj = runtime.store.getSnapshot().project;
+      const isUntitled =
+        !proj.name || proj.name === 'Untitled Schematic' || proj.name === 'Untitled Project';
+      const hasNoCloudId = !runtime.persistence.getActiveCloudProjectId();
+
+      if (isUntitled && hasNoCloudId) {
+        setIsProjectsOpen(true);
+        return;
+      }
+
+      setIsSaving(true);
+      try {
+        const summary = await runtime.persistence.saveToCloud();
+        setDirtyVersion((v) => v + 1);
+        console.info(`Saved project "${summary.name}" to cloud.`);
+      } catch (err) {
+        console.error('Failed to save to cloud:', err);
+        if (err instanceof Error && err.message.toLowerCase().includes('unauthorized')) {
+          setAuthUser(null);
+          setPendingAuthAction('save');
+          setIsLoginModalOpen(true);
+        } else {
+          alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [authUser, runtime],
+  );
+
+  const handleSave = useCallback(() => {
+    if (!authUser) {
+      setPendingAuthAction('save');
+      setIsLoginModalOpen(true);
+    } else {
+      void performCloudSave(authUser);
+    }
+  }, [authUser, performCloudSave]);
+
+  const handleOpenProjects = useCallback(() => {
+    if (!authUser) {
+      setPendingAuthAction('projects');
+      setIsLoginModalOpen(true);
+    } else {
+      setIsProjectsOpen(true);
+    }
+  }, [authUser]);
+
+  const handleAuthSuccess = useCallback(
+    (user: AuthUser) => {
+      setAuthUser(user);
+      setIsLoginModalOpen(false);
+      const action = pendingAuthAction;
+      setPendingAuthAction(null);
+
+      if (action === 'save') {
+        void performCloudSave(user);
+      } else if (action === 'projects') {
+        setIsProjectsOpen(true);
+      }
+    },
+    [pendingAuthAction, performCloudSave],
+  );
+
+  const handleSignOut = useCallback(async () => {
+    await logout();
+    setAuthUser(null);
+  }, []);
+
+  // Shortcut Ctrl+S / Cmd+S
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSave]);
 
   const [hoveredBlockName, setHoveredBlockName] = useState<string | null>(null);
   const [cursorCoordinates, setCursorCoordinates] = useState<{ x: number; y: number; z: number } | null>(null);
@@ -329,7 +446,16 @@ export default function EditorIsland() {
         onImport={() => setIsImportOpen(true)}
         onExport={() => setIsExportOpen(true)}
         onBake={() => setIsBakeOpen(true)}
-        onSave={() => runtime.persistence.saveCurrentProject()}
+        onSave={handleSave}
+        onOpenProjects={handleOpenProjects}
+        isDirty={runtime.persistence.isDirty()}
+        isSaving={isSaving}
+        authUser={authUser}
+        onSignIn={() => {
+          setPendingAuthAction(null);
+          setIsLoginModalOpen(true);
+        }}
+        onSignOut={handleSignOut}
         hoveredBlockName={hoveredBlockName}
         cursorCoordinates={cursorCoordinates}
         nudgeStep={nudgeStep}
@@ -383,6 +509,27 @@ export default function EditorIsland() {
           onClose={() => setIsBakeOpen(false)}
         />
       )}
+
+      {/* Cloud Projects Modal */}
+      <ProjectDialog
+        controller={runtime.persistence}
+        isOpen={isProjectsOpen}
+        onClose={() => setIsProjectsOpen(false)}
+        onProjectLoaded={() => {
+          setSelectedPlacementId(null);
+          setSelectedVoxel(null);
+        }}
+      />
+
+      {/* Auth In-Editor Popup */}
+      <LoginModal
+        isOpen={isLoginModalOpen}
+        onClose={() => {
+          setIsLoginModalOpen(false);
+          setPendingAuthAction(null);
+        }}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }

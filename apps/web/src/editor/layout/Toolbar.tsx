@@ -5,6 +5,7 @@
 import React from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
+import type { AuthUser } from '../../client/auth-client.ts';
 
 export interface ToolbarProps {
   store: EditorSessionStore;
@@ -13,6 +14,12 @@ export interface ToolbarProps {
   onExport?: () => void;
   onBake?: () => void;
   onSave?: () => void;
+  onOpenProjects?: () => void;
+  isDirty?: boolean;
+  isSaving?: boolean;
+  authUser?: AuthUser | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
   activeOverlays?: {
     chunk?: boolean;
     section?: boolean;
@@ -43,6 +50,12 @@ export function Toolbar({
   onExport,
   onBake,
   onSave,
+  onOpenProjects,
+  isDirty = false,
+  isSaving = false,
+  authUser,
+  onSignIn,
+  onSignOut,
   activeOverlays = { chunk: false, section: false, block: false, conflicts: true },
   onToggleOverlay,
   className = '',
@@ -110,7 +123,7 @@ export function Toolbar({
             }}
             title={projectName}
           >
-            / {projectName}
+            / {projectName}{isDirty ? ' *' : ''}
           </span>
         </div>
 
@@ -199,10 +212,21 @@ export function Toolbar({
           <button
             type="button"
             onClick={onSave}
+            disabled={isSaving}
             style={actionButtonStyle}
             title="Save Project (Ctrl+S)"
           >
-            Save
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+        )}
+        {onOpenProjects && (
+          <button
+            type="button"
+            onClick={onOpenProjects}
+            style={actionButtonStyle}
+            title="Saved Cloud Projects"
+          >
+            Projects
           </button>
         )}
       </div>
@@ -274,6 +298,59 @@ export function Toolbar({
           onClick={() => onToggleOverlay?.('conflicts')}
           color="#ef4444"
         />
+
+        <div style={{ width: '1px', height: '18px', backgroundColor: '#333333', margin: '0 4px' }} />
+
+        {/* User Auth Info / Actions */}
+        {authUser ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                fontSize: '11px',
+                color: 'var(--color-text-secondary, #a8a8a8)',
+                maxWidth: '120px',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+              title={`Logged in as ${authUser.username}`}
+            >
+              👤 {authUser.username}
+            </span>
+            {onSignOut && (
+              <button
+                type="button"
+                onClick={onSignOut}
+                style={{
+                  ...actionButtonStyle,
+                  padding: '3px 7px',
+                  fontSize: '11px',
+                  color: 'var(--color-text-muted, #888888)',
+                }}
+                title="Sign Out"
+              >
+                Sign Out
+              </button>
+            )}
+          </div>
+        ) : (
+          onSignIn && (
+            <button
+              type="button"
+              onClick={onSignIn}
+              style={{
+                ...actionButtonStyle,
+                padding: '3px 8px',
+                fontSize: '11px',
+                color: 'var(--color-accent, #4a9eff)',
+                borderColor: 'var(--color-accent, #4a9eff)',
+              }}
+              title="Sign in to save and open cloud projects"
+            >
+              Sign In
+            </button>
+          )
+        )}
       </div>
     </header>
   );

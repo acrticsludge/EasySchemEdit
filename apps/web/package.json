@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Astro static app shell with React editor island for EasySchemEdit",
   "scripts": {
-    "build": "astro build && node -e \"import('node:fs').then(fs => { fs.rmSync('../../dist', { recursive: true, force: true }); fs.cpSync('dist', '../../dist', { recursive: true }); })\"",
+    "build": "astro build && node scripts/build-worker.mjs",
     "dev": "astro dev",
     "preview": "astro preview",
     "typecheck": "tsc --noEmit"
@@ -20,6 +20,7 @@
     "@easyschemedit/renderer": "workspace:*",
     "@easyschemedit/ui": "workspace:*",
     "@easyschemedit/workers": "workspace:*",
+    "@neondatabase/serverless": "^1.2.1",
     "astro": "^5.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -30,6 +31,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.187.0",
+    "esbuild": "^0.28.2",
     "typescript": "^5.6.0",
     "wrangler": "^4.161.0"
   },

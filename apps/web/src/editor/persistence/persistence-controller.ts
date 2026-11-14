@@ -33,6 +33,18 @@ import {
   type ExportTarget,
 } from '@easyschemedit/formats';
 import type { EditorSessionStore } from '../session-store.ts';
+import {
+  type CloudProjectSummary,
+  listCloudProjects,
+  createCloudProject,
+  saveCloudProjectArchive,
+  loadCloudProjectArchive,
+  getCloudProject,
+  renameCloudProject as renameCloudProjectApi,
+  deleteCloudProject as deleteCloudProjectApi,
+} from '../../client/projects-client.ts';
+
+export type { CloudProjectSummary };
 
 export interface IPersistenceSessionStore {
   readonly session?: any;
@@ -127,6 +139,7 @@ export class ProjectPersistenceController {
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly autosaveDebounceMs: number;
   private isAutosaving = false;
+  private activeCloudProjectId: string | null = null;
 
   constructor(
     store: IPersistenceSessionStore | EditorSessionStore,
@@ -150,12 +163,171 @@ export class ProjectPersistenceController {
     return currentRev !== this.lastSavedRevision;
   }
 
+  public isDirty(): boolean {
+    return this.hasUnsavedChanges();
+  }
+
+  public markClean(): void {
+    this.lastSavedRevision = this.store.getSnapshot().project.revision;
+  }
+
+  public getActiveCloudProjectId(): string | null {
+    return this.activeCloudProjectId;
+  }
+
+  public setActiveCloudProjectId(id: string | null): void {
+    this.activeCloudProjectId = id;
+  }
+
   public getCurrentProject(): Project {
     return this.store.getSnapshot().project;
   }
 
   public getCurrentProjectId(): string {
     return this.store.getSnapshot().project.id;
+  }
+
+  // ==========================================================================
+  // Cloud Project Operations (Neon DB + Cloudflare R2)
+  // ==========================================================================
+
+  /**
+   * Lists all cloud projects owned by the authenticated user.
+   */
+  public async listCloudProjects(): Promise<CloudProjectSummary[]> {
+    return listCloudProjects();
+  }
+
+  /**
+   * Saves the current project to cloud storage (Neon metadata + R2 .vxproj archive).
+   * If activeCloudProjectId is set, updates existing cloud project; otherwise creates a new one.
+   * Mirrors to IndexedDB as local cache and marks the state clean.
+   */
+  public async saveToCloud(nameOverride?: string): Promise<CloudProjectSummary> {
+    const currentProj = this.store.getSnapshot().project;
+    const nameToSave = nameOverride?.trim() || currentProj.name || 'Untitled Project';
+
+    if (nameOverride?.trim() && this.store.session) {
+      const sessionProj = (this.store.session as any).project;
+      if (sessionProj) {
+        sessionProj.name = nameOverride.trim();
+      }
+    }
+
+    const project = this.store.getSnapshot().project;
+    const zipBytes = packVxprojArchive(project);
+    const placementCount = project.placements.length;
+
+    let summary: CloudProjectSummary;
+    if (!this.activeCloudProjectId) {
+      const initialRevision = project.revision > 0 ? project.revision : 1;
+      summary = await createCloudProject(nameToSave, zipBytes, {
+        revision: initialRevision,
+        placementCount,
+      });
+      this.activeCloudProjectId = summary.id;
+    } else {
+      const nextRevision = (this.lastSavedRevision || project.revision || 1) + 1;
+      summary = await saveCloudProjectArchive(this.activeCloudProjectId, zipBytes, {
+        name: nameToSave,
+        revision: nextRevision,
+        placementCount,
+      });
+    }
+
+    if (this.store.session) {
+      const sessionProj = (this.store.session as any).project;
+      if (sessionProj) {
+        sessionProj.revision = summary.revision;
+        sessionProj.name = summary.name;
+      }
+      (this.store as any).updateSnapshotAndNotify?.();
+    }
+
+    this.lastSavedRevision = summary.revision;
+
+    // Mirror to IndexedDB as local cache if available
+    if (typeof indexedDB !== 'undefined') {
+      try {
+        await this.saveCurrentProject();
+      } catch (err) {
+        console.warn('Mirroring cloud save to IndexedDB failed:', err);
+      }
+    }
+
+    return summary;
+  }
+
+  /**
+   * Fetches a cloud project's .vxproj archive from R2, unpacks it,
+   * synchronizes it into the session store, and sets activeCloudProjectId.
+   */
+  public async openFromCloud(projectId: string): Promise<Project> {
+    const bytes = await loadCloudProjectArchive(projectId);
+    const project = unpackVxprojArchive(bytes);
+    try {
+      const meta = await getCloudProject(projectId);
+      if (meta && meta.name) {
+        project.name = meta.name;
+      }
+    } catch {
+      // Non-fatal if metadata fetch fails; keep archive name
+    }
+    await this.syncProjectIntoStore(project);
+    this.activeCloudProjectId = projectId;
+    this.markClean();
+    return project;
+  }
+
+  /**
+   * Creates a fresh empty project, syncs it into the session store,
+   * clears activeCloudProjectId, and marks revision clean.
+   */
+  public async createNewCloudProject(name?: string): Promise<Project> {
+    const newName = name?.trim() || 'Untitled Project';
+    const newProject: Project = {
+      schemaVersion: 1,
+      id: `project-${Date.now()}`,
+      name: newName,
+      placements: [],
+      importGroups: [],
+      overlapPolicy: 'top-wins',
+      conflictOverlay: 'off',
+      metadata: {
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+      },
+      revision: 0,
+    };
+    await this.syncProjectIntoStore(newProject);
+    this.activeCloudProjectId = null;
+    this.markClean();
+    return newProject;
+  }
+
+  /**
+   * Renames a cloud project. If it matches activeCloudProjectId, updates session project name.
+   */
+  public async renameCloudProject(id: string, name: string): Promise<CloudProjectSummary> {
+    const summary = await renameCloudProjectApi(id, name);
+    if (id === this.activeCloudProjectId && this.store.session) {
+      const sessionProj = (this.store.session as any).project;
+      if (sessionProj) {
+        sessionProj.name = summary.name;
+      }
+      (this.store as any).updateSnapshotAndNotify?.();
+    }
+    return summary;
+  }
+
+  /**
+   * Deletes a cloud project. If it was active, clears activeCloudProjectId.
+   */
+  public async deleteFromCloud(id: string): Promise<void> {
+    await deleteCloudProjectApi(id);
+    if (this.activeCloudProjectId === id) {
+      this.activeCloudProjectId = null;
+    }
   }
 
   // ==========================================================================
@@ -691,6 +863,9 @@ export class ProjectPersistenceController {
       if (sessionProj) {
         sessionProj.id = project.id;
         sessionProj.name = project.name;
+        if (typeof project.revision === 'number') {
+          sessionProj.revision = project.revision;
+        }
         sessionProj.importGroups = project.importGroups ?? [];
         sessionProj.overlapPolicy = project.overlapPolicy ?? 'top-wins';
         sessionProj.conflictOverlay = project.conflictOverlay ?? 'off';

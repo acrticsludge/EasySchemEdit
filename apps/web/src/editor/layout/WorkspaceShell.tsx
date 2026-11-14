@@ -10,6 +10,7 @@ import { useEditorSession } from '../session-store.ts';
 import type { WorkspaceControllers, StorageLike } from './layout-bridge.ts';
 import { createWorkspaceControllers } from './layout-bridge.ts';
 import { Toolbar, type ToolbarProps } from './Toolbar.tsx';
+import type { AuthUser } from '../../client/auth-client.ts';
 import { OutlinerPanel } from './OutlinerPanel.tsx';
 import { BottomDock } from './BottomDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
@@ -36,6 +37,12 @@ export interface WorkspaceShellProps {
   onExport?: () => void;
   onBake?: () => void;
   onSave?: () => void;
+  onOpenProjects?: () => void;
+  isDirty?: boolean;
+  isSaving?: boolean;
+  authUser?: AuthUser | null;
+  onSignIn?: () => void;
+  onSignOut?: () => void;
   activeOverlays?: ToolbarProps['activeOverlays'];
   onToggleOverlay?: ToolbarProps['onToggleOverlay'];
   fps?: number;
@@ -60,6 +67,12 @@ export function WorkspaceShell({
   onExport,
   onBake,
   onSave,
+  onOpenProjects,
+  isDirty,
+  isSaving,
+  authUser,
+  onSignIn,
+  onSignOut,
   activeOverlays,
   onToggleOverlay,
   fps = 60,
@@ -244,6 +257,12 @@ export function WorkspaceShell({
         onExport={onExport}
         onBake={onBake}
         onSave={onSave}
+        onOpenProjects={onOpenProjects}
+        isDirty={isDirty}
+        isSaving={isSaving}
+        authUser={authUser}
+        onSignIn={onSignIn}
+        onSignOut={onSignOut}
         activeOverlays={activeOverlays}
         onToggleOverlay={onToggleOverlay}
       />
