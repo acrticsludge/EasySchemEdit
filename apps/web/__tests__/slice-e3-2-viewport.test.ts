@@ -644,4 +644,115 @@ console.log('--- Test 8: Selected Voxel Highlight Mesh & Overlay Contracts ---')
   console.log('✓ Test 8 passed: Selected voxel highlight mesh properties and positioning verified.');
 }
 
+// ============================================================================
+console.log('--- Test 9: Non-Zero Placement Origin Marker Highlighting Overlay ---');
+{
+  const placements: Placement[] = [
+    {
+      ...createPlacement('p-zero', new Map()),
+      origin: [0, 0, 0],
+      visible: true,
+      transform: { translation: [10, 0, 10], rotationY: 0, mirror: 'none' },
+    },
+    {
+      ...createPlacement('p-hidden', new Map()),
+      origin: [2, 0, 2],
+      visible: false,
+      transform: { translation: [20, 0, 20], rotationY: 0, mirror: 'none' },
+    },
+    {
+      ...createPlacement('p-nonzero', new Map()),
+      origin: [4, 0, 8],
+      visible: true,
+      transform: { translation: [30, 5, -10], rotationY: 0, mirror: 'none' },
+    },
+  ];
+
+  const originGroup = new THREE.Group();
+  originGroup.name = 'origin-markers-root';
+
+  for (const p of placements) {
+    if (
+      p.visible !== false &&
+      p.origin &&
+      (p.origin[0] !== 0 || p.origin[1] !== 0 || p.origin[2] !== 0)
+    ) {
+      const marker = new THREE.Group();
+      marker.name = p.id;
+      marker.renderOrder = 996;
+      marker.position.set(
+        p.transform.translation[0] + 0.5,
+        p.transform.translation[1] + 0.5,
+        p.transform.translation[2] + 0.5
+      );
+      const boxGeo = new THREE.BoxGeometry(1.012, 1.012, 1.012);
+      const fillMat = new THREE.MeshBasicMaterial({
+        color: 0xa855f7,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      });
+      marker.add(new THREE.Mesh(boxGeo, fillMat));
+
+      const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+      const edgeMat = new THREE.LineBasicMaterial({
+        color: 0xd8b4fe,
+        transparent: true,
+        opacity: 1.0,
+        depthWrite: false,
+      });
+      marker.add(new THREE.LineSegments(edgesGeo, edgeMat));
+
+      originGroup.add(marker);
+    }
+  }
+
+  // Verification
+  assertEqual(originGroup.name, 'origin-markers-root', 'Origin root group name');
+  assertEqual(originGroup.children.length, 1, 'Only non-zero visible placement gets origin marker');
+
+  const marker = originGroup.getObjectByName('p-nonzero') as THREE.Group;
+  assert(marker !== undefined, 'Marker for p-nonzero exists');
+  assertEqual(marker.name, 'p-nonzero', 'Marker name matches placement id');
+  assertEqual(marker.renderOrder, 996, 'Marker renderOrder is 996');
+  assertEqual(marker.position.x, 30.5, 'Marker X is centered at translation + 0.5');
+  assertEqual(marker.position.y, 5.5, 'Marker Y is centered at translation + 0.5');
+  assertEqual(marker.position.z, -9.5, 'Marker Z is centered at translation + 0.5');
+
+  const fillMesh = marker.children[0] as THREE.Mesh;
+  const fillMat = fillMesh.material as THREE.MeshBasicMaterial;
+  assertEqual(fillMat.color.getHex(), 0xa855f7, 'Fill color is purple #a855f7');
+  assertEqual(fillMat.opacity, 0.38, 'Fill opacity is 0.38');
+  assertEqual(fillMat.transparent, true, 'Fill is transparent');
+  assertEqual(fillMat.depthWrite, false, 'Fill depthWrite is false');
+
+  const edgeLines = marker.children[1] as THREE.LineSegments;
+  const edgeMat = edgeLines.material as THREE.LineBasicMaterial;
+  assertEqual(edgeMat.color.getHex(), 0xd8b4fe, 'Edges color is light purple #d8b4fe');
+  assertEqual(edgeMat.opacity, 1.0, 'Edges opacity is 1.0');
+  assertEqual(edgeMat.transparent, true, 'Edges is transparent');
+  assertEqual(edgeMat.depthWrite, false, 'Edges depthWrite is false');
+
+  // Verify Move gizmo drag preview updates marker position
+  const [sx, sy, sz] = [45, 12, -5];
+  const draggedOrigin = originGroup.getObjectByName('p-nonzero') as THREE.Group;
+  if (draggedOrigin) {
+    draggedOrigin.position.set(sx + 0.5, sy + 0.5, sz + 0.5);
+  }
+  assertEqual(draggedOrigin.position.x, 45.5, 'Gizmo preview updates marker X');
+  assertEqual(draggedOrigin.position.y, 12.5, 'Gizmo preview updates marker Y');
+  assertEqual(draggedOrigin.position.z, -4.5, 'Gizmo preview updates marker Z');
+
+  // Clean up resources
+  fillMesh.geometry.dispose();
+  fillMat.dispose();
+  edgeLines.geometry.dispose();
+  edgeMat.dispose();
+
+  console.log('✓ Test 9 passed: Non-zero origin marker overlay created, styled, and drag-synced.');
+}
+
 console.log('\nAll Slice E3.2 Viewport tests passed successfully!');

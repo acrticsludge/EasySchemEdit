@@ -221,6 +221,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const gridGroupRef = useRef<THREE.Group | null>(null);
   const conflictGroupRef = useRef<THREE.Group | null>(null);
   const ghostGroupRef = useRef<THREE.Group | null>(null);
+  const originGroupRef = useRef<THREE.Group | null>(null);
   const groundGridRef = useRef<THREE.GridHelper | null>(null);
   const hoverHighlightRef = useRef<THREE.Group | null>(null);
   const selectedVoxelHighlightRef = useRef<THREE.Group | null>(null);
@@ -406,6 +407,54 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
     ghostGroupRef.current = ghost;
     scene.add(ghostGroupRef.current);
+
+    // 7. Non-zero placement origin markers
+    if (originGroupRef.current) {
+      disposeGroupResources(originGroupRef.current);
+      scene.remove(originGroupRef.current);
+    }
+    const originGroup = new THREE.Group();
+    originGroup.name = 'origin-markers-root';
+    for (const p of project.placements) {
+      if (
+        p.visible !== false &&
+        p.origin &&
+        (p.origin[0] !== 0 || p.origin[1] !== 0 || p.origin[2] !== 0)
+      ) {
+        const marker = new THREE.Group();
+        marker.name = p.id;
+        marker.renderOrder = 996;
+        marker.position.set(
+          p.transform.translation[0] + 0.5,
+          p.transform.translation[1] + 0.5,
+          p.transform.translation[2] + 0.5
+        );
+        const boxGeo = new THREE.BoxGeometry(1.012, 1.012, 1.012);
+        const fillMat = new THREE.MeshBasicMaterial({
+          color: 0xa855f7,
+          transparent: true,
+          opacity: 0.38,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -1,
+          polygonOffsetUnits: -1,
+        });
+        marker.add(new THREE.Mesh(boxGeo, fillMat));
+
+        const edgesGeo = new THREE.EdgesGeometry(boxGeo);
+        const edgeMat = new THREE.LineBasicMaterial({
+          color: 0xd8b4fe,
+          transparent: true,
+          opacity: 1.0,
+          depthWrite: false,
+        });
+        marker.add(new THREE.LineSegments(edgesGeo, edgeMat));
+
+        originGroup.add(marker);
+      }
+    }
+    originGroupRef.current = originGroup;
+    scene.add(originGroup);
   }, [session]);
 
   // --------------------------------------------------------------------------
@@ -760,6 +809,14 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           if (draggedMarker) {
             draggedMarker.position.set(0, 0, 0);
           }
+          const draggedOrigin = originGroupRef.current?.getObjectByName(placementId);
+          if (draggedOrigin && dragStartTranslationRef.current) {
+            draggedOrigin.position.set(
+              dragStartTranslationRef.current[0] + 0.5,
+              dragStartTranslationRef.current[1] + 0.5,
+              dragStartTranslationRef.current[2] + 0.5
+            );
+          }
           const p = session.peekProject().placements.find((pl) => pl.id === placementId);
           if (p && !p.locked) {
             const tool = selectedToolRef.current ?? 'move';
@@ -1089,6 +1146,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         if (draggedMarker) {
           draggedMarker.position.set(dx, dy, dz);
         }
+        const draggedOrigin = originGroupRef.current?.getObjectByName(placementId);
+        if (draggedOrigin) {
+          draggedOrigin.position.set(sx + 0.5, sy + 0.5, sz + 0.5);
+        }
 
         gizmoProxy.position.set(
           dragStartGizmoPosRef.current.x + dx,
@@ -1276,6 +1337,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         disposeGroupResources(ghostGroupRef.current);
         scene.remove(ghostGroupRef.current);
         ghostGroupRef.current = null;
+      }
+      if (originGroupRef.current) {
+        disposeGroupResources(originGroupRef.current);
+        scene.remove(originGroupRef.current);
+        originGroupRef.current = null;
       }
       groundGridRef.current = null;
 
