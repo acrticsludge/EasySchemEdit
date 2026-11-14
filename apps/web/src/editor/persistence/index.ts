@@ -26,3 +26,8 @@ export {
   ExportDialog,
   type ExportDialogProps,
 } from './ExportDialog.tsx';
+
+export {
+  ProjectExplorer,
+  type ProjectExplorerProps,
+} from './ProjectExplorer.tsx';

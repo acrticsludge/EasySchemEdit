@@ -35,6 +35,8 @@ import {
 import type { EditorSessionStore } from '../session-store.ts';
 import {
   type CloudProjectSummary,
+  type CloudSchematicSummary,
+  type WorkspaceProjectNode,
   listCloudProjects,
   createCloudProject,
   saveCloudProjectArchive,
@@ -42,9 +44,16 @@ import {
   getCloudProject,
   renameCloudProject as renameCloudProjectApi,
   deleteCloudProject as deleteCloudProjectApi,
+  createSchematic as createSchematicApi,
+  getSchematic as getSchematicApi,
+  saveSchematicArchive as saveSchematicArchiveApi,
+  loadSchematicArchive as loadSchematicArchiveApi,
+  renameSchematic as renameSchematicApi,
+  deleteSchematic as deleteSchematicApi,
+  listWorkspaceTree,
 } from '../../client/projects-client.ts';
 
-export type { CloudProjectSummary };
+export type { CloudProjectSummary, CloudSchematicSummary, WorkspaceProjectNode };
 
 export interface IPersistenceSessionStore {
   readonly session?: any;
@@ -140,6 +149,7 @@ export class ProjectPersistenceController {
   private readonly autosaveDebounceMs: number;
   private isAutosaving = false;
   private activeCloudProjectId: string | null = null;
+  private activeCloudSchematicId: string | null = null;
 
   constructor(
     store: IPersistenceSessionStore | EditorSessionStore,
@@ -179,12 +189,44 @@ export class ProjectPersistenceController {
     this.activeCloudProjectId = id;
   }
 
+  public getActiveCloudSchematicId(): string | null {
+    return this.activeCloudSchematicId;
+  }
+
+  public setActiveCloudSchematicId(id: string | null): void {
+    this.activeCloudSchematicId = id;
+  }
+
   public getCurrentProject(): Project {
     return this.store.getSnapshot().project;
   }
 
   public getCurrentProjectId(): string {
     return this.store.getSnapshot().project.id;
+  }
+
+  /**
+   * Packs the currently active project into a .vxproj ZIP archive binary.
+   */
+  public packCurrentProjectBytes(): Uint8Array {
+    const project = this.store.getSnapshot().project;
+    return packVxprojArchive(project);
+  }
+
+  /**
+   * Unpacks a .vxproj ZIP archive binary into a Project domain model.
+   */
+  public loadProjectFromBytes(bytes: Uint8Array): Project {
+    return unpackVxprojArchive(bytes);
+  }
+
+  /**
+   * Replaces the currently active project in the EditorSession, updating
+   * placements, metadata, and notifying all listeners (Toolbar, Outliner, Viewport).
+   */
+  public async replaceProjectInSession(project: Project): Promise<void> {
+    await this.syncProjectIntoStore(project);
+    this.markClean();
   }
 
   // ==========================================================================
@@ -328,6 +370,86 @@ export class ProjectPersistenceController {
     if (this.activeCloudProjectId === id) {
       this.activeCloudProjectId = null;
     }
+  }
+
+  // ==========================================================================
+  // Cloud Schematic Operations (Independent Documents in Neon DB + Cloudflare R2)
+  // ==========================================================================
+
+  /**
+   * Saves the current editor scene into a cloud schematic document.
+   */
+  public async saveSchematicToCloud(
+    schematicId: string,
+    nameOverride?: string,
+  ): Promise<CloudSchematicSummary> {
+    const currentProj = this.store.getSnapshot().project;
+    const nameToSave = nameOverride?.trim() || currentProj.name || 'Untitled Schematic';
+
+    if (nameOverride?.trim() && this.store.session) {
+      const sessionProj = (this.store.session as any).project;
+      if (sessionProj) {
+        sessionProj.name = nameOverride.trim();
+      }
+    }
+
+    const project = this.store.getSnapshot().project;
+    const zipBytes = packVxprojArchive(project);
+    const placementCount = project.placements.length;
+    const nextRevision = (this.lastSavedRevision || project.revision || 1) + 1;
+
+    const summary = await saveSchematicArchiveApi(schematicId, zipBytes, {
+      name: nameToSave,
+      revision: nextRevision,
+      placementCount,
+    });
+
+    if (this.store.session) {
+      const sessionProj = (this.store.session as any).project;
+      if (sessionProj) {
+        sessionProj.revision = summary.revision;
+        sessionProj.name = summary.name;
+      }
+      (this.store as any).updateSnapshotAndNotify?.();
+    }
+
+    this.activeCloudSchematicId = summary.id;
+    this.lastSavedRevision = summary.revision;
+
+    // Mirror to IndexedDB as local cache if available
+    if (typeof indexedDB !== 'undefined') {
+      try {
+        await this.saveCurrentProject();
+      } catch (err) {
+        console.warn('Mirroring schematic save to IndexedDB failed:', err);
+      }
+    }
+
+    return summary;
+  }
+
+  /**
+   * Fetches a cloud schematic's .vxproj archive from R2, unpacks it,
+   * replaces the active project in the session store, and sets activeCloudSchematicId.
+   */
+  public async openSchematicFromCloud(schematicId: string): Promise<Project> {
+    const bytes = await loadSchematicArchiveApi(schematicId);
+    const project = unpackVxprojArchive(bytes);
+    try {
+      const meta = await getSchematicApi(schematicId);
+      if (meta && meta.name) {
+        project.name = meta.name;
+      }
+      if (meta && meta.projectId) {
+        this.activeCloudProjectId = meta.projectId;
+      }
+    } catch {
+      // Non-fatal if metadata fetch fails; keep archive name
+    }
+    await this.replaceProjectInSession(project);
+    this.activeCloudSchematicId = schematicId;
+    this.markClean();
+    return project;
   }
 
   // ==========================================================================

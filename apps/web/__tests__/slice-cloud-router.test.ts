@@ -135,6 +135,15 @@ console.log('Running Slice 1 Cloud Router & Server Utility tests...');
     { url: 'http://localhost/api/projects/proj-abc/archive', method: 'DELETE' },
     { url: 'http://localhost/api/projects/proj-abc', method: 'POST' },
     { url: 'http://localhost/api/projects/proj-abc', method: 'PUT' },
+    { url: 'http://localhost/api/workspace', method: 'POST' },
+    { url: 'http://localhost/api/workspace', method: 'DELETE' },
+    { url: 'http://localhost/api/projects/proj-abc/schematics', method: 'GET' },
+    { url: 'http://localhost/api/projects/proj-abc/schematics', method: 'PUT' },
+    { url: 'http://localhost/api/projects/proj-abc/schematics', method: 'DELETE' },
+    { url: 'http://localhost/api/schematics/schem-abc/archive', method: 'POST' },
+    { url: 'http://localhost/api/schematics/schem-abc/archive', method: 'DELETE' },
+    { url: 'http://localhost/api/schematics/schem-abc', method: 'POST' },
+    { url: 'http://localhost/api/schematics/schem-abc', method: 'PUT' },
   ];
 
   for (const { url, method } of methodGuards) {
@@ -233,6 +242,65 @@ console.log('Running Slice 1 Cloud Router & Server Utility tests...');
     {} as any
   );
   assert(projArchivePutRes.status === 401, 'PUT /api/projects/:id/archive without session should return 401');
+
+  // Workspace unauthenticated -> 401
+  const wsRes = await worker.fetch(
+    new Request('http://localhost/api/workspace', { method: 'GET' }),
+    mockEnv,
+    {} as any
+  );
+  assert(wsRes.status === 401, 'GET /api/workspace without session should return 401');
+
+  // Schematic unauthenticated requests -> 401
+  const schemCreateRes = await worker.fetch(
+    new Request('http://localhost/api/projects/proj-123/schematics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Schem' }),
+    }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemCreateRes.status === 401, 'POST /api/projects/:projectId/schematics without session should return 401');
+
+  const schemGetRes = await worker.fetch(
+    new Request('http://localhost/api/schematics/schem-123', { method: 'GET' }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemGetRes.status === 401, 'GET /api/schematics/:id without session should return 401');
+
+  const schemPatchRes = await worker.fetch(
+    new Request('http://localhost/api/schematics/schem-123', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'New Name' }),
+    }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemPatchRes.status === 401, 'PATCH /api/schematics/:id without session should return 401');
+
+  const schemDeleteRes = await worker.fetch(
+    new Request('http://localhost/api/schematics/schem-123', { method: 'DELETE' }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemDeleteRes.status === 401, 'DELETE /api/schematics/:id without session should return 401');
+
+  const schemArchiveGetRes = await worker.fetch(
+    new Request('http://localhost/api/schematics/schem-123/archive', { method: 'GET' }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemArchiveGetRes.status === 401, 'GET /api/schematics/:id/archive without session should return 401');
+
+  const schemArchivePutRes = await worker.fetch(
+    new Request('http://localhost/api/schematics/schem-123/archive', { method: 'PUT' }),
+    mockEnv,
+    {} as any
+  );
+  assert(schemArchivePutRes.status === 401, 'PUT /api/schematics/:id/archive without session should return 401');
 
   // 7f. Multi-segment unmatched paths -> 404
   const deepRes = await worker.fetch(

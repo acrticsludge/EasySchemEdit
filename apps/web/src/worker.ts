@@ -16,6 +16,13 @@ import {
   handleSaveProjectArchive,
   handleRenameProject,
   handleDeleteProject,
+  handleListWorkspaceTree,
+  handleCreateSchematic,
+  handleGetSchematic,
+  handleGetSchematicArchive,
+  handleSaveSchematicArchive,
+  handleRenameSchematic,
+  handleDeleteSchematic,
 } from './server/projects.ts';
 
 export default {
@@ -80,6 +87,14 @@ export default {
       return handleMe(request, env);
     }
 
+    // Workspace tree endpoint
+    if (url.pathname === '/api/workspace') {
+      if (request.method !== 'GET') {
+        return errorJson('Method Not Allowed', 405);
+      }
+      return handleListWorkspaceTree(request, env);
+    }
+
     // Projects collection endpoints
     if (url.pathname === '/api/projects') {
       if (request.method === 'GET') {
@@ -87,6 +102,16 @@ export default {
       }
       if (request.method === 'POST') {
         return handleCreateProject(request, env);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // Project schematics endpoint: /api/projects/:projectId/schematics (where :projectId has no '/')
+    const projectSchematicsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/schematics$/);
+    if (projectSchematicsMatch) {
+      const projectId = decodeURIComponent(projectSchematicsMatch[1]);
+      if (request.method === 'POST') {
+        return handleCreateSchematic(request, env, projectId);
       }
       return errorJson('Method Not Allowed', 405);
     }
@@ -116,6 +141,35 @@ export default {
       }
       if (request.method === 'DELETE') {
         return handleDeleteProject(request, env, id);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // Schematic archive endpoint: /api/schematics/:id/archive (where :id has no '/')
+    const schematicArchiveMatch = url.pathname.match(/^\/api\/schematics\/([^/]+)\/archive$/);
+    if (schematicArchiveMatch) {
+      const id = decodeURIComponent(schematicArchiveMatch[1]);
+      if (request.method === 'GET') {
+        return handleGetSchematicArchive(request, env, id);
+      }
+      if (request.method === 'PUT') {
+        return handleSaveSchematicArchive(request, env, id);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // Schematic item endpoint: /api/schematics/:id (where :id has no '/')
+    const schematicMatch = url.pathname.match(/^\/api\/schematics\/([^/]+)$/);
+    if (schematicMatch) {
+      const id = decodeURIComponent(schematicMatch[1]);
+      if (request.method === 'GET') {
+        return handleGetSchematic(request, env, id);
+      }
+      if (request.method === 'PATCH') {
+        return handleRenameSchematic(request, env, id);
+      }
+      if (request.method === 'DELETE') {
+        return handleDeleteSchematic(request, env, id);
       }
       return errorJson('Method Not Allowed', 405);
     }

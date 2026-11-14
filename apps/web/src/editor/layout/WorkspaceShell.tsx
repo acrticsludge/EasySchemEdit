@@ -27,6 +27,7 @@ export interface WorkspaceShellProps {
   materialListController?: MaterialListController;
   storage?: StorageLike;
   viewportSlot: React.ReactNode;
+  explorerSlot?: React.ReactNode;
   tabSlots?: Partial<Record<BottomTabId, React.ReactNode>>;
   rightDockSlots?: {
     tools?: React.ReactNode;
@@ -62,6 +63,7 @@ export function WorkspaceShell({
   materialListController,
   storage,
   viewportSlot,
+  explorerSlot,
   tabSlots,
   onImport,
   onExport,
@@ -277,7 +279,7 @@ export function WorkspaceShell({
           overflow: 'hidden',
         }}
       >
-        {/* Left: Outliner */}
+        {/* Left: Explorer + Outliner */}
         <div
           style={{
             width: `${leftWidth}px`,
@@ -287,27 +289,33 @@ export function WorkspaceShell({
             flexShrink: 0,
             overflow: 'hidden',
             display: 'flex',
+            flexDirection: 'column',
           }}
         >
           {leftPanel?.collapsed ? (
             <CollapsedBar
-              label="OUTLINER"
+              label="EXPLORER & OUTLINER"
               onClick={() => {
                 controllers.layout.expandPanel('hierarchy');
                 forceLayoutUpdate();
               }}
             />
           ) : (
-            <OutlinerPanel
-              store={store}
-              controllers={controllers}
-              selectedPlacementId={effectiveSelectedId}
-              onSelectPlacement={handleSelectPlacement}
-              onCollapse={() => {
-                controllers.layout.collapsePanel('hierarchy');
-                forceLayoutUpdate();
-              }}
-            />
+            <>
+              {explorerSlot}
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <OutlinerPanel
+                  store={store}
+                  controllers={controllers}
+                  selectedPlacementId={effectiveSelectedId}
+                  onSelectPlacement={handleSelectPlacement}
+                  onCollapse={() => {
+                    controllers.layout.collapsePanel('hierarchy');
+                    forceLayoutUpdate();
+                  }}
+                />
+              </div>
+            </>
           )}
         </div>
 

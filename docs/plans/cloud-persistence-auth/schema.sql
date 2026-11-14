@@ -40,3 +40,19 @@ CREATE TABLE IF NOT EXISTS projects (
 
 -- Index for fetching user's projects ordered by most recently updated
 CREATE INDEX IF NOT EXISTS projects_user_updated_idx ON projects (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS schematics (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  revision INTEGER NOT NULL DEFAULT 1,
+  placement_count INTEGER NOT NULL DEFAULT 0,
+  r2_key TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS schematics_project_updated_idx ON schematics (project_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS schematics_user_id_idx ON schematics (user_id);

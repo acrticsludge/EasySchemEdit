@@ -6,7 +6,15 @@ import {
   handleSaveProjectArchive,
   handleRenameProject,
   handleDeleteProject,
+  handleListWorkspaceTree,
+  handleCreateSchematic,
+  handleGetSchematic,
+  handleGetSchematicArchive,
+  handleSaveSchematicArchive,
+  handleRenameSchematic,
+  handleDeleteSchematic,
   formatProjectSummary,
+  formatSchematicSummary,
   MAX_ARCHIVE_BYTES,
 } from '../src/server/projects.ts';
 import { sha256Hex } from '../src/server/crypto.ts';
@@ -42,9 +50,23 @@ interface MockSessionRow {
   expires_at: Date;
 }
 
+interface MockSchematicRow {
+  id: string;
+  project_id: string;
+  user_id: string;
+  name: string;
+  revision: number;
+  placement_count: number;
+  r2_key: string;
+  size_bytes: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
 class MockDb {
   sessions: MockSessionRow[] = [];
   projects: MockProjectRow[] = [];
+  schematics: MockSchematicRow[] = [];
 
   createSqlClient(): SqlClient {
     const self = this;
@@ -58,7 +80,7 @@ class MockDb {
         }
       }
 
-      const q = query.trim();
+      const q = query.replace(/\s+/g, ' ').trim();
 
       // 1. Session lookup for requireSession
       if (q.includes('FROM sessions s') && q.includes('token_hash = $1')) {
@@ -78,7 +100,7 @@ class MockDb {
       }
 
       // 2. List projects: SELECT ... FROM projects WHERE user_id = $1 ORDER BY updated_at DESC
-      if (q.startsWith('SELECT') && q.includes('FROM projects') && q.includes('WHERE user_id = $1')) {
+      if (q.startsWith('SELECT') && q.includes('FROM projects') && q.includes('WHERE user_id = $1') && q.includes('ORDER BY updated_at DESC')) {
         const userId = values[0];
         const userProjects = self.projects
           .filter((p) => p.user_id === userId)
@@ -114,7 +136,7 @@ class MockDb {
         return [{ ...newRow }];
       }
 
-      // 5. Update project: UPDATE projects SET ... WHERE id = $5 AND user_id = $6 (or by name/revision/count/size)
+      // 5. Update project: UPDATE projects SET ...
       if (q.startsWith('UPDATE projects')) {
         if (q.includes('SET') && q.includes('name = $1') && q.includes('revision = $2')) {
           // Archive update
@@ -135,17 +157,106 @@ class MockDb {
           found.name = name;
           found.updated_at = new Date();
           return [{ ...found }];
+        } else if (q.includes('SET updated_at = now() WHERE id = $1 AND user_id = $2')) {
+          // Touch parent project updated_at
+          const [projectId, userId] = values;
+          const found = self.projects.find((p) => p.id === projectId && p.user_id === userId);
+          if (!found) return [];
+          found.updated_at = new Date();
+          return [{ ...found }];
         }
       }
 
-      // 6. Delete project: DELETE FROM projects WHERE id = $1 AND user_id = $2 RETURNING r2_key
+      // 6. Child schematic keys lookup during project delete
+      if (q.startsWith('SELECT') && q.includes('FROM schematics') && q.includes('WHERE project_id = $1 AND user_id = $2')) {
+        const [projectId, userId] = values;
+        const childSchematics = self.schematics.filter(
+          (s) => s.project_id === projectId && s.user_id === userId
+        );
+        return childSchematics.map((s) => ({ r2_key: s.r2_key }));
+      }
+
+      // 7. Delete project: DELETE FROM projects WHERE id = $1 AND user_id = $2 RETURNING r2_key
       if (q.startsWith('DELETE FROM projects')) {
         const projectId = values[0];
         const userId = values[1];
         const idx = self.projects.findIndex((p) => p.id === projectId && p.user_id === userId);
         if (idx === -1) return [];
         const [deleted] = self.projects.splice(idx, 1);
+        // Cascade delete child schematics in mock DB
+        self.schematics = self.schematics.filter((s) => s.project_id !== projectId);
         return [{ r2_key: deleted.r2_key }];
+      }
+
+      // 8. List schematics for user: SELECT ... FROM schematics WHERE user_id = $1 ORDER BY updated_at DESC
+      if (q.startsWith('SELECT') && q.includes('FROM schematics') && q.includes('WHERE user_id = $1') && q.includes('ORDER BY updated_at DESC')) {
+        const userId = values[0];
+        const userSchematics = self.schematics
+          .filter((s) => s.user_id === userId)
+          .sort((a, b) => b.updated_at.getTime() - a.updated_at.getTime());
+        return userSchematics.map((s) => ({ ...s }));
+      }
+
+      // 9. Single schematic lookup: SELECT ... FROM schematics WHERE id = $1 AND user_id = $2
+      if (q.startsWith('SELECT') && q.includes('FROM schematics') && q.includes('WHERE id = $1 AND user_id = $2')) {
+        const [schematicId, userId] = values;
+        const found = self.schematics.find((s) => s.id === schematicId && s.user_id === userId);
+        if (!found) return [];
+        return [{ ...found }];
+      }
+
+      // 10. Insert schematic: INSERT INTO schematics ...
+      if (q.startsWith('INSERT INTO schematics')) {
+        const [id, projectId, userId, name, revision, placementCount, r2Key, sizeBytes] = values;
+        const now = new Date();
+        const newRow: MockSchematicRow = {
+          id,
+          project_id: projectId,
+          user_id: userId,
+          name,
+          revision: Number(revision),
+          placement_count: Number(placementCount),
+          r2_key: r2Key,
+          size_bytes: Number(sizeBytes),
+          created_at: now,
+          updated_at: now,
+        };
+        self.schematics.push(newRow);
+        return [{ ...newRow }];
+      }
+
+      // 11. Update schematic: UPDATE schematics SET ...
+      if (q.startsWith('UPDATE schematics')) {
+        if (q.includes('SET') && q.includes('name = $1') && q.includes('revision = $2')) {
+          // Archive update
+          const [name, revision, placementCount, sizeBytes, r2Key, schematicId, userId] = values;
+          const found = self.schematics.find((s) => s.id === schematicId && s.user_id === userId);
+          if (!found) return [];
+          found.name = name;
+          found.revision = Number(revision);
+          found.placement_count = Number(placementCount);
+          found.size_bytes = Number(sizeBytes);
+          found.r2_key = r2Key;
+          found.updated_at = new Date();
+          return [{ ...found }];
+        } else if (q.includes('SET') && q.includes('name = $1') && q.includes('updated_at = now()')) {
+          // Rename update
+          const [name, schematicId, userId] = values;
+          const found = self.schematics.find((s) => s.id === schematicId && s.user_id === userId);
+          if (!found) return [];
+          found.name = name;
+          found.updated_at = new Date();
+          return [{ ...found }];
+        }
+      }
+
+      // 12. Delete schematic: DELETE FROM schematics WHERE id = $1 AND user_id = $2 RETURNING project_id, r2_key
+      if (q.startsWith('DELETE FROM schematics')) {
+        const [schematicId, userId] = values;
+        const idx = self.schematics.findIndex((s) => s.id === schematicId && s.user_id === userId);
+        if (idx === -1) return [];
+        const [deleted] = self.schematics.splice(idx, 1);
+        return [{ project_id: deleted.project_id, r2_key: deleted.r2_key }];
       }
 
       throw new Error(`Unhandled mock SQL query: ${query}`);
@@ -284,6 +395,56 @@ mockDb.sessions.push(
     sql
   );
   assert(deleteRes.status === 401, 'handleDeleteProject should return 401 without session');
+
+  const wsRes = await handleListWorkspaceTree(makeRequest('http://localhost/api/workspace'), env, sql);
+  assert(wsRes.status === 401, 'handleListWorkspaceTree should return 401 without session');
+
+  const createSchemRes = await handleCreateSchematic(
+    makeRequest('http://localhost/api/projects/p1/schematics', 'POST', undefined, JSON.stringify({ name: 'S' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    'p1',
+    sql
+  );
+  assert(createSchemRes.status === 401, 'handleCreateSchematic should return 401 without session');
+
+  const getSchemRes = await handleGetSchematic(makeRequest('http://localhost/api/schematics/s1'), env, 's1', sql);
+  assert(getSchemRes.status === 401, 'handleGetSchematic should return 401 without session');
+
+  const getSchemArchiveRes = await handleGetSchematicArchive(
+    makeRequest('http://localhost/api/schematics/s1/archive'),
+    env,
+    's1',
+    sql
+  );
+  assert(getSchemArchiveRes.status === 401, 'handleGetSchematicArchive should return 401 without session');
+
+  const saveSchemArchiveRes = await handleSaveSchematicArchive(
+    makeRequest('http://localhost/api/schematics/s1/archive', 'PUT', undefined, new Uint8Array([1, 2, 3])),
+    env,
+    's1',
+    sql
+  );
+  assert(saveSchemArchiveRes.status === 401, 'handleSaveSchematicArchive should return 401 without session');
+
+  const renameSchemRes = await handleRenameSchematic(
+    makeRequest('http://localhost/api/schematics/s1', 'PATCH', undefined, JSON.stringify({ name: 'New' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    's1',
+    sql
+  );
+  assert(renameSchemRes.status === 401, 'handleRenameSchematic should return 401 without session');
+
+  const deleteSchemRes = await handleDeleteSchematic(
+    makeRequest('http://localhost/api/schematics/s1', 'DELETE'),
+    env,
+    's1',
+    sql
+  );
+  assert(deleteSchemRes.status === 401, 'handleDeleteSchematic should return 401 without session');
 }
 
 // 2. handleCreateProject: JSON creation
@@ -665,6 +826,306 @@ const sampleArchiveBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x14, 0x00, 0
 
   const res = await handleSaveProjectArchive(oversizedRequest, env, aliceProjectId1, sql);
   assert(res.status === 413, 'Oversized archive (>50MB) must return 413 Payload Too Large');
+}
+
+// 12. handleCreateSchematic: JSON creation & validation
+let aliceSchematicId1 = '';
+{
+  // 12a. Create schematic in non-existent / unowned project -> 404
+  const notFoundRes = await handleCreateSchematic(
+    makeRequest('http://localhost/api/projects/unknown/schematics', 'POST', ALICE_TOKEN, JSON.stringify({ name: 'S1' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    'unknown',
+    sql
+  );
+  assert(notFoundRes.status === 404, 'Create schematic in unowned project must return 404');
+
+  // 12b. Alice creating schematic in her aliceProjectId1
+  const res = await handleCreateSchematic(
+    makeRequest(`http://localhost/api/projects/${aliceProjectId1}/schematics`, 'POST', ALICE_TOKEN, JSON.stringify({ name: 'Throne Room' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    aliceProjectId1,
+    sql
+  );
+  assert(res.status === 201, 'handleCreateSchematic (JSON) should return 201 Created');
+  const data = (await res.json()) as any;
+  assert(data.schematic && typeof data.schematic.id === 'string', 'Should return created schematic with id');
+  assert(data.schematic.projectId === aliceProjectId1, 'Schematic projectId should match');
+  assert(data.schematic.name === 'Throne Room', 'Schematic name should match');
+  assert(data.schematic.revision === 1, 'Initial revision should be 1');
+  assert(data.schematic.placementCount === 0, 'Initial placementCount should be 0');
+  assert(data.schematic.sizeBytes === 0, 'Initial sizeBytes should be 0');
+  aliceSchematicId1 = data.schematic.id;
+
+  // 12c. JSON with default name fallback
+  const defRes = await handleCreateSchematic(
+    makeRequest(`http://localhost/api/projects/${aliceProjectId1}/schematics`, 'POST', ALICE_TOKEN, JSON.stringify({}), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    aliceProjectId1,
+    sql
+  );
+  assert(defRes.status === 201, 'handleCreateSchematic without name should return 201');
+  const defData = (await defRes.json()) as any;
+  assert(defData.schematic.name === 'Untitled Schematic', 'Should default to Untitled Schematic');
+}
+
+// 13. handleCreateSchematic: Binary archive body upload
+let aliceSchematicId2 = '';
+const sampleSchematicBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x11, 0x22, 0x33, 0x44]);
+{
+  // 13a. Empty body -> 400
+  const emptyRes = await handleCreateSchematic(
+    makeRequest(
+      `http://localhost/api/projects/${aliceProjectId1}/schematics`,
+      'POST',
+      ALICE_TOKEN,
+      new Uint8Array(0),
+      {
+        'Content-Type': 'application/zip',
+        'X-Schematic-Name': 'Empty%20Schem',
+      }
+    ),
+    env,
+    aliceProjectId1,
+    sql
+  );
+  assert(emptyRes.status === 400, 'Empty binary schematic upload should return 400');
+
+  // 13b. Valid binary upload
+  const res = await handleCreateSchematic(
+    makeRequest(
+      `http://localhost/api/projects/${aliceProjectId1}/schematics`,
+      'POST',
+      ALICE_TOKEN,
+      sampleSchematicBytes,
+      {
+        'Content-Type': 'application/zip',
+        'X-Schematic-Name': 'Grand%20Hall',
+        'X-Revision': '2',
+        'X-Placement-Count': '5',
+      }
+    ),
+    env,
+    aliceProjectId1,
+    sql
+  );
+  assert(res.status === 201, 'Binary schematic create should return 201');
+  const data = (await res.json()) as any;
+  assert(data.schematic.name === 'Grand Hall', 'Should URI-decode X-Schematic-Name');
+  assert(data.schematic.revision === 2, 'Revision should be 2 from header');
+  assert(data.schematic.placementCount === 5, 'Placement count should be 5 from header');
+  assert(data.schematic.sizeBytes === sampleSchematicBytes.byteLength, 'Size should match uploaded bytes');
+
+  aliceSchematicId2 = data.schematic.id;
+  const expectedR2Key = `users/usr-alice/projects/${aliceProjectId1}/schematics/${aliceSchematicId2}.vxproj`;
+  assert(mockR2.objects.has(expectedR2Key), 'R2 bucket should contain uploaded schematic archive');
+}
+
+// 14. handleGetSchematic & handleGetSchematicArchive
+{
+  // 14a. Get schematic metadata
+  const getRes = await handleGetSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}`, 'GET', ALICE_TOKEN),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(getRes.status === 200, 'handleGetSchematic should return 200 for owner');
+  const getData = (await getRes.json()) as any;
+  assert(getData.schematic.id === aliceSchematicId2, 'Returned schematic id should match');
+
+  // Bob trying to get Alice schematic -> 404
+  const bobGetRes = await handleGetSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}`, 'GET', BOB_TOKEN),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(bobGetRes.status === 404, 'Bob fetching Alice schematic should return 404');
+
+  // 14b. Get schematic archive download
+  const archiveRes = await handleGetSchematicArchive(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}/archive`, 'GET', ALICE_TOKEN),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(archiveRes.status === 200, 'handleGetSchematicArchive should return 200');
+  assert(archiveRes.headers.get('Content-Type') === 'application/zip', 'Content-Type should be application/zip');
+  assert(archiveRes.headers.get('Content-Disposition')?.includes('.vxproj') === true, 'Content-Disposition should indicate .vxproj');
+  const downloadedBytes = new Uint8Array(await archiveRes.arrayBuffer());
+  assert(downloadedBytes.length === sampleSchematicBytes.length && downloadedBytes[4] === 0x11, 'Downloaded bytes should match uploaded bytes');
+
+  // Bob trying to download Alice schematic archive -> 404
+  const bobArchiveRes = await handleGetSchematicArchive(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}/archive`, 'GET', BOB_TOKEN),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(bobArchiveRes.status === 404, 'Bob downloading Alice schematic archive should return 404');
+}
+
+// 15. handleSaveSchematicArchive: revision, size, placement count updates
+{
+  const updatedSchematicBytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0xaa, 0xbb, 0xcc]);
+
+  // 15a. Empty body -> 400
+  const emptyRes = await handleSaveSchematicArchive(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}/archive`, 'PUT', ALICE_TOKEN, new Uint8Array(0)),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(emptyRes.status === 400, 'Saving empty schematic archive should return 400');
+
+  // 15b. Bob saving to Alice schematic -> 404
+  const unownedRes = await handleSaveSchematicArchive(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}/archive`, 'PUT', BOB_TOKEN, updatedSchematicBytes),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(unownedRes.status === 404, 'Saving to unowned schematic must return 404');
+
+  // 15c. Alice saves update
+  const saveRes = await handleSaveSchematicArchive(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId2}/archive`, 'PUT', ALICE_TOKEN, updatedSchematicBytes, {
+      'Content-Type': 'application/zip',
+      'X-Schematic-Name': 'Grand%20Cathedral',
+      'X-Revision': '3',
+      'X-Placement-Count': '9',
+    }),
+    env,
+    aliceSchematicId2,
+    sql
+  );
+  assert(saveRes.status === 200, 'Valid save schematic archive should return 200');
+  const saveBody = (await saveRes.json()) as any;
+  assert(saveBody.schematic.name === 'Grand Cathedral', 'Name should be updated');
+  assert(saveBody.schematic.revision === 3, 'Revision should be 3');
+  assert(saveBody.schematic.placementCount === 9, 'Placement count should be 9');
+  assert(saveBody.schematic.sizeBytes === updatedSchematicBytes.byteLength, 'Size should match updated bytes');
+
+  // Verify R2 object updated
+  const expectedR2Key = `users/usr-alice/projects/${aliceProjectId1}/schematics/${aliceSchematicId2}.vxproj`;
+  const r2Obj = await mockR2.get(expectedR2Key);
+  assert(r2Obj !== null && r2Obj.body[4] === 0xaa, 'R2 object should reflect updated bytes');
+}
+
+// 16. handleRenameSchematic
+{
+  // 16a. Empty name -> 400
+  const badRes = await handleRenameSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId1}`, 'PATCH', ALICE_TOKEN, JSON.stringify({ name: '  ' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    aliceSchematicId1,
+    sql
+  );
+  assert(badRes.status === 400, 'Empty schematic name should return 400');
+
+  // 16b. Bob renaming Alice schematic -> 404
+  const unownedRes = await handleRenameSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId1}`, 'PATCH', BOB_TOKEN, JSON.stringify({ name: 'Hacked' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    aliceSchematicId1,
+    sql
+  );
+  assert(unownedRes.status === 404, 'Renaming unowned schematic must return 404');
+
+  // 16c. Valid rename
+  const renRes = await handleRenameSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId1}`, 'PATCH', ALICE_TOKEN, JSON.stringify({ name: 'Royal Throne Room' }), {
+      'Content-Type': 'application/json',
+    }),
+    env,
+    aliceSchematicId1,
+    sql
+  );
+  assert(renRes.status === 200, 'Valid schematic rename should return 200');
+  const renData = (await renRes.json()) as any;
+  assert(renData.schematic.name === 'Royal Throne Room', 'Schematic name should be updated');
+}
+
+// 17. handleListWorkspaceTree: Hierarchy & Isolation
+{
+  // Alice list workspace tree
+  const treeRes = await handleListWorkspaceTree(
+    makeRequest('http://localhost/api/workspace', 'GET', ALICE_TOKEN),
+    env,
+    sql
+  );
+  assert(treeRes.status === 200, 'handleListWorkspaceTree should return 200');
+  const treeData = (await treeRes.json()) as any;
+  assert(Array.isArray(treeData.projects), 'Response should have projects array');
+  // Alice has projects, and aliceProjectId1 has child schematics
+  const projNode = treeData.projects.find((p: any) => p.id === aliceProjectId1);
+  assert(projNode !== undefined, 'Project node should exist in workspace tree');
+  assert(Array.isArray(projNode.schematics), 'Project node should contain schematics array');
+  assert(projNode.schematics.length === 3, 'Project should have exactly 3 schematics');
+  assert(projNode.schematics.some((s: any) => s.id === aliceSchematicId1), 'Should contain throne room schematic');
+  assert(projNode.schematics.some((s: any) => s.id === aliceSchematicId2), 'Should contain grand hall/cathedral schematic');
+
+  // Bob list workspace tree: Bob should only see his project, no Alice projects or schematics
+  const bobTreeRes = await handleListWorkspaceTree(
+    makeRequest('http://localhost/api/workspace', 'GET', BOB_TOKEN),
+    env,
+    sql
+  );
+  const bobTreeData = (await bobTreeRes.json()) as any;
+  assert(bobTreeData.projects.length === 1, 'Bob should see only 1 project');
+  assert(bobTreeData.projects[0].name === 'Bob Secret Vault', 'Bob project should be Bob Secret Vault');
+  assert(bobTreeData.projects[0].schematics.length === 0, 'Bob has 0 schematics');
+}
+
+// 18. handleDeleteSchematic & Cascade R2 Cleanup on Project Delete
+{
+  // 18a. Bob deleting Alice schematic -> 404
+  const unownedRes = await handleDeleteSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId1}`, 'DELETE', BOB_TOKEN),
+    env,
+    aliceSchematicId1,
+    sql
+  );
+  assert(unownedRes.status === 404, 'Deleting unowned schematic must return 404');
+
+  // 18b. Alice deleting aliceSchematicId1
+  const delRes = await handleDeleteSchematic(
+    makeRequest(`http://localhost/api/schematics/${aliceSchematicId1}`, 'DELETE', ALICE_TOKEN),
+    env,
+    aliceSchematicId1,
+    sql
+  );
+  assert(delRes.status === 200, 'Valid delete schematic should return 200');
+  const delData = (await delRes.json()) as any;
+  assert(delData.ok === true && delData.id === aliceSchematicId1, 'Delete response format should match');
+  assert(!mockDb.schematics.some((s) => s.id === aliceSchematicId1), 'Schematic must be removed from DB');
+
+  // 18c. Cascade R2 deletion: Alice deletes aliceProjectId1
+  // aliceProjectId1 still has aliceSchematicId2 with archive in R2
+  const schemR2Key = `users/usr-alice/projects/${aliceProjectId1}/schematics/${aliceSchematicId2}.vxproj`;
+  assert(mockR2.objects.has(schemR2Key), 'Schematic R2 object must exist before project delete');
+
+  const delProjRes = await handleDeleteProject(
+    makeRequest(`http://localhost/api/projects/${aliceProjectId1}`, 'DELETE', ALICE_TOKEN),
+    env,
+    aliceProjectId1,
+    sql
+  );
+  assert(delProjRes.status === 200, 'Deleting project with child schematics should return 200');
+  assert(!mockDb.projects.some((p) => p.id === aliceProjectId1), 'Project should be deleted from DB');
+  assert(!mockDb.schematics.some((s) => s.project_id === aliceProjectId1), 'All child schematics should be cascade-deleted from DB');
+  assert(!mockR2.objects.has(schemR2Key), 'Child schematic R2 archive must be cleaned up on project delete');
 }
 
 console.log('✓ All Slice 3 Projects API and R2 Archive tests passed successfully!');
