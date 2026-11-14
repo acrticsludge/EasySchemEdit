@@ -94,6 +94,7 @@ export class ChunkSceneManager {
   public readonly rootGroup: THREE.Group;
   public readonly materials: Record<MeshPass, THREE.Material>;
   private blockGridUniform = { value: 0.0 };
+  private chunkGridUniform = { value: 0 };
 
   // Key: `${placementId}:${chunkKey}:${pass}`
   private activeMeshes: Map<string, THREE.Mesh> = new Map();
@@ -144,20 +145,21 @@ export class ChunkSceneManager {
     });
 
     const configureBlockGridMaterial = (mat: THREE.MeshBasicMaterial) => {
-      mat.customProgramCacheKey = () => 'block-grid-v3';
+      mat.customProgramCacheKey = () => 'block-chunk-grid-v1';
       mat.onBeforeCompile = (shader) => {
         shader.uniforms.uShowBlockGrid = this.blockGridUniform;
+        shader.uniforms.uShowChunkGrid = this.chunkGridUniform;
         shader.vertexShader = shader.vertexShader.replace(
           'void main()',
-          'varying vec3 vBlockPos;\nvoid main()'
+          'varying vec3 vBlockPos;\nvarying vec3 vWorldPos;\nvoid main()'
         );
         shader.vertexShader = shader.vertexShader.replace(
           '#include <begin_vertex>',
-          '#include <begin_vertex>\nvBlockPos = position;'
+          '#include <begin_vertex>\nvBlockPos = position;\nvWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;'
         );
         shader.fragmentShader = shader.fragmentShader.replace(
           'void main()',
-          'uniform float uShowBlockGrid;\nvarying vec3 vBlockPos;\nvoid main()'
+          'uniform float uShowBlockGrid;\nuniform float uShowChunkGrid;\nvarying vec3 vBlockPos;\nvarying vec3 vWorldPos;\nvoid main()'
         );
         shader.fragmentShader = shader.fragmentShader.replace(
           '#include <opaque_fragment>',
@@ -173,6 +175,17 @@ if (uShowBlockGrid > 0.5) {
   float edge = 1.0 - clamp(min(a.x, min(a.y, a.z)), 0.0, 1.0);
   float distFade = 1.0 - smoothstep(0.30, 0.65, maxFw);
   gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.0), 0.38 * edge * distFade);
+}
+if (uShowChunkGrid > 0.5) {
+  vec2 cw = vWorldPos.xz / 16.0;
+  vec2 cd = min(fract(cw), 1.0 - fract(cw)) * 16.0;
+  vec2 cfw = fwidth(vWorldPos.xz);
+  float maxCfw = max(cfw.x, cfw.y);
+  vec2 isNormalAxis = step(cfw, vec2(max(1e-3, maxCfw * 0.05)));
+  vec2 width = max(cfw * 1.15, vec2(0.08));
+  vec2 ca = smoothstep(width * 0.65, width, cd) + isNormalAxis;
+  float chunkEdge = 1.0 - clamp(min(ca.x, ca.y), 0.0, 1.0);
+  gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(1.0, 0.67, 0.0), 0.72 * chunkEdge);
 }`
         );
       };
@@ -195,6 +208,13 @@ if (uShowBlockGrid > 0.5) {
    */
   public setBlockGrid(enabled: boolean): void {
     this.blockGridUniform.value = enabled ? 1.0 : 0.0;
+  }
+
+  /**
+   * Toggles the 16x16 chunk grid border overlay in the chunk shader.
+   */
+  public setChunkGrid(enabled: boolean): void {
+    this.chunkGridUniform.value = enabled ? 1 : 0;
   }
 
   /**

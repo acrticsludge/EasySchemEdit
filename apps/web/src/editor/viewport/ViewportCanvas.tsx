@@ -69,6 +69,61 @@ function makeAlignmentPoint(
   return [u, v, alignVal];
 }
 
+function intersectRayAABB(
+  orig: [number, number, number],
+  dir: [number, number, number],
+  bounds: Bounds3i
+): { minT: number; maxT: number } | null {
+  if (
+    bounds.min[0] >= bounds.maxExclusive[0] ||
+    bounds.min[1] >= bounds.maxExclusive[1] ||
+    bounds.min[2] >= bounds.maxExclusive[2]
+  ) {
+    return null;
+  }
+
+  let tMin = -Infinity;
+  let tMax = Infinity;
+
+  for (let i = 0; i < 3; i++) {
+    const o = orig[i];
+    const d = dir[i];
+    const minVal = bounds.min[i];
+    const maxVal = bounds.maxExclusive[i];
+
+    if (Math.abs(d) < 1e-8) {
+      if (o < minVal || o > maxVal) return null;
+    } else {
+      const invD = 1 / d;
+      let t1 = (minVal - o) * invD;
+      let t2 = (maxVal - o) * invD;
+      if (t1 > t2) {
+        const tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tMin = Math.max(tMin, t1);
+      tMax = Math.min(tMax, t2);
+      if (tMin > tMax) return null;
+    }
+  }
+
+  if (tMax < 0) return null;
+  return { minT: Math.max(0, tMin), maxT: tMax };
+}
+
+function isSameVoxelHit(a: VoxelHit | null, b: VoxelHit | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.placementId === b.placementId &&
+    a.position[0] === b.position[0] &&
+    a.position[1] === b.position[1] &&
+    a.position[2] === b.position[2] &&
+    a.state?.id === b.state?.id
+  );
+}
+
 export interface ViewportCanvasProps {
   session: EditorSession;
   atlasTexture?: THREE.Texture | null;
@@ -155,6 +210,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   conflictOverlayPositionsRef.current = conflictOverlayPositions;
   const ghostPreviewRef = useRef(ghostPreview);
   ghostPreviewRef.current = ghostPreview;
+  const onVoxelHoverRef = useRef(onVoxelHover);
+  onVoxelHoverRef.current = onVoxelHover;
   const prevPlacementCountRef = useRef<number>(0);
   const pointerDownPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -188,6 +245,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const mouseRaycaster = useRef(new THREE.Raycaster());
   const mouseNdc = useRef(new THREE.Vector2());
 
+  // Raycast throttling and wheel cache
+  const lastHoverRaycastTimeRef = useRef<number>(0);
+  const lastHoveredVoxelRef = useRef<VoxelHit | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastWheelRaycastRef = useRef<{
+    x: number;
+    y: number;
+    time: number;
+    anchor: [number, number, number] | null;
+  } | null>(null);
+
   // --------------------------------------------------------------------------
   // Update Overlays
   // --------------------------------------------------------------------------
@@ -202,6 +270,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const gPrev = ghostPreviewRef.current;
 
     chunkManagerRef.current?.setBlockGrid(gPrefs.blockBorders);
+    (chunkManagerRef.current as any)?.setChunkGrid?.(gPrefs.chunkBorders);
 
     // 1. Placement bounds
     if (placementBoundsGroupRef.current) scene.remove(placementBoundsGroupRef.current);
@@ -371,6 +440,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   // Separate useEffects for prop updates without recreating WebGL context
   useEffect(() => {
     chunkManagerRef.current?.setBlockGrid(gridPrefs.blockBorders);
+    (chunkManagerRef.current as any)?.setChunkGrid?.(gridPrefs.chunkBorders);
     updateOverlays();
   }, [updateOverlays, selectedPlacementIds, gridPrefs, conflictOverlayPositions, ghostPreview]);
 
@@ -438,6 +508,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     // Chunk Manager
     const chunkManager = new ChunkSceneManager();
     chunkManager.setBlockGrid(gridPrefsRef.current.blockBorders);
+    (chunkManager as any).setChunkGrid?.(gridPrefsRef.current.chunkBorders);
     chunkManagerRef.current = chunkManager;
     scene.add(chunkManager.rootGroup);
 
@@ -909,6 +980,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         cancelAnimationFrame(chunkSyncRafRef.current);
         chunkSyncRafRef.current = null;
       }
+      if (hoverTimeoutRef.current !== null) {
+        clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = null;
+      }
       resizeObserver.disconnect();
       unsubscribeSession();
 
@@ -1006,10 +1081,55 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       ];
 
       const project = session.peekProject();
-      const blockLookup = createProjectBlockLookup(project);
 
-      const voxelHit = raycastVoxels(rayOrigin, rayDir, 2048, blockLookup);
-      if (voxelHit) return voxelHit;
+      let hitAny = false;
+      let minHitT = Infinity;
+      let maxHitT = -Infinity;
+
+      for (const p of project.placements) {
+        if (p.visible === false) continue;
+        const wb = placementWorldBounds(p);
+        const hit = intersectRayAABB(rayOrigin, rayDir, wb);
+        if (hit) {
+          hitAny = true;
+          if (hit.minT < minHitT) minHitT = hit.minT;
+          if (hit.maxT > maxHitT) maxHitT = hit.maxT;
+        }
+      }
+
+      if (!hitAny) {
+        if (Math.abs(rayDir[1]) > 1e-5) {
+          const t = -rayOrigin[1] / rayDir[1];
+          if (t > 0 && t <= 512) {
+            const gx = Math.floor(rayOrigin[0] + rayDir[0] * t);
+            const gz = Math.floor(rayOrigin[2] + rayDir[2] * t);
+            return {
+              position: [gx, 0, gz],
+              normal: [0, 1, 0],
+              adjacentPosition: [gx, 0, gz],
+              distance: t,
+              state: { id: 'minecraft:air', props: {} } as any,
+              placementId: null,
+            };
+          }
+        }
+        return null;
+      }
+
+      const blockLookup = createProjectBlockLookup(project);
+      const advanceDist = Math.max(0, minHitT - 1);
+      const clippedOrigin: [number, number, number] = [
+        rayOrigin[0] + rayDir[0] * advanceDist,
+        rayOrigin[1] + rayDir[1] * advanceDist,
+        rayOrigin[2] + rayDir[2] * advanceDist,
+      ];
+      const maxDist = Math.min(2048, maxHitT - advanceDist + 2);
+
+      const voxelHit = raycastVoxels(clippedOrigin, rayDir, maxDist, blockLookup);
+      if (voxelHit) {
+        voxelHit.distance += advanceDist;
+        return voxelHit;
+      }
 
       if (Math.abs(rayDir[1]) > 1e-5) {
         const t = -rayOrigin[1] / rayDir[1];
@@ -1077,14 +1197,45 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       }
     } else {
       if (transformCtrlRef.current && (transformCtrlRef.current as any).axis) {
-        setHoveredVoxel(null);
-        onVoxelHover?.(null);
+        if (lastHoveredVoxelRef.current !== null) {
+          lastHoveredVoxelRef.current = null;
+          setHoveredVoxel(null);
+          onVoxelHoverRef.current?.(null);
+        }
         return;
       }
-      // Hover raycasting
-      const hit = performRaycast(e.clientX, e.clientY);
-      setHoveredVoxel(hit);
-      onVoxelHover?.(hit);
+
+      // Hover raycasting throttled to at most once every 45ms
+      const now = performance.now();
+      if (hoverTimeoutRef.current !== null) {
+        clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = null;
+      }
+
+      const clientX = e.clientX;
+      const clientY = e.clientY;
+
+      if (now - lastHoverRaycastTimeRef.current >= 45) {
+        lastHoverRaycastTimeRef.current = now;
+        const hit = performRaycast(clientX, clientY);
+        if (!isSameVoxelHit(lastHoveredVoxelRef.current, hit)) {
+          lastHoveredVoxelRef.current = hit;
+          setHoveredVoxel(hit);
+          onVoxelHoverRef.current?.(hit);
+        }
+      } else {
+        const remaining = 45 - (now - lastHoverRaycastTimeRef.current);
+        hoverTimeoutRef.current = setTimeout(() => {
+          hoverTimeoutRef.current = null;
+          lastHoverRaycastTimeRef.current = performance.now();
+          const hit = performRaycast(clientX, clientY);
+          if (!isSameVoxelHit(lastHoveredVoxelRef.current, hit)) {
+            lastHoveredVoxelRef.current = hit;
+            setHoveredVoxel(hit);
+            onVoxelHoverRef.current?.(hit);
+          }
+        }, remaining);
+      }
     }
   };
 
@@ -1103,30 +1254,48 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (!cameraCtrl) return;
 
     if (cameraCtrl.getMode() === 'orbit') {
-      const hit = performRaycast(e.clientX, e.clientY);
+      const now = performance.now();
       let anchor: [number, number, number] | null = null;
-      if (hit) {
-        anchor = [hit.position[0] + 0.5, hit.position[1] + 0.5, hit.position[2] + 0.5];
+      const cached = lastWheelRaycastRef.current;
+
+      if (
+        cached &&
+        now - cached.time <= 120 &&
+        Math.hypot(e.clientX - cached.x, e.clientY - cached.y) <= 4
+      ) {
+        anchor = cached.anchor;
+        cached.time = now;
       } else {
-        const camera = cameraRef.current;
-        const canvas = canvasRef.current;
-        if (camera && canvas) {
-          const rect = canvas.getBoundingClientRect();
-          const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-          const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-          const raycaster = new THREE.Raycaster();
-          raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-          const target = cameraCtrl.getTarget();
-          const fwd = cameraCtrl.getForwardVector();
-          const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-            new THREE.Vector3(fwd[0], fwd[1], fwd[2]),
-            new THREE.Vector3(target[0], target[1], target[2])
-          );
-          const intersection = new THREE.Vector3();
-          if (raycaster.ray.intersectPlane(plane, intersection)) {
-            anchor = [intersection.x, intersection.y, intersection.z];
+        const hit = performRaycast(e.clientX, e.clientY);
+        if (hit) {
+          anchor = [hit.position[0] + 0.5, hit.position[1] + 0.5, hit.position[2] + 0.5];
+        } else {
+          const camera = cameraRef.current;
+          const canvas = canvasRef.current;
+          if (camera && canvas) {
+            const rect = canvas.getBoundingClientRect();
+            const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+            const target = cameraCtrl.getTarget();
+            const fwd = cameraCtrl.getForwardVector();
+            const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+              new THREE.Vector3(fwd[0], fwd[1], fwd[2]),
+              new THREE.Vector3(target[0], target[1], target[2])
+            );
+            const intersection = new THREE.Vector3();
+            if (raycaster.ray.intersectPlane(plane, intersection)) {
+              anchor = [intersection.x, intersection.y, intersection.z];
+            }
           }
         }
+        lastWheelRaycastRef.current = {
+          x: e.clientX,
+          y: e.clientY,
+          time: now,
+          anchor,
+        };
       }
       cameraCtrl.queueZoom(-e.deltaY, anchor);
     } else {
@@ -1374,6 +1543,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
+        onPointerLeave={() => {
+          if (hoverTimeoutRef.current !== null) {
+            clearTimeout(hoverTimeoutRef.current);
+            hoverTimeoutRef.current = null;
+          }
+          if (lastHoveredVoxelRef.current !== null) {
+            lastHoveredVoxelRef.current = null;
+            setHoveredVoxel(null);
+            onVoxelHoverRef.current?.(null);
+          }
+        }}
         onWheel={handleWheel}
         onClick={handleClick}
         onContextMenu={(e) => e.preventDefault()}

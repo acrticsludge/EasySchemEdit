@@ -98,15 +98,15 @@ export default function EditorIsland() {
           const bmp = await createImageBitmap(blob);
           ctx.drawImage(bmp, 0, 0, rect.w, rect.h, rect.x, rect.y, rect.w, rect.h);
 
-          // Extrude 2px border into atlas padding gutter to prevent edge bleeding
-          ctx.drawImage(bmp, 0, 0, 1, rect.h, rect.x - 2, rect.y, 2, rect.h);
-          ctx.drawImage(bmp, rect.w - 1, 0, 1, rect.h, rect.x + rect.w, rect.y, 2, rect.h);
-          ctx.drawImage(bmp, 0, 0, rect.w, 1, rect.x, rect.y - 2, rect.w, 2);
-          ctx.drawImage(bmp, 0, rect.h - 1, rect.w, 1, rect.x, rect.y + rect.h, rect.w, 2);
-          ctx.drawImage(bmp, 0, 0, 1, 1, rect.x - 2, rect.y - 2, 2, 2);
-          ctx.drawImage(bmp, rect.w - 1, 0, 1, 1, rect.x + rect.w, rect.y - 2, 2, 2);
-          ctx.drawImage(bmp, 0, rect.h - 1, 1, 1, rect.x - 2, rect.y + rect.h, 2, 2);
-          ctx.drawImage(bmp, rect.w - 1, rect.h - 1, 1, 1, rect.x + rect.w, rect.y + rect.h, 2, 2);
+          // Extrude 8px border into atlas padding gutter to prevent edge bleeding
+          ctx.drawImage(bmp, 0, 0, 1, rect.h, rect.x - 8, rect.y, 8, rect.h);
+          ctx.drawImage(bmp, rect.w - 1, 0, 1, rect.h, rect.x + rect.w, rect.y, 8, rect.h);
+          ctx.drawImage(bmp, 0, 0, rect.w, 1, rect.x, rect.y - 8, rect.w, 8);
+          ctx.drawImage(bmp, 0, rect.h - 1, rect.w, 1, rect.x, rect.y + rect.h, rect.w, 8);
+          ctx.drawImage(bmp, 0, 0, 1, 1, rect.x - 8, rect.y - 8, 8, 8);
+          ctx.drawImage(bmp, rect.w - 1, 0, 1, 1, rect.x + rect.w, rect.y - 8, 8, 8);
+          ctx.drawImage(bmp, 0, rect.h - 1, 1, 1, rect.x - 8, rect.y + rect.h, 8, 8);
+          ctx.drawImage(bmp, rect.w - 1, rect.h - 1, 1, 1, rect.x + rect.w, rect.y + rect.h, 8, 8);
 
           bmp.close();
         } catch {
@@ -116,7 +116,7 @@ export default function EditorIsland() {
       if (cancelled) return;
       const texture = new THREE.CanvasTexture(canvas);
       texture.magFilter = THREE.NearestFilter;
-      texture.minFilter = THREE.LinearMipmapLinearFilter;
+      texture.minFilter = THREE.NearestMipmapLinearFilter;
       texture.generateMipmaps = true;
       texture.anisotropy = 4;
       texture.flipY = false;
