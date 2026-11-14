@@ -121,6 +121,9 @@ export function triggerFileDownload(
 export class ProjectPersistenceController {
   private readonly store: IPersistenceSessionStore;
   private lastSavedRevision: number;
+  private lastAutosavedRevision: number = -1;
+  private autosaveWorker: Worker | null = null;
+  private nextAutosaveRequestId: number = 0;
   private autosaveTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly autosaveDebounceMs: number;
   private isAutosaving = false;
@@ -131,7 +134,7 @@ export class ProjectPersistenceController {
   ) {
     this.store = store;
     this.lastSavedRevision = store.getSnapshot().project.revision;
-    this.autosaveDebounceMs = options?.autosaveDebounceMs ?? 1500;
+    this.autosaveDebounceMs = options?.autosaveDebounceMs ?? 2500;
   }
 
   // ==========================================================================
@@ -286,18 +289,50 @@ export class ProjectPersistenceController {
    */
   public async triggerAutosave(): Promise<void> {
     if (this.isAutosaving) return;
+
+    const project = this.store.getSnapshot().project;
+    if (project.revision === this.lastAutosavedRevision) {
+      return;
+    }
+
     this.isAutosaving = true;
 
     try {
-      const project = this.store.getSnapshot().project;
-      const zipBytes = packVxprojArchive(project);
+      let base64Payload: string;
+
+      if (typeof Worker !== 'undefined') {
+        if (!this.autosaveWorker) {
+          try {
+            this.autosaveWorker = new Worker(
+              new URL('../../workers/autosave-worker.ts', import.meta.url),
+              { type: 'module' },
+            );
+          } catch {
+            this.autosaveWorker = null;
+          }
+        }
+      }
+
+      if (this.autosaveWorker) {
+        try {
+          base64Payload = await this.packWithWorker(this.autosaveWorker, project);
+        } catch (workerErr) {
+          console.warn('Autosave worker failed, falling back to sync pack:', workerErr);
+          const zipBytes = packVxprojArchive(project);
+          base64Payload = bytesToBase64(zipBytes);
+        }
+      } else {
+        const zipBytes = packVxprojArchive(project);
+        base64Payload = bytesToBase64(zipBytes);
+      }
+
       const existing = await getProject(project.id);
       const nextRevision = existing ? existing.revision + 1 : (project.revision || 1);
       const savedAt = new Date().toISOString();
 
       const payload = JSON.stringify({
         format: 'vxproj-base64',
-        payload: bytesToBase64(zipBytes),
+        payload: base64Payload,
         id: project.id,
         name: project.name,
         revision: nextRevision,
@@ -321,9 +356,50 @@ export class ProjectPersistenceController {
 
       await saveAutosave(autoEntry);
       await saveRecovery(recoveryEntry);
+
+      this.lastAutosavedRevision = project.revision;
     } finally {
       this.isAutosaving = false;
     }
+  }
+
+  /**
+   * Offloads .vxproj packaging and Base64 encoding to a Web Worker.
+   */
+  private packWithWorker(worker: Worker, project: Project): Promise<string> {
+    const id = ++this.nextAutosaveRequestId;
+    return new Promise<string>((resolve, reject) => {
+      const handleMessage = (event: MessageEvent<any>) => {
+        if (event.data && event.data.id === id) {
+          cleanup();
+          if (event.data.ok) {
+            resolve(event.data.base64);
+          } else {
+            reject(new Error(event.data.error || 'Worker autosave failed'));
+          }
+        }
+      };
+
+      const handleError = (error: ErrorEvent) => {
+        cleanup();
+        reject(error);
+      };
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Autosave worker timed out'));
+      }, 15000);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        worker.removeEventListener('message', handleMessage);
+        worker.removeEventListener('error', handleError);
+      };
+
+      worker.addEventListener('message', handleMessage);
+      worker.addEventListener('error', handleError);
+      worker.postMessage({ id, project });
+    });
   }
 
   /**
@@ -632,6 +708,10 @@ export class ProjectPersistenceController {
     if (this.autosaveTimer) {
       clearTimeout(this.autosaveTimer);
       this.autosaveTimer = null;
+    }
+    if (this.autosaveWorker) {
+      this.autosaveWorker.terminate();
+      this.autosaveWorker = null;
     }
   }
 }

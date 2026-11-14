@@ -339,7 +339,7 @@ export function buildGridBordersGroup(
 }
 
 /**
- * Builds conflict highlight cubes at the specified voxel coordinates.
+ * Builds conflict highlight cubes at the specified voxel coordinates using InstancedMesh.
  */
 export function buildConflictOverlayGroup(
   positions: Vec3i[],
@@ -350,42 +350,25 @@ export function buildConflictOverlayGroup(
 
   if (!positions || positions.length === 0) return group;
 
-  const linePositions: number[] = [];
-
-  for (const [x, y, z] of positions) {
-    const x0 = x, y0 = y, z0 = z;
-    const x1 = x + 1, y1 = y + 1, z1 = z + 1;
-
-    linePositions.push(
-      // Bottom 4 edges
-      x0, y0, z0,  x1, y0, z0,
-      x1, y0, z0,  x1, y0, z1,
-      x1, y0, z1,  x0, y0, z1,
-      x0, y0, z1,  x0, y0, z0,
-
-      // Top 4 edges
-      x0, y1, z0,  x1, y1, z0,
-      x1, y1, z0,  x1, y1, z1,
-      x1, y1, z1,  x0, y1, z1,
-      x0, y1, z1,  x0, y1, z0,
-
-      // 4 vertical connecting edges
-      x0, y0, z0,  x0, y1, z0,
-      x1, y0, z0,  x1, y1, z0,
-      x1, y0, z1,  x1, y1, z1,
-      x0, y0, z1,  x0, y1, z1
-    );
-  }
-
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.BufferAttribute(new Float32Array(linePositions), 3));
-  const mat = new THREE.LineBasicMaterial({
+  const count = positions.length;
+  const geom = new THREE.BoxGeometry(1.004, 1.004, 1.004);
+  const mat = new THREE.MeshBasicMaterial({
     color: colorHex,
     transparent: true,
-    opacity: 0.85,
+    opacity: 0.38,
     depthWrite: false,
   });
+  const inst = new THREE.InstancedMesh(geom, mat, count);
+  inst.frustumCulled = false;
 
-  group.add(new THREE.LineSegments(geom, mat));
+  const dummyMatrix = new THREE.Matrix4();
+  for (let i = 0; i < count; i++) {
+    const [x, y, z] = positions[i];
+    dummyMatrix.makeTranslation(x + 0.5, y + 0.5, z + 0.5);
+    inst.setMatrixAt(i, dummyMatrix);
+  }
+  inst.instanceMatrix.needsUpdate = true;
+
+  group.add(inst);
   return group;
 }

@@ -1,6 +1,6 @@
 // apps/web/src/editor/viewport/chunk-mesh-builder.ts
-// Three.js chunk mesh builder and scene manager (Slice E3.2, AD-3).
-// Manages one THREE.BufferGeometry/THREE.Mesh per (placementId, chunkKey, pass).
+// Three.js chunk mesh builder and scene manager with GPU BatchedMesh buckets (Slice E3.2, AD-3).
+// Consolidates chunk geometries into per-placement, per-pass THREE.BatchedMesh buckets.
 
 import * as THREE from 'three';
 import {
@@ -25,6 +25,29 @@ const DEFAULT_EMPTY_ASSET_SOURCE: AssetSource = {
   getBlockState: () => undefined,
   getModel: () => undefined,
 };
+
+// BatchedMesh capacity limits per bucket
+const BATCH_MAX_INSTANCES = 1024;
+const BATCH_MAX_VERTICES = 524288;
+const BATCH_MAX_INDICES = 786432;
+const IDENTITY_MATRIX = new THREE.Matrix4();
+
+interface BatchBucket {
+  mesh: THREE.BatchedMesh;
+  usedInstances: number;
+  usedVertices: number;
+  usedIndices: number;
+}
+
+interface ChunkSlot {
+  bucket?: BatchBucket;
+  geometryId?: number;
+  instanceId?: number;
+  standaloneMesh?: THREE.Mesh;
+  vertexCount: number;
+  indexCount: number;
+  triangleCount: number;
+}
 
 /**
  * Constructs a THREE.BufferGeometry from a chunk mesher pass geometry buffer.
@@ -97,7 +120,9 @@ export class ChunkSceneManager {
   private chunkGridUniform = { value: 0 };
 
   // Key: `${placementId}:${chunkKey}:${pass}`
-  private activeMeshes: Map<string, THREE.Mesh> = new Map();
+  private activeChunkSlots: Map<string, ChunkSlot> = new Map();
+  // Key: `${placementId}:${pass}`
+  private placementBuckets: Map<string, BatchBucket[]> = new Map();
   // Key: placementId
   private placementGroups: Map<string, PlacementGroupEntry> = new Map();
 
@@ -319,6 +344,175 @@ if (uShowChunkGrid > 0.5) {
   }
 
   /**
+   * Removes a chunk slot for a given pass, releasing the batched instance/geometry
+   * or disposing the standalone mesh. If the bucket becomes completely empty,
+   * disposes and removes the bucket from the scene.
+   */
+  private removeChunkSlot(
+    placementId: string,
+    chunkKey: string,
+    pass: MeshPass,
+    groupEntry: PlacementGroupEntry
+  ): void {
+    const slotKey = `${placementId}:${chunkKey}:${pass}`;
+    const slot = this.activeChunkSlots.get(slotKey);
+    if (!slot) return;
+
+    if (slot.standaloneMesh) {
+      groupEntry.inner.remove(slot.standaloneMesh);
+      slot.standaloneMesh.geometry.dispose();
+    } else if (slot.bucket && slot.instanceId !== undefined && slot.geometryId !== undefined) {
+      const { bucket, instanceId, geometryId } = slot;
+      bucket.mesh.deleteInstance(instanceId);
+      bucket.mesh.deleteGeometry(geometryId);
+      bucket.usedInstances -= 1;
+      bucket.usedVertices -= slot.vertexCount;
+      bucket.usedIndices -= slot.indexCount;
+
+      if (bucket.usedInstances === 0) {
+        groupEntry.inner.remove(bucket.mesh);
+        bucket.mesh.dispose();
+        const bucketListKey = `${placementId}:${pass}`;
+        const list = this.placementBuckets.get(bucketListKey);
+        if (list) {
+          const idx = list.indexOf(bucket);
+          if (idx !== -1) {
+            list.splice(idx, 1);
+          }
+          if (list.length === 0) {
+            this.placementBuckets.delete(bucketListKey);
+          }
+        }
+      }
+    }
+
+    this.activeChunkSlots.delete(slotKey);
+  }
+
+  /**
+   * Adds geometry for a single chunk render pass, using THREE.BatchedMesh buckets
+   * or falling back to standalone THREE.Mesh if it exceeds bucket limits.
+   */
+  private addChunkPassGeometry(
+    placementId: string,
+    chunkKey: string,
+    pass: MeshPass,
+    geometry: THREE.BufferGeometry,
+    groupEntry: PlacementGroupEntry
+  ): void {
+    const slotKey = `${placementId}:${chunkKey}:${pass}`;
+    const vertexCount = geometry.attributes.position ? geometry.attributes.position.count : 0;
+    const indexCount = geometry.index ? geometry.index.count : 0;
+    const triangleCount = Math.round(geometry.index ? geometry.index.count / 3 : vertexCount / 3);
+
+    // Fall back to standalone THREE.Mesh if geometry exceeds batch limits on its own
+    if (vertexCount > BATCH_MAX_VERTICES || indexCount > BATCH_MAX_INDICES) {
+      const mesh = new THREE.Mesh(geometry, this.materials[pass]);
+      mesh.name = slotKey;
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      groupEntry.inner.add(mesh);
+      this.activeChunkSlots.set(slotKey, {
+        standaloneMesh: mesh,
+        vertexCount,
+        indexCount,
+        triangleCount,
+      });
+      return;
+    }
+
+    const bucketKey = `${placementId}:${pass}`;
+    let buckets = this.placementBuckets.get(bucketKey);
+    if (!buckets) {
+      buckets = [];
+      this.placementBuckets.set(bucketKey, buckets);
+    }
+
+    let targetBucket: BatchBucket | undefined;
+    for (const b of buckets) {
+      if (
+        b.usedInstances + 1 <= BATCH_MAX_INSTANCES &&
+        b.usedVertices + vertexCount <= BATCH_MAX_VERTICES &&
+        b.usedIndices + indexCount <= BATCH_MAX_INDICES
+      ) {
+        targetBucket = b;
+        break;
+      }
+    }
+
+    if (!targetBucket) {
+      const batchedMesh = new THREE.BatchedMesh(
+        BATCH_MAX_INSTANCES,
+        BATCH_MAX_VERTICES,
+        BATCH_MAX_INDICES,
+        this.materials[pass]
+      );
+      batchedMesh.name = `${placementId}:${pass}:batch-${buckets.length}`;
+      batchedMesh.matrixAutoUpdate = false;
+      batchedMesh.updateMatrix();
+      batchedMesh.frustumCulled = true;
+      batchedMesh.perObjectFrustumCulled = true;
+      groupEntry.inner.add(batchedMesh);
+
+      targetBucket = {
+        mesh: batchedMesh,
+        usedInstances: 0,
+        usedVertices: 0,
+        usedIndices: 0,
+      };
+      buckets.push(targetBucket);
+    }
+
+    let geoId: number;
+    let instId: number;
+    try {
+      if (
+        targetBucket.mesh.unusedVertexCount < vertexCount ||
+        targetBucket.mesh.unusedIndexCount < indexCount ||
+        ((targetBucket.mesh as any)._nextVertexStart !== undefined &&
+          (targetBucket.mesh as any)._nextVertexStart + vertexCount > BATCH_MAX_VERTICES) ||
+        ((targetBucket.mesh as any)._nextIndexStart !== undefined &&
+          (targetBucket.mesh as any)._nextIndexStart + indexCount > BATCH_MAX_INDICES)
+      ) {
+        targetBucket.mesh.optimize();
+      }
+      geoId = targetBucket.mesh.addGeometry(geometry);
+      instId = targetBucket.mesh.addInstance(geoId);
+    } catch {
+      // If batch addition fails, fall back to standalone mesh
+      const standalone = new THREE.Mesh(geometry, this.materials[pass]);
+      standalone.name = slotKey;
+      standalone.matrixAutoUpdate = false;
+      standalone.updateMatrix();
+      groupEntry.inner.add(standalone);
+      this.activeChunkSlots.set(slotKey, {
+        standaloneMesh: standalone,
+        vertexCount,
+        indexCount,
+        triangleCount,
+      });
+      return;
+    }
+
+    targetBucket.mesh.setMatrixAt(instId, IDENTITY_MATRIX);
+    targetBucket.usedInstances += 1;
+    targetBucket.usedVertices += vertexCount;
+    targetBucket.usedIndices += indexCount;
+
+    this.activeChunkSlots.set(slotKey, {
+      bucket: targetBucket,
+      geometryId: geoId,
+      instanceId: instId,
+      vertexCount,
+      indexCount,
+      triangleCount,
+    });
+
+    // Dispose temporary geometry after addGeometry copies it into the batch buffer
+    geometry.dispose();
+  }
+
+  /**
    * Removes meshes and revision cache entries for any chunks deleted from placement.volume.chunks.
    */
   private removeDeletedChunkMeshes(placement: Placement, groupEntry: PlacementGroupEntry): void {
@@ -330,28 +524,21 @@ if (uShowChunkGrid > 0.5) {
         const chunkKey = revKey.slice(prefix.length);
         if (!placement.volume.chunks.has(chunkKey)) {
           for (const pass of passes) {
-            const meshKey = `${placement.id}:${chunkKey}:${pass}`;
-            const existingMesh = this.activeMeshes.get(meshKey);
-            if (existingMesh) {
-              groupEntry.inner.remove(existingMesh);
-              existingMesh.geometry.dispose();
-              this.activeMeshes.delete(meshKey);
-            }
+            this.removeChunkSlot(placement.id, chunkKey, pass, groupEntry);
           }
           this.chunkRevisions.delete(revKey);
         }
       }
     }
 
-    for (const [meshKey, mesh] of this.activeMeshes) {
-      if (meshKey.startsWith(prefix)) {
-        const parts = meshKey.split(':');
+    for (const slotKey of Array.from(this.activeChunkSlots.keys())) {
+      if (slotKey.startsWith(prefix)) {
+        const parts = slotKey.split(':');
         if (parts.length >= 2) {
           const chunkKey = parts[1];
           if (!placement.volume.chunks.has(chunkKey)) {
-            groupEntry.inner.remove(mesh);
-            mesh.geometry.dispose();
-            this.activeMeshes.delete(meshKey);
+            const pass = parts[2] as MeshPass;
+            this.removeChunkSlot(placement.id, chunkKey, pass, groupEntry);
             this.chunkRevisions.delete(`${placement.id}:${chunkKey}`);
           }
         }
@@ -372,15 +559,9 @@ if (uShowChunkGrid > 0.5) {
     const passes: MeshPass[] = ['opaque', 'cutout', 'translucent', 'emissive'];
     const revKey = `${placement.id}:${chunkKey}`;
 
-    // 1. Remove and dispose previous meshes for this chunk
+    // 1. Remove previous chunk geometry/instance from its bucket (or standalone mesh)
     for (const pass of passes) {
-      const meshKey = `${placement.id}:${chunkKey}:${pass}`;
-      const existingMesh = this.activeMeshes.get(meshKey);
-      if (existingMesh) {
-        groupEntry.inner.remove(existingMesh);
-        existingMesh.geometry.dispose();
-        this.activeMeshes.delete(meshKey);
-      }
+      this.removeChunkSlot(placement.id, chunkKey, pass, groupEntry);
     }
 
     const chunk = placement.volume.chunks.get(chunkKey);
@@ -450,15 +631,12 @@ if (uShowChunkGrid > 0.5) {
       getNeighborBlock,
     });
 
-    // Create at most 1 THREE.Mesh per non-empty pass
+    // Add each non-empty pass to batched mesh buckets
     for (const pass of passes) {
       const passBuffer = meshOutput.passes[pass];
       const geometry = buildBufferGeometryFromPass(passBuffer);
       if (geometry) {
-        const mesh = new THREE.Mesh(geometry, this.materials[pass]);
-        mesh.name = `${placement.id}:${chunkKey}:${pass}`;
-        groupEntry.inner.add(mesh);
-        this.activeMeshes.set(mesh.name, mesh);
+        this.addChunkPassGeometry(placement.id, chunkKey, pass, geometry, groupEntry);
       }
     }
 
@@ -652,22 +830,37 @@ if (uShowChunkGrid > 0.5) {
       this.placementGroups.delete(placementId);
     }
 
-    // Remove and dispose active meshes belonging to this placement
-    for (const [key, mesh] of this.activeMeshes) {
-      if (key.startsWith(`${placementId}:`)) {
-        mesh.geometry.dispose();
-        this.activeMeshes.delete(key);
+    // 1. Dispose and remove all batch buckets for this placement
+    const passes: MeshPass[] = ['opaque', 'cutout', 'translucent', 'emissive'];
+    for (const pass of passes) {
+      const bucketKey = `${placementId}:${pass}`;
+      const buckets = this.placementBuckets.get(bucketKey);
+      if (buckets) {
+        for (const bucket of buckets) {
+          bucket.mesh.dispose();
+        }
+        this.placementBuckets.delete(bucketKey);
       }
     }
 
-    // Remove chunkRevisions belonging to this placement
+    // 2. Dispose standalone meshes and delete active slots for this placement
+    for (const [key, slot] of this.activeChunkSlots) {
+      if (key.startsWith(`${placementId}:`)) {
+        if (slot.standaloneMesh) {
+          slot.standaloneMesh.geometry.dispose();
+        }
+        this.activeChunkSlots.delete(key);
+      }
+    }
+
+    // 3. Remove chunkRevisions belonging to this placement
     for (const key of Array.from(this.chunkRevisions.keys())) {
       if (key.startsWith(`${placementId}:`)) {
         this.chunkRevisions.delete(key);
       }
     }
 
-    // Filter pendingQueue if it contains items for this placement
+    // 4. Filter pendingQueue if it contains items for this placement
     if (this.pendingQueue.length > 0) {
       this.pendingQueue = this.pendingQueue.filter(
         (item) => item.placement.id !== placementId
@@ -682,10 +875,19 @@ if (uShowChunkGrid > 0.5) {
    * Clears all active meshes and placement groups, disposing all geometries.
    */
   public clear(): void {
-    for (const [, mesh] of this.activeMeshes) {
-      mesh.geometry.dispose();
+    for (const buckets of this.placementBuckets.values()) {
+      for (const bucket of buckets) {
+        bucket.mesh.dispose();
+      }
     }
-    this.activeMeshes.clear();
+    this.placementBuckets.clear();
+
+    for (const slot of this.activeChunkSlots.values()) {
+      if (slot.standaloneMesh) {
+        slot.standaloneMesh.geometry.dispose();
+      }
+    }
+    this.activeChunkSlots.clear();
 
     for (const [, groupEntry] of this.placementGroups) {
       this.rootGroup.remove(groupEntry.root);
@@ -702,20 +904,30 @@ if (uShowChunkGrid > 0.5) {
     let triangleCount = 0;
     const uniqueChunks = new Set<string>();
 
-    for (const [key, mesh] of this.activeMeshes) {
+    for (const [key, slot] of this.activeChunkSlots) {
       const parts = key.split(':');
       if (parts.length >= 2) {
         uniqueChunks.add(`${parts[0]}:${parts[1]}`);
       }
-      if (mesh.geometry.index) {
-        triangleCount += mesh.geometry.index.count / 3;
-      } else if (mesh.geometry.attributes.position) {
-        triangleCount += mesh.geometry.attributes.position.count / 3;
+      triangleCount += slot.triangleCount;
+    }
+
+    let meshCount = 0;
+    for (const buckets of this.placementBuckets.values()) {
+      for (const bucket of buckets) {
+        if (bucket.usedInstances > 0) {
+          meshCount++;
+        }
+      }
+    }
+    for (const slot of this.activeChunkSlots.values()) {
+      if (slot.standaloneMesh) {
+        meshCount++;
       }
     }
 
     return {
-      meshCount: this.activeMeshes.size,
+      meshCount,
       chunkCount: uniqueChunks.size,
       placementCount: this.placementGroups.size,
       triangleCount: Math.round(triangleCount),

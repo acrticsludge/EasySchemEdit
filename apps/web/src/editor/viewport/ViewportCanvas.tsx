@@ -58,6 +58,29 @@ function isTransformOrMetadataEvent(kind: string): boolean {
   );
 }
 
+function disposeGroupResources(obj: THREE.Object3D | null | undefined): void {
+  if (!obj) return;
+  obj.traverse((child: any) => {
+    if (child.geometry && typeof child.geometry.dispose === 'function') {
+      child.geometry.dispose();
+    }
+    if (child.material) {
+      if (Array.isArray(child.material)) {
+        for (const mat of child.material) {
+          if (mat && typeof mat.dispose === 'function') {
+            mat.dispose();
+          }
+        }
+      } else if (typeof child.material.dispose === 'function') {
+        child.material.dispose();
+      }
+    }
+    if (typeof child.dispose === 'function') {
+      child.dispose();
+    }
+  });
+}
+
 function makeAlignmentPoint(
   axis: number,
   alignVal: number,
@@ -273,7 +296,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     (chunkManagerRef.current as any)?.setChunkGrid?.(gPrefs.chunkBorders);
 
     // 1. Placement bounds
-    if (placementBoundsGroupRef.current) scene.remove(placementBoundsGroupRef.current);
+    if (placementBoundsGroupRef.current) {
+      disposeGroupResources(placementBoundsGroupRef.current);
+      scene.remove(placementBoundsGroupRef.current);
+    }
     placementBoundsGroupRef.current = buildPlacementBoundsGroup(
       project.placements,
       selIds
@@ -281,15 +307,22 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(placementBoundsGroupRef.current);
 
     // 2. Origin markers
-    if (originMarkersGroupRef.current) scene.remove(originMarkersGroupRef.current);
+    if (originMarkersGroupRef.current) {
+      disposeGroupResources(originMarkersGroupRef.current);
+      scene.remove(originMarkersGroupRef.current);
+    }
     originMarkersGroupRef.current = buildOriginMarkersGroup(project.placements);
     scene.add(originMarkersGroupRef.current);
 
     // 3. Selection bounds
     const selection = (session as any).getSelection?.() ?? null;
     const selBounds = selection?.bounds ?? null;
-    if (selectionGroupRef.current) scene.remove(selectionGroupRef.current);
+    if (selectionGroupRef.current) {
+      disposeGroupResources(selectionGroupRef.current);
+      scene.remove(selectionGroupRef.current);
+    }
     selectionGroupRef.current = buildSelectionBoxMesh(selBounds);
+    selectionGroupRef.current.position.set(0, 0, 0);
     scene.add(selectionGroupRef.current);
 
     // 4. Grid borders
@@ -313,7 +346,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         };
       }
     }
-    if (gridGroupRef.current) scene.remove(gridGroupRef.current);
+    if (gridGroupRef.current) {
+      disposeGroupResources(gridGroupRef.current);
+      scene.remove(gridGroupRef.current);
+    }
     gridGroupRef.current = buildGridBordersGroup(unionBounds, gPrefs);
     scene.add(gridGroupRef.current);
 
@@ -322,7 +358,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
 
     // 5. Conflicts
-    if (conflictGroupRef.current) scene.remove(conflictGroupRef.current);
+    if (conflictGroupRef.current) {
+      disposeGroupResources(conflictGroupRef.current);
+      scene.remove(conflictGroupRef.current);
+    }
     const confGroup = new THREE.Group();
     confGroup.name = 'conflicts-root';
     if (cPos?.sameState?.length) {
@@ -335,7 +374,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(conflictGroupRef.current);
 
     // 6. Ghost preview
-    if (ghostGroupRef.current) scene.remove(ghostGroupRef.current);
+    if (ghostGroupRef.current) {
+      disposeGroupResources(ghostGroupRef.current);
+      scene.remove(ghostGroupRef.current);
+    }
     const ghost = new THREE.Group();
     ghost.name = 'ghost-preview';
     if (gPrev) {
@@ -525,7 +567,18 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     gizmoProxyRef.current = gizmoProxy;
 
     // Alignment Guides LineSegments (Move gizmo snapping & magnetic guides)
+    const MAX_GUIDE_VERTICES = 1024;
+    const guidePosArray = new Float32Array(MAX_GUIDE_VERTICES * 3);
+    const guideColArray = new Float32Array(MAX_GUIDE_VERTICES * 3);
     const alignGuidesGeometry = new THREE.BufferGeometry();
+    const guidePosAttr = new THREE.BufferAttribute(guidePosArray, 3);
+    guidePosAttr.setUsage(THREE.DynamicDrawUsage);
+    const guideColAttr = new THREE.BufferAttribute(guideColArray, 3);
+    guideColAttr.setUsage(THREE.DynamicDrawUsage);
+    alignGuidesGeometry.setAttribute('position', guidePosAttr);
+    alignGuidesGeometry.setAttribute('color', guideColAttr);
+    alignGuidesGeometry.setDrawRange(0, 0);
+
     const alignGuidesMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
       transparent: true,
@@ -561,11 +614,21 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       } else {
         if (alignGuidesLineRef.current) {
           alignGuidesLineRef.current.visible = false;
-          alignGuidesLineRef.current.geometry.setAttribute('position', new THREE.Float32BufferAttribute([], 3));
-          alignGuidesLineRef.current.geometry.setAttribute('color', new THREE.Float32BufferAttribute([], 3));
+          alignGuidesLineRef.current.geometry.setDrawRange(0, 0);
+        }
+        if (selectionGroupRef.current) {
+          selectionGroupRef.current.position.set(0, 0, 0);
         }
         const placementId = dragStartPlacementIdRef.current;
         if (placementId) {
+          const draggedBounds = placementBoundsGroupRef.current?.getObjectByName(`placement-bounds-${placementId}`);
+          if (draggedBounds) {
+            draggedBounds.position.set(0, 0, 0);
+          }
+          const draggedMarker = originMarkersGroupRef.current?.getObjectByName(`origin-marker-${placementId}`);
+          if (draggedMarker) {
+            draggedMarker.position.set(0, 0, 0);
+          }
           const p = session.peekProject().placements.find((pl) => pl.id === placementId);
           if (p && !p.locked) {
             const tool = selectedToolRef.current ?? 'move';
@@ -629,6 +692,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                   dragStartTranslationRef.current,
                   dragStartRotationYRef.current
                 );
+                gizmoProxy.position.copy(dragStartGizmoPosRef.current);
               }
             }
           }
@@ -654,9 +718,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           previewRot
         );
       } else {
-        const dx = gizmoProxy.position.x - dragStartGizmoPosRef.current.x;
-        const dy = gizmoProxy.position.y - dragStartGizmoPosRef.current.y;
-        const dz = gizmoProxy.position.z - dragStartGizmoPosRef.current.z;
+        const rawDx = gizmoProxy.position.x - dragStartGizmoPosRef.current.x;
+        const rawDy = gizmoProxy.position.y - dragStartGizmoPosRef.current.y;
+        const rawDz = gizmoProxy.position.z - dragStartGizmoPosRef.current.z;
 
         const isShift =
           shiftKeyRef.current ||
@@ -664,9 +728,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           keysDownRef.current.has('ShiftRight');
         const step = isShift ? 16 : 1;
 
-        let sx = Math.round((dragStartTranslationRef.current[0] + dx) / step) * step;
-        let sy = Math.round((dragStartTranslationRef.current[1] + dy) / step) * step;
-        let sz = Math.round((dragStartTranslationRef.current[2] + dz) / step) * step;
+        let sx = Math.round((dragStartTranslationRef.current[0] + rawDx) / step) * step;
+        let sy = Math.round((dragStartTranslationRef.current[1] + rawDy) / step) * step;
+        let sz = Math.round((dragStartTranslationRef.current[2] + rawDz) / step) * step;
 
         const startBounds = dragStartBoundsRef.current;
         const project = session.peekProject();
@@ -674,8 +738,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           (pl) => pl.id !== placementId && pl.visible !== false
         );
 
-        const linePositions: number[] = [];
-        const lineColors: number[] = [];
+        const alignGuidesLine = alignGuidesLineRef.current;
+        let vertexCount = 0;
+        const posAttr = alignGuidesLine?.geometry.getAttribute('position') as THREE.BufferAttribute | undefined;
+        const colAttr = alignGuidesLine?.geometry.getAttribute('color') as THREE.BufferAttribute | undefined;
+        const posArr = posAttr?.array as Float32Array | undefined;
+        const colArr = colAttr?.array as Float32Array | undefined;
 
         if (startBounds && siblings.length > 0 && !isShift) {
           const startTx = dragStartTranslationRef.current[0];
@@ -777,19 +845,35 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             }
           }
 
-          if (alignedRecords.length > 0) {
+          if (alignedRecords.length > 0 && posArr && colArr) {
             const addedLines = new Set<string>();
             const addSegment = (
               p1: [number, number, number],
               p2: [number, number, number],
               color: [number, number, number]
             ) => {
+              if (vertexCount + 2 > MAX_GUIDE_VERTICES) return;
               const k1 = `${p1[0]},${p1[1]},${p1[2]}-${p2[0]},${p2[1]},${p2[2]}`;
               const k2 = `${p2[0]},${p2[1]},${p2[2]}-${p1[0]},${p1[1]},${p1[2]}`;
               if (addedLines.has(k1) || addedLines.has(k2)) return;
               addedLines.add(k1);
-              linePositions.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2]);
-              lineColors.push(color[0], color[1], color[2], color[0], color[1], color[2]);
+
+              const idx = vertexCount * 3;
+              posArr[idx] = p1[0];
+              posArr[idx + 1] = p1[1];
+              posArr[idx + 2] = p1[2];
+              posArr[idx + 3] = p2[0];
+              posArr[idx + 4] = p2[1];
+              posArr[idx + 5] = p2[2];
+
+              colArr[idx] = color[0];
+              colArr[idx + 1] = color[1];
+              colArr[idx + 2] = color[2];
+              colArr[idx + 3] = color[0];
+              colArr[idx + 4] = color[1];
+              colArr[idx + 5] = color[2];
+
+              vertexCount += 2;
             };
 
             for (const rec of alignedRecords) {
@@ -834,15 +918,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           }
         }
 
-        const alignGuidesLine = alignGuidesLineRef.current;
-        if (alignGuidesLine) {
-          if (linePositions.length > 0) {
-            const geom = alignGuidesLine.geometry;
-            geom.setAttribute('position', new THREE.Float32BufferAttribute(linePositions, 3));
-            geom.setAttribute('color', new THREE.Float32BufferAttribute(lineColors, 3));
+        if (alignGuidesLine && posAttr && colAttr) {
+          const geom = alignGuidesLine.geometry;
+          if (vertexCount > 0) {
+            posAttr.needsUpdate = true;
+            colAttr.needsUpdate = true;
+            geom.setDrawRange(0, vertexCount);
             geom.computeBoundingSphere();
             alignGuidesLine.visible = true;
           } else {
+            geom.setDrawRange(0, 0);
             alignGuidesLine.visible = false;
           }
         }
@@ -852,6 +937,31 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           placementId,
           [sx, sy, sz],
           dragStartRotationYRef.current
+        );
+
+        const dragDelta: [number, number, number] = [
+          sx - dragStartTranslationRef.current[0],
+          sy - dragStartTranslationRef.current[1],
+          sz - dragStartTranslationRef.current[2],
+        ];
+
+        const [dx, dy, dz] = dragDelta;
+        if (selectionGroupRef.current) {
+          selectionGroupRef.current.position.set(dx, dy, dz);
+        }
+        const draggedBounds = placementBoundsGroupRef.current?.getObjectByName(`placement-bounds-${placementId}`);
+        if (draggedBounds) {
+          draggedBounds.position.set(dx, dy, dz);
+        }
+        const draggedMarker = originMarkersGroupRef.current?.getObjectByName(`origin-marker-${placementId}`);
+        if (draggedMarker) {
+          draggedMarker.position.set(dx, dy, dz);
+        }
+
+        gizmoProxy.position.set(
+          dragStartGizmoPosRef.current.x + dx,
+          dragStartGizmoPosRef.current.y + dy,
+          dragStartGizmoPosRef.current.z + dz
         );
       }
     });
@@ -1005,6 +1115,36 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         (alignGuidesLineRef.current.material as THREE.Material).dispose();
         alignGuidesLineRef.current = null;
       }
+      if (placementBoundsGroupRef.current) {
+        disposeGroupResources(placementBoundsGroupRef.current);
+        scene.remove(placementBoundsGroupRef.current);
+        placementBoundsGroupRef.current = null;
+      }
+      if (originMarkersGroupRef.current) {
+        disposeGroupResources(originMarkersGroupRef.current);
+        scene.remove(originMarkersGroupRef.current);
+        originMarkersGroupRef.current = null;
+      }
+      if (selectionGroupRef.current) {
+        disposeGroupResources(selectionGroupRef.current);
+        scene.remove(selectionGroupRef.current);
+        selectionGroupRef.current = null;
+      }
+      if (gridGroupRef.current) {
+        disposeGroupResources(gridGroupRef.current);
+        scene.remove(gridGroupRef.current);
+        gridGroupRef.current = null;
+      }
+      if (conflictGroupRef.current) {
+        disposeGroupResources(conflictGroupRef.current);
+        scene.remove(conflictGroupRef.current);
+        conflictGroupRef.current = null;
+      }
+      if (ghostGroupRef.current) {
+        disposeGroupResources(ghostGroupRef.current);
+        scene.remove(ghostGroupRef.current);
+        ghostGroupRef.current = null;
+      }
       groundGridRef.current = null;
 
       chunkManager.dispose();
@@ -1049,6 +1189,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       transformCtrl.detach();
       if (alignGuidesLineRef.current) {
         alignGuidesLineRef.current.visible = false;
+        alignGuidesLineRef.current.geometry.setDrawRange(0, 0);
       }
     }
   }, [selectedPlacementIds, selectedTool, activeTool, sessionRevision, session]);
