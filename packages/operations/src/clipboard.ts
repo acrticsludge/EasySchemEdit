@@ -411,6 +411,11 @@ export class ClipboardManager {
     return this.clipboard.delete(id);
   }
 
+  // Delete clipboard entry by ID (alias for removeEntry).
+  deleteEntry(id: string): boolean {
+    return this.removeEntry(id);
+  }
+
   // Clear all clipboard entries.
   clear(): void {
     this.clipboard.clear();

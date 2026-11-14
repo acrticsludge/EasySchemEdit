@@ -8,12 +8,22 @@ export const SELECTION_STORAGE_PREFIX = 'ese_selection:';
 export const CAMERA_STORAGE_PREFIX = 'ese_camera:';
 export const UI_PREFS_STORAGE_KEY = 'ese_ui_prefs';
 
+export interface SavedRegion {
+  id: string;
+  name: string;
+  pos1: Vec3i;
+  pos2: Vec3i;
+  bounds: Bounds3i;
+}
+
 export interface PersistedSelectionState {
   pos1: Vec3i | null;
   pos2: Vec3i | null;
   bounds: Bounds3i | null;
   selectedVoxel: VoxelHit | null;
   selectedPlacementId: string | null;
+  savedRegions?: SavedRegion[];
+  activeRegionId?: string | null;
 }
 
 export interface PersistedUiPrefs {
@@ -58,13 +68,29 @@ function isValidVoxelHit(v: unknown): v is VoxelHit {
   );
 }
 
+function isValidSavedRegion(r: unknown): r is SavedRegion {
+  if (!r || typeof r !== 'object') return false;
+  const candidate = r as Partial<SavedRegion>;
+  return (
+    typeof candidate.id === 'string' &&
+    candidate.id.length > 0 &&
+    typeof candidate.name === 'string' &&
+    isValidVec3i(candidate.pos1) &&
+    isValidVec3i(candidate.pos2) &&
+    isValidBounds(candidate.bounds)
+  );
+}
+
 export function isSelectionEmpty(state: PersistedSelectionState): boolean {
+  const hasSavedRegions = Array.isArray(state.savedRegions) && state.savedRegions.length > 0;
   return (
     state.pos1 === null &&
     state.pos2 === null &&
     state.bounds === null &&
     state.selectedVoxel === null &&
-    state.selectedPlacementId === null
+    state.selectedPlacementId === null &&
+    !hasSavedRegions &&
+    !state.activeRegionId
   );
 }
 
@@ -87,7 +113,20 @@ export function saveSchematicSelection(
       store.removeItem(key);
       return;
     }
-    store.setItem(key, JSON.stringify(state));
+    const payload: PersistedSelectionState = {
+      pos1: state.pos1,
+      pos2: state.pos2,
+      bounds: state.bounds,
+      selectedVoxel: state.selectedVoxel,
+      selectedPlacementId: state.selectedPlacementId,
+    };
+    if (Array.isArray(state.savedRegions)) {
+      payload.savedRegions = state.savedRegions.filter(isValidSavedRegion);
+    }
+    if (state.activeRegionId !== undefined) {
+      payload.activeRegionId = state.activeRegionId;
+    }
+    store.setItem(key, JSON.stringify(payload));
   } catch {
     // Catch quota exceeded or localStorage disabled
   }
@@ -120,6 +159,19 @@ export function loadSchematicSelection(
       selectedVoxel: isValidVoxelHit(parsed.selectedVoxel) ? parsed.selectedVoxel : null,
       selectedPlacementId: typeof parsed.selectedPlacementId === 'string' ? parsed.selectedPlacementId : null,
     };
+
+    if (Array.isArray(parsed.savedRegions)) {
+      const validRegions = parsed.savedRegions.filter(isValidSavedRegion);
+      if (validRegions.length > 0) {
+        state.savedRegions = validRegions;
+      }
+    }
+
+    if (typeof parsed.activeRegionId === 'string') {
+      state.activeRegionId = parsed.activeRegionId;
+    } else if (parsed.activeRegionId === null) {
+      state.activeRegionId = null;
+    }
 
     if (isSelectionEmpty(state)) {
       return null;

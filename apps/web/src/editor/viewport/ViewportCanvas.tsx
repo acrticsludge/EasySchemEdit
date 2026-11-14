@@ -4,11 +4,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import type { EditorSession, SessionChangeEvent } from '@easyschemedit/operations';
+import type { EditorSession, SessionChangeEvent, ClipboardEntry } from '@easyschemedit/operations';
 import type { AssetSource, TextureUvInfo } from '@easyschemedit/renderer';
 import { placementWorldBounds, type Bounds3i, type Vec3i } from '@easyschemedit/domain';
+import type { SavedRegion } from '../persistence/selection-storage.ts';
 
-import { ChunkSceneManager, type ChunkSceneStats } from './chunk-mesh-builder.ts';
+import { ChunkSceneManager, expandChunkKeysWithFaceNeighbors, type ChunkSceneStats } from './chunk-mesh-builder.ts';
 import { ViewportCameraController, type CameraMode, type CameraPreset } from './camera-controller.ts';
 import { raycastVoxels, createProjectBlockLookup, type VoxelHit } from './voxel-raycast.ts';
 import {
@@ -21,6 +22,8 @@ import {
 } from './overlays-builder.ts';
 import { isRayHoveringRegion, intersectRayAABB } from './region-hit.ts';
 import { RegionContextMenu } from './RegionContextMenu.tsx';
+import { ClipboardDrawer } from './ClipboardDrawer.tsx';
+import { getClipboardDimensions } from './clipboard-preview.ts';
 
 export interface GhostPreviewSpec {
   bounds: Bounds3i;
@@ -161,6 +164,17 @@ export interface ViewportCanvasProps {
   regionPos2?: Vec3i | null;
   regionPickMode?: 'pos1' | 'pos2' | null;
   regionBounds?: Bounds3i | null;
+  savedRegions?: SavedRegion[];
+  activeRegionId?: string | null;
+  onSelectRegion?: (regionId: string) => void;
+  onAddNewRegion?: () => void;
+  onRemoveRegion?: (regionId: string) => void;
+  clipboardEntries?: ClipboardEntry[];
+  activePasteEntryId?: string | null;
+  onSelectPasteEntry?: (entryId: string | null) => void;
+  onDeleteClipboardEntry?: (entryId: string) => void;
+  onClearClipboard?: () => void;
+  onPasteAtTarget?: (targetPos: Vec3i, entryId?: string) => void;
   onSetPos1FromSelectedVoxel?: () => void;
   onSetPos2FromSelectedVoxel?: () => void;
   onClearRegionSelection?: () => void;
@@ -199,6 +213,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   regionPos2 = null,
   regionPickMode = null,
   regionBounds = null,
+  savedRegions = [],
+  activeRegionId = null,
+  onSelectRegion,
+  onAddNewRegion,
+  onRemoveRegion,
+  clipboardEntries = [],
+  activePasteEntryId = null,
+  onSelectPasteEntry,
+  onDeleteClipboardEntry,
+  onClearClipboard,
+  onPasteAtTarget,
   onSetPos1FromSelectedVoxel,
   onSetPos2FromSelectedVoxel,
   onClearRegionSelection,
@@ -243,12 +268,15 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const shiftKeyRef = useRef<boolean>(false);
   const [sessionRevision, setSessionRevision] = useState<number>(() => session.peekProject().revision);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [contextMenuBounds, setContextMenuBounds] = useState<Bounds3i | null>(null);
+  const [isClipboardOpen, setIsClipboardOpen] = useState<boolean>(false);
 
   useEffect(() => {
-    if (!regionBounds) {
+    if (!regionBounds && (!savedRegions || savedRegions.length === 0)) {
       setContextMenuPos(null);
+      setContextMenuBounds(null);
     }
-  }, [regionBounds]);
+  }, [regionBounds, savedRegions]);
 
   // Overlay root groups
   const placementBoundsGroupRef = useRef<THREE.Group | null>(null);
@@ -257,6 +285,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   const gridGroupRef = useRef<THREE.Group | null>(null);
   const conflictGroupRef = useRef<THREE.Group | null>(null);
   const ghostGroupRef = useRef<THREE.Group | null>(null);
+  const pasteGhostGroupRef = useRef<THREE.Group | null>(null);
   const originGroupRef = useRef<THREE.Group | null>(null);
   const groundGridRef = useRef<THREE.GridHelper | null>(null);
   const hoverHighlightRef = useRef<THREE.Group | null>(null);
@@ -274,6 +303,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   regionPos2Ref.current = regionPos2;
   const regionBoundsRef = useRef<Bounds3i | null>(regionBounds);
   regionBoundsRef.current = regionBounds;
+  const savedRegionsRef = useRef<SavedRegion[]>(savedRegions);
+  savedRegionsRef.current = savedRegions;
+  const activeRegionIdRef = useRef<string | null>(activeRegionId);
+  activeRegionIdRef.current = activeRegionId;
+  const onSelectRegionRef = useRef(onSelectRegion);
+  onSelectRegionRef.current = onSelectRegion;
+  const activePasteEntryIdRef = useRef<string | null>(activePasteEntryId);
+  activePasteEntryIdRef.current = activePasteEntryId;
+  const onPasteAtTargetRef = useRef(onPasteAtTarget);
+  onPasteAtTargetRef.current = onPasteAtTarget;
 
   const cameraSaveTimeoutRef = useRef<number | null>(null);
   const lastSavedCameraJsonRef = useRef<string>('');
@@ -449,7 +488,27 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       disposeGroupResources(selectionGroupRef.current);
       scene.remove(selectionGroupRef.current);
     }
-    selectionGroupRef.current = buildSelectionBoxMesh(selBounds);
+    const selGroup = new THREE.Group();
+    selGroup.name = 'selection-boxes-group';
+    const currentSaved = savedRegionsRef.current;
+    const currentActive = activeRegionIdRef.current;
+    if (currentSaved && currentSaved.length > 0) {
+      for (const reg of currentSaved) {
+        const isActive = reg.id === currentActive;
+        const b = isActive && regionBoundsRef.current ? regionBoundsRef.current : reg.bounds;
+        const box = buildSelectionBoxMesh(
+          b,
+          isActive
+            ? { colorHex: 0x14f195, fillOpacity: 0.22, wireframeColorHex: 0x39ffaa, wireframeOpacity: 0.95 }
+            : { colorHex: 0x38bdf8, fillOpacity: 0.10, wireframeColorHex: 0x38bdf8, wireframeOpacity: 0.65 }
+        );
+        selGroup.add(box);
+      }
+    } else if (selBounds) {
+      const box = buildSelectionBoxMesh(selBounds);
+      selGroup.add(box);
+    }
+    selectionGroupRef.current = selGroup;
     selectionGroupRef.current.position.set(0, 0, 0);
     scene.add(selectionGroupRef.current);
 
@@ -590,9 +649,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         dirtyPlacementIds &&
         dirtyPlacementIds.length > 0
       ) {
+        const expandedChunkKeys = expandChunkKeysWithFaceNeighbors(dirtyChunkKeys);
         dirtyChunkKeysByPlacement = new Map();
         for (const pId of dirtyPlacementIds) {
-          dirtyChunkKeysByPlacement.set(pId, dirtyChunkKeys);
+          dirtyChunkKeysByPlacement.set(pId, expandedChunkKeys);
         }
       }
 
@@ -744,19 +804,120 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     }
   }, [regionPos1, regionPos2]);
 
-  // Sync selectionGroupRef immediately when regionBounds changes
+  // Sync selectionGroupRef immediately when regionBounds or savedRegions changes
   useEffect(() => {
     regionBoundsRef.current = regionBounds;
+    savedRegionsRef.current = savedRegions;
+    activeRegionIdRef.current = activeRegionId;
     const scene = sceneRef.current;
     if (!scene) return;
     if (selectionGroupRef.current) {
       disposeGroupResources(selectionGroupRef.current);
       scene.remove(selectionGroupRef.current);
     }
-    selectionGroupRef.current = buildSelectionBoxMesh(regionBounds ?? null);
+    const selGroup = new THREE.Group();
+    selGroup.name = 'selection-boxes-group';
+    if (savedRegions && savedRegions.length > 0) {
+      for (const reg of savedRegions) {
+        const isActive = reg.id === activeRegionId;
+        const b = isActive && regionBounds ? regionBounds : reg.bounds;
+        const box = buildSelectionBoxMesh(
+          b,
+          isActive
+            ? { colorHex: 0x14f195, fillOpacity: 0.22, wireframeColorHex: 0x39ffaa, wireframeOpacity: 0.95 }
+            : { colorHex: 0x38bdf8, fillOpacity: 0.10, wireframeColorHex: 0x38bdf8, wireframeOpacity: 0.65 }
+        );
+        selGroup.add(box);
+      }
+    } else if (regionBounds) {
+      const box = buildSelectionBoxMesh(regionBounds);
+      selGroup.add(box);
+    }
+    selectionGroupRef.current = selGroup;
     selectionGroupRef.current.position.set(0, 0, 0);
     scene.add(selectionGroupRef.current);
-  }, [regionBounds]);
+  }, [regionBounds, savedRegions, activeRegionId]);
+
+  // Sync paste ghost box when activePasteEntryId or hoveredVoxel changes
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) return;
+
+    if (pasteGhostGroupRef.current) {
+      disposeGroupResources(pasteGhostGroupRef.current);
+      scene.remove(pasteGhostGroupRef.current);
+      pasteGhostGroupRef.current = null;
+    }
+
+    if (!activePasteEntryId || !hoveredVoxel || !clipboardEntries) {
+      return;
+    }
+
+    const activeEntry = clipboardEntries.find((e) => e.id === activePasteEntryId);
+    if (!activeEntry) {
+      return;
+    }
+
+    const dims = getClipboardDimensions(activeEntry);
+    if (dims.width <= 0 || dims.height <= 0 || dims.depth <= 0) {
+      return;
+    }
+
+    const pasteTarget: Vec3i = hoveredVoxel.placementId
+      ? hoveredVoxel.adjacentPosition
+      : hoveredVoxel.position;
+
+    const bounds: Bounds3i = {
+      min: pasteTarget,
+      maxExclusive: [
+        pasteTarget[0] + dims.width,
+        pasteTarget[1] + dims.height,
+        pasteTarget[2] + dims.depth,
+      ],
+    };
+
+    const ghost = buildSelectionBoxMesh(bounds, {
+      colorHex: 0x4a9eff,
+      fillOpacity: 0.18,
+      wireframeColorHex: 0x60a5fa,
+      wireframeOpacity: 0.9,
+    });
+    ghost.name = 'paste-ghost-overlay';
+    pasteGhostGroupRef.current = ghost;
+    scene.add(ghost);
+
+    return () => {
+      if (pasteGhostGroupRef.current && scene) {
+        disposeGroupResources(pasteGhostGroupRef.current);
+        scene.remove(pasteGhostGroupRef.current);
+        pasteGhostGroupRef.current = null;
+      }
+    };
+  }, [activePasteEntryId, hoveredVoxel, clipboardEntries]);
+
+  // Cancel paste mode on Escape
+  useEffect(() => {
+    if (!activePasteEntryId) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const target = e.target as HTMLElement | null;
+        const tagName = target?.tagName?.toUpperCase();
+        if (
+          tagName === 'INPUT' ||
+          tagName === 'TEXTAREA' ||
+          tagName === 'SELECT'
+        ) {
+          return;
+        }
+        e.preventDefault();
+        onSelectPasteEntry?.(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activePasteEntryId, onSelectPasteEntry]);
 
   // Restore camera state per schematic ID & handle camera persistence
   useEffect(() => {
@@ -1613,6 +1774,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         scene.remove(ghostGroupRef.current);
         ghostGroupRef.current = null;
       }
+      if (pasteGhostGroupRef.current) {
+        disposeGroupResources(pasteGhostGroupRef.current);
+        scene.remove(pasteGhostGroupRef.current);
+        pasteGhostGroupRef.current = null;
+      }
       if (originGroupRef.current) {
         disposeGroupResources(originGroupRef.current);
         scene.remove(originGroupRef.current);
@@ -1906,7 +2072,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         e.clientX - pointerDownPosRef.current.x,
         e.clientY - pointerDownPosRef.current.y
       );
-      if (dist <= 5 && regionBoundsRef.current) {
+      const regions = savedRegionsRef.current;
+      const activeId = activeRegionIdRef.current;
+      const currentBounds = regionBoundsRef.current;
+      const hasAnyRegions = Boolean(currentBounds || (regions && regions.length > 0));
+
+      if (dist <= 5 && hasAnyRegions) {
         const canvas = canvasRef.current;
         const camera = cameraRef.current;
         if (canvas && camera) {
@@ -1928,18 +2099,43 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
           const hit = performRaycast(e.clientX, e.clientY);
           const solidHit = hit && hit.placementId !== null ? hit : null;
-          const hovering = isRayHoveringRegion(
-            rayOrigin,
-            rayDir,
-            regionBoundsRef.current,
-            solidHit ? solidHit.distance : null,
-            solidHit ? solidHit.position : null
-          );
 
-          if (hovering) {
+          let hoveredBounds: Bounds3i | null = null;
+          if (
+            currentBounds &&
+            isRayHoveringRegion(
+              rayOrigin,
+              rayDir,
+              currentBounds,
+              solidHit ? solidHit.distance : null,
+              solidHit ? solidHit.position : null
+            )
+          ) {
+            hoveredBounds = currentBounds;
+          } else if (regions && regions.length > 0) {
+            for (const reg of regions) {
+              if (reg.id === activeId) continue;
+              if (
+                isRayHoveringRegion(
+                  rayOrigin,
+                  rayDir,
+                  reg.bounds,
+                  solidHit ? solidHit.distance : null,
+                  solidHit ? solidHit.position : null
+                )
+              ) {
+                hoveredBounds = reg.bounds;
+                onSelectRegionRef.current?.(reg.id);
+                break;
+              }
+            }
+          }
+
+          if (hoveredBounds) {
             const containerRect = containerRef.current?.getBoundingClientRect();
             const menuX = containerRect ? e.clientX - containerRect.left : e.clientX;
             const menuY = containerRect ? e.clientY - containerRect.top : e.clientY;
+            setContextMenuBounds(hoveredBounds);
             setContextMenuPos({ x: menuX, y: menuY });
           }
         }
@@ -2016,6 +2212,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     if (dist > 5) return;
 
     const hit = performRaycast(e.clientX, e.clientY);
+    if (activePasteEntryIdRef.current && hit) {
+      const pasteTarget: Vec3i = hit.placementId ? hit.adjacentPosition : hit.position;
+      onPasteAtTargetRef.current?.(pasteTarget, activePasteEntryIdRef.current);
+      return;
+    }
     if (hit) {
       onVoxelClick?.(hit, e);
     } else {
@@ -2531,8 +2732,64 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         </div>
       )}
 
+      {/* Top-Center Viewport Hint Banner for Paste Mode */}
+      {activePasteEntryId && (
+        <div
+          style={{
+            position: 'absolute',
+            top: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 25,
+            pointerEvents: 'auto',
+            backgroundColor: '#181820ee',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid #4a9eff',
+            borderRadius: '6px',
+            padding: '6px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            boxShadow: '0 4px 20px rgba(74, 158, 255, 0.25)',
+            color: '#e2e2ec',
+            fontSize: '12px',
+            fontFamily: 'system-ui, sans-serif',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: '#4a9eff',
+              boxShadow: '0 0 6px #4a9eff',
+            }}
+          />
+          <span>
+            Paste mode — click a block to paste{' '}
+            <span style={{ color: '#8888aa' }}>(Esc to cancel)</span>
+          </span>
+          <button
+            onClick={() => onSelectPasteEntry?.(null)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#8888aa',
+              cursor: 'pointer',
+              fontSize: '12px',
+              padding: '0 2px',
+              marginLeft: '4px',
+            }}
+            title="Cancel paste (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Floating Vertical Island for Selected Block Tools */}
-      {(selectedVoxelPosition || regionPickMode) && (
+      {(selectedVoxelPosition || regionPickMode || regionBounds) && (
         <div
           style={{
             position: 'absolute',
@@ -2681,10 +2938,74 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             </svg>
           </button>
 
+          {/* + Region Button (keeps current region and starts a new Pos1 pick) */}
+          {regionBounds && (
+            <button
+              onClick={() => onAddNewRegion?.()}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#232330',
+                border: '1px solid #38bdf8',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                color: '#38bdf8',
+                boxShadow: '0 0 6px rgba(56, 189, 248, 0.25)',
+                padding: 0,
+                transition: 'all 0.15s ease',
+              }}
+              title="Add New Region (+ Region: keep current and start a new region selection)"
+              aria-label="Add New Region"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="14" height="14" rx="2" strokeDasharray="2 2" />
+                <line x1="12" y1="8" x2="12" y2="16" />
+                <line x1="8" y1="12" x2="16" y2="12" />
+              </svg>
+            </button>
+          )}
+
+          {/* Paste at Selected Block Button */}
+          {clipboardEntries && clipboardEntries.length > 0 && (
+            <button
+              onClick={() => {
+                if (selectedVoxelPosition) {
+                  onPasteAtTarget?.(selectedVoxelPosition);
+                }
+              }}
+              disabled={!selectedVoxelPosition}
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                background: '#232330',
+                border: '1px solid #4a9eff',
+                borderRadius: '4px',
+                cursor: selectedVoxelPosition ? 'pointer' : 'not-allowed',
+                opacity: selectedVoxelPosition ? 1 : 0.4,
+                color: '#4a9eff',
+                padding: 0,
+                transition: 'all 0.15s ease',
+              }}
+              title="Paste at selected block (Ctrl+V)"
+              aria-label="Paste at selected block"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+              </svg>
+            </button>
+          )}
+
           {/* 4. Clear Region Button */}
           <button
             onClick={() => onClearRegionSelection?.()}
-            disabled={!regionPos1 && !regionPos2 && !regionBounds}
+            disabled={!regionPos1 && !regionPos2 && !regionBounds && (!savedRegions || savedRegions.length === 0)}
             style={{
               width: '32px',
               height: '32px',
@@ -2694,8 +3015,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               background: '#232330',
               border: '1px solid #333345',
               borderRadius: '4px',
-              cursor: (regionPos1 || regionPos2 || regionBounds) ? 'pointer' : 'not-allowed',
-              opacity: (regionPos1 || regionPos2 || regionBounds) ? 1 : 0.35,
+              cursor: (regionPos1 || regionPos2 || regionBounds || (savedRegions && savedRegions.length > 0)) ? 'pointer' : 'not-allowed',
+              opacity: (regionPos1 || regionPos2 || regionBounds || (savedRegions && savedRegions.length > 0)) ? 1 : 0.35,
               color: '#ff6666',
               padding: 0,
               transition: 'all 0.15s ease',
@@ -2716,13 +3037,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
       )}
 
       {/* Region Right-Click Context Menu */}
-      {contextMenuPos && regionBounds && (
+      {contextMenuPos && (contextMenuBounds || regionBounds) && (
         <RegionContextMenu
           x={contextMenuPos.x}
           y={contextMenuPos.y}
           containerWidth={containerRef.current?.clientWidth || 800}
           containerHeight={containerRef.current?.clientHeight || 600}
-          bounds={regionBounds}
+          bounds={(contextMenuBounds || regionBounds)!}
           defaultBlockId={defaultBlockId}
           hasClipboard={hasRegionClipboard}
           onFill={(blockId) => onRegionFill?.(blockId)}
@@ -2734,8 +3055,128 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           onPaste={() => onRegionPaste?.()}
           onDelete={() => onRegionDelete?.()}
           onDeselect={() => onClearRegionSelection?.()}
-          onClose={() => setContextMenuPos(null)}
+          onClose={() => {
+            setContextMenuPos(null);
+            setContextMenuBounds(null);
+          }}
         />
+      )}
+
+      {/* Windows-style Win+V Clipboard Drawer */}
+      <ClipboardDrawer
+        entries={clipboardEntries ?? []}
+        activePasteEntryId={activePasteEntryId}
+        isOpen={isClipboardOpen}
+        onToggleOpen={() => setIsClipboardOpen((prev) => !prev)}
+        onSelectPasteEntry={(entryId) => {
+          onSelectPasteEntry?.(activePasteEntryId === entryId ? null : entryId);
+        }}
+        onDeleteEntry={(entryId) => onDeleteClipboardEntry?.(entryId)}
+        onClearAll={() => onClearClipboard?.()}
+      />
+
+      {/* Multiple Saved Regions Chip Bar */}
+      {savedRegions && savedRegions.length > 0 && (
+        <div
+          style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '60px',
+            height: '36px',
+            zIndex: 21,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            backgroundColor: '#181a20f2',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            border: '1px solid #2a2f3a',
+            borderRadius: '6px',
+            padding: '0 8px',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+            userSelect: 'none',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            fontSize: '12px',
+          }}
+        >
+          <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '11px', marginRight: '2px' }}>
+            Regions:
+          </span>
+          {savedRegions.map((reg) => {
+            const isActive = reg.id === activeRegionId;
+            return (
+              <div
+                key={reg.id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: isActive ? '#14f19522' : '#222631',
+                  border: isActive ? '1px solid #14f195' : '1px solid #333948',
+                  borderRadius: '4px',
+                  padding: '2px 6px',
+                  color: isActive ? '#14f195' : '#cbd5e1',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.12s ease',
+                }}
+                onClick={() => onSelectRegion?.(reg.id)}
+                title={`${reg.name}: [${reg.pos1.join(',')}] to [${reg.pos2.join(',')}] (Click to activate)`}
+              >
+                <span>{reg.name}</span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveRegion?.(reg.id);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: isActive ? '#14f19599' : '#64748b',
+                    cursor: 'pointer',
+                    padding: '0 2px',
+                    fontSize: '12px',
+                    lineHeight: 1,
+                    borderRadius: '2px',
+                  }}
+                  title={`Remove ${reg.name}`}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = isActive ? '#14f19599' : '#64748b')}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => onAddNewRegion?.()}
+            style={{
+              background: '#232836',
+              border: '1px solid #38bdf8',
+              color: '#38bdf8',
+              borderRadius: '4px',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: 700,
+              padding: 0,
+              lineHeight: 1,
+              transition: 'all 0.12s ease',
+            }}
+            title="Add new region (+)"
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#38bdf822')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#232836')}
+          >
+            +
+          </button>
+        </div>
       )}
     </div>
   );

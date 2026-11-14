@@ -138,10 +138,21 @@ export function buildOriginMarkersGroup(placements: Placement[]): THREE.Group {
   return group;
 }
 
+export interface SelectionBoxOptions {
+  colorHex?: number;
+  fillOpacity?: number;
+  wireframeColorHex?: number;
+  wireframeOpacity?: number;
+}
+
 /**
- * Builds a vibrant emerald-green translucent filled box + wireframe box around current selection bounds.
+ * Builds a vibrant translucent filled box + wireframe box around selection/region bounds.
+ * Defaults to emerald-green (0x14f195 / 0.22 fill, 0x39ffaa / 0.95 wireframe).
  */
-export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
+export function buildSelectionBoxMesh(
+  bounds: Bounds3i | null,
+  options?: SelectionBoxOptions
+): THREE.Group {
   const group = new THREE.Group();
   group.name = 'selection-box-overlay';
 
@@ -157,12 +168,18 @@ export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
   const cy = bounds.min[1] + sy / 2;
   const cz = bounds.min[2] + sz / 2;
 
+  const colorHex = options?.colorHex ?? 0x14f195;
+  const fillOpacity = options?.fillOpacity ?? 0.22;
+  const wireframeColorHex =
+    options?.wireframeColorHex ?? (options?.colorHex !== undefined ? options.colorHex : 0x39ffaa);
+  const wireframeOpacity = options?.wireframeOpacity ?? 0.95;
+
   // Translucent inner box inflated slightly by 0.008 to prevent z-fighting
   const boxGeom = new THREE.BoxGeometry(sx + 0.008, sy + 0.008, sz + 0.008);
   const boxMat = new THREE.MeshBasicMaterial({
-    color: 0x14f195,
+    color: colorHex,
     transparent: true,
-    opacity: 0.22,
+    opacity: fillOpacity,
     depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -1,
@@ -182,9 +199,9 @@ export function buildSelectionBoxMesh(bounds: Bounds3i | null): THREE.Group {
     bounds.maxExclusive[2]
   );
   const lineMat = new THREE.LineBasicMaterial({
-    color: 0x39ffaa,
+    color: wireframeColorHex,
     transparent: true,
-    opacity: 0.95,
+    opacity: wireframeOpacity,
     depthWrite: false,
   });
   const lineMesh = new THREE.LineSegments(lineGeom, lineMat);

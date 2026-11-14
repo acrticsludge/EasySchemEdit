@@ -42,6 +42,7 @@ import {
   type Selection,
   type SelectionAnchor,
   type SelectionState,
+  type SelectionType,
 } from './selection.ts';
 import {
   applyRegionOperation,
@@ -441,7 +442,9 @@ function isNonVoxelMutatingCommand(type: string): boolean {
     norm === 'conflict:overlay' ||
     norm === 'conflict_overlay' ||
     norm === 'clipboard:copy' ||
-    norm === 'copy'
+    norm === 'copy' ||
+    norm === 'clipboard:delete' ||
+    norm === 'clipboard:clear'
   ) {
     return true;
   }
@@ -561,6 +564,27 @@ export class EditorSession {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /**
+   * Return all current clipboard entries.
+   */
+  public getClipboardEntries(): ClipboardEntry[] {
+    return this.clipboard.listEntries();
+  }
+
+  /**
+   * Delete a clipboard entry by ID.
+   */
+  public deleteClipboardEntry(entryId: string): boolean {
+    return this.clipboard.deleteEntry(entryId);
+  }
+
+  /**
+   * Clear all clipboard entries.
+   */
+  public clearClipboard(): void {
+    this.clipboard.clear();
   }
 
   canUndo(): boolean {
@@ -1059,6 +1083,11 @@ export class EditorSession {
         return res as unknown as T;
       }
 
+      case 'clipboard:list':
+      case 'listclipboard': {
+        return this.getClipboardEntries() as unknown as T;
+      }
+
       default:
         throw new Error(`Unknown query type: ${(q as { type: string }).type}`);
     }
@@ -1355,8 +1384,16 @@ export class EditorSession {
 
     // ── Selection Commands ──
     if (norm === 'selection:set') {
-      const c = cmd as { selection: Selection };
-      this.selection = createSelectionState(c.selection.kind, c.selection, this.selection.anchor);
+      const c = cmd as { selection: any };
+      const selObj = c.selection;
+      const actualSelection: Selection =
+        selObj && selObj.kind
+          ? selObj
+          : selObj && selObj.selection
+          ? selObj.selection
+          : selObj;
+      const kind: SelectionType = actualSelection?.kind ?? selObj?.type ?? 'cuboid';
+      this.selection = createSelectionState(kind, actualSelection, this.selection.anchor);
       return { ok: true, affectedPlacementIds: [] };
     }
 
@@ -1484,12 +1521,21 @@ export class EditorSession {
             kind: 'cuboid',
             bounds: {
               min: [cb.bounds.minX, cb.bounds.minY, cb.bounds.minZ] as Vec3i,
-              maxExclusive: [cb.bounds.maxX, cb.bounds.maxY, cb.bounds.maxZ] as Vec3i,
+              maxExclusive: [cb.bounds.maxX + 1, cb.bounds.maxY + 1, cb.bounds.maxZ + 1] as Vec3i,
             },
           };
         } else {
           sel = this.selection.selection;
         }
+      } else if (sel.bounds && 'minX' in sel.bounds && !('maxExclusive' in sel.bounds)) {
+        const cb = sel as { bounds: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } };
+        sel = {
+          kind: 'cuboid',
+          bounds: {
+            min: [cb.bounds.minX, cb.bounds.minY, cb.bounds.minZ] as Vec3i,
+            maxExclusive: [cb.bounds.maxX + 1, cb.bounds.maxY + 1, cb.bounds.maxZ + 1] as Vec3i,
+          },
+        };
       }
       this.clipboard.copy(this.project, sel, c.scope ?? 'effective-composite');
       return { ok: true, affectedPlacementIds: [] };
@@ -1504,7 +1550,16 @@ export class EditorSession {
           kind: 'cuboid',
           bounds: {
             min: [cb.bounds.minX, cb.bounds.minY, cb.bounds.minZ] as Vec3i,
-            maxExclusive: [cb.bounds.maxX, cb.bounds.maxY, cb.bounds.maxZ] as Vec3i,
+            maxExclusive: [cb.bounds.maxX + 1, cb.bounds.maxY + 1, cb.bounds.maxZ + 1] as Vec3i,
+          },
+        };
+      } else if (sel && sel.bounds && 'minX' in sel.bounds && !('maxExclusive' in sel.bounds)) {
+        const cb = sel as { bounds: { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number } };
+        sel = {
+          kind: 'cuboid',
+          bounds: {
+            min: [cb.bounds.minX, cb.bounds.minY, cb.bounds.minZ] as Vec3i,
+            maxExclusive: [cb.bounds.maxX + 1, cb.bounds.maxY + 1, cb.bounds.maxZ + 1] as Vec3i,
           },
         };
       }
@@ -1567,6 +1622,29 @@ export class EditorSession {
         changedCells: res.changedCells,
         bounds: res.affectedBounds,
       };
+    }
+
+    if (norm === 'clipboard:delete' || norm === 'clipboard_delete') {
+      const c = cmd as { entryId: string };
+      if (!c.entryId) {
+        return {
+          ok: false,
+          error: { code: 'INVALID_ARGUMENT', message: 'Missing entryId for clipboard:delete' },
+        };
+      }
+      const deleted = this.clipboard.deleteEntry(c.entryId);
+      if (!deleted) {
+        return {
+          ok: false,
+          error: { code: 'NOT_FOUND', message: `Clipboard entry not found: ${c.entryId}` },
+        };
+      }
+      return { ok: true, affectedPlacementIds: [] };
+    }
+
+    if (norm === 'clipboard:clear' || norm === 'clipboard_clear') {
+      this.clipboard.clear();
+      return { ok: true, affectedPlacementIds: [] };
     }
 
     // ── Bake ──
@@ -1808,6 +1886,7 @@ export class EditorSession {
         for (const [k, cc] of currChunks) {
           const pc = prevChunks.get(k);
           if (!pc) {
+            cc.revision = (cc.revision ?? 0) + 1;
             chunkDeltas.push({
               key: k,
               before: null,
@@ -1825,6 +1904,7 @@ export class EditorSession {
             const indEq = areIndicesEqual(pc.indices, cc.indices);
             const palEq = arePalettesEqual(pc.palette, cc.palette);
             if (!indEq || !palEq) {
+              cc.revision = (cc.revision ?? 0) + 1;
               chunkDeltas.push({
                 key: k,
                 before: {

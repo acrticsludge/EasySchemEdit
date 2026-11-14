@@ -14,6 +14,10 @@ import {
   normalizeBlockId,
   toBlockStateId,
 } from '../src/editor/viewport/region-hit.ts';
+import {
+  ChunkSceneManager,
+  expandChunkKeysWithFaceNeighbors,
+} from '../src/editor/viewport/chunk-mesh-builder.ts';
 
 function assert(condition: boolean, message: string): void {
   if (!condition) {
@@ -302,6 +306,183 @@ console.log('--- Test 5: EditorSession Region Operations (Fill, Replace, Hollow,
   assertEqual(selState.type, 'cuboid', 'Selection reset');
 
   console.log('  ✓ All EditorSession region CRUD operations executed successfully');
+}
+
+// ---------------------------------------------------------------------------
+// Test 6: 1x1x1 Clipboard Copy (Off-by-1 fix) & Clipboard History API
+// ---------------------------------------------------------------------------
+console.log('--- Test 6: 1x1x1 Clipboard Copy & Clipboard History API ---');
+{
+  const project = makeTestProject();
+  const session = new EditorSession(project);
+
+  // Set 1x1x1 cuboid selection at [1, 1, 1] (where stone block exists in makeTestPlacement)
+  session.execute({
+    type: 'selection:set',
+    selection: {
+      kind: 'cuboid',
+      bounds: { minX: 1, minY: 1, minZ: 1, maxX: 1, maxY: 1, maxZ: 1 },
+    },
+  });
+
+  // Execute clipboard:copy with no explicit selection (relies on session cuboid selection)
+  const copyRes = session.execute({
+    type: 'clipboard:copy',
+  });
+  assert(copyRes.ok, 'clipboard:copy executed successfully');
+
+  // Verify getClipboardEntries()
+  const entries = session.getClipboardEntries();
+  assertEqual(entries.length, 1, 'Exactly 1 clipboard entry stored');
+  assertEqual(entries[0].data.blocks.length, 1, '1x1x1 selection copies exactly 1 block (not 0!)');
+  assertEqual(entries[0].data.blocks[0].state.id, 'minecraft:stone', 'Copied block is minecraft:stone');
+
+  // Verify query({ type: 'clipboard:list' })
+  const queried = session.query<any[]>({ type: 'clipboard:list' });
+  assertEqual(queried.length, 1, 'clipboard:list query returns 1 entry');
+  assertEqual(queried[0].id, entries[0].id, 'queried entry matches');
+
+  // Verify deleteClipboardEntry
+  const entryId = entries[0].id;
+  const deleted = session.deleteClipboardEntry(entryId);
+  assertEqual(deleted, true, 'deleteClipboardEntry returned true');
+  assertEqual(session.getClipboardEntries().length, 0, 'Clipboard entries empty after delete');
+
+  // Copy again and test execute({ type: 'clipboard:delete' })
+  session.execute({ type: 'clipboard:copy' });
+  const entries2 = session.getClipboardEntries();
+  assertEqual(entries2.length, 1, 'Re-copied entry exists');
+  const deleteCmdRes = session.execute({
+    type: 'clipboard:delete',
+    entryId: entries2[0].id,
+  });
+  assert(deleteCmdRes.ok, 'clipboard:delete command executed');
+  assertEqual(session.getClipboardEntries().length, 0, 'Clipboard entry deleted via execute()');
+
+  console.log('  ✓ 1x1x1 clipboard copy and clipboard history query/delete passed');
+}
+
+// ---------------------------------------------------------------------------
+// Test 7: expandChunkKeysWithFaceNeighbors Helper
+// ---------------------------------------------------------------------------
+console.log('--- Test 7: expandChunkKeysWithFaceNeighbors ---');
+{
+  const commaKeys = expandChunkKeysWithFaceNeighbors(['0,0,0']);
+  assertEqual(commaKeys.length, 7, 'Returns exactly 7 keys for [0,0,0]');
+  const expectedComma = new Set(['0,0,0', '1,0,0', '-1,0,0', '0,1,0', '0,-1,0', '0,0,1', '0,0,-1']);
+  for (const k of expectedComma) {
+    assert(commaKeys.includes(k), `Comma expansion contains ${k}`);
+  }
+
+  const underscoreKeys = expandChunkKeysWithFaceNeighbors(['0_0_0']);
+  assertEqual(underscoreKeys.length, 7, 'Returns exactly 7 keys for [0_0_0]');
+  const expectedUnderscore = new Set(['0_0_0', '1_0_0', '-1_0_0', '0_1_0', '0_-1_0', '0_0_1', '0_0,-1', '0_0_1', '0_0_-1']);
+  for (const k of ['0_0_0', '1_0_0', '-1_0_0', '0_1_0', '0_-1_0', '0_0_1', '0_0_-1']) {
+    assert(underscoreKeys.includes(k), `Underscore expansion contains ${k}`);
+  }
+
+  console.log('  ✓ expandChunkKeysWithFaceNeighbors returns 7 face-adjacent keys');
+}
+
+// ---------------------------------------------------------------------------
+// Test 8: ChunkSceneManager Re-meshes Neighbor Chunk on Adjacent Block Deletion
+// ---------------------------------------------------------------------------
+console.log('--- Test 8: ChunkSceneManager Neighbor Re-meshing ---');
+{
+  // Create 2 adjacent chunks:
+  // Chunk 0_0_0 has a stone block at local [15, 0, 0] (touching east boundary)
+  // Chunk 1_0_0 has a stone block at local [0, 0, 0] (touching west boundary)
+  const indicesA = new Uint8Array(4096);
+  indicesA[voxelIndex(15, 0, 0)] = 1;
+  const chunkA: VoxelChunk = {
+    key: '0_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+    indices: indicesA,
+    revision: 1,
+  };
+
+  const indicesB = new Uint8Array(4096);
+  indicesB[voxelIndex(0, 0, 0)] = 1;
+  const chunkB: VoxelChunk = {
+    key: '1_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+    indices: indicesB,
+    revision: 1,
+  };
+
+  const volume: ChunkedVoxelVolume = {
+    bounds: { min: [0, 0, 0], maxExclusive: [32, 16, 16] },
+    chunkSize: 16,
+    chunks: new Map([
+      ['0_0_0', chunkA],
+      ['1_0_0', chunkB],
+    ]),
+    nonAirCount: 2,
+    paletteCardinality: 2,
+  };
+
+  const placement: Placement = {
+    id: 'p-neighbor-test',
+    name: 'Neighbor Test Placement',
+    volume,
+    transform: { translation: [0, 0, 0], rotationY: 0, mirror: 'none' },
+    origin: [0, 0, 0],
+    ancillary: {
+      blockEntities: new Map(),
+      entities: [],
+      pendingBlockTicks: [],
+      pendingFluidTicks: [],
+      unknownTags: new Map(),
+    },
+    visible: true,
+    locked: false,
+    createdAt: new Date().toISOString(),
+    source: { format: 'generated', diagnostics: [] },
+    eraseTombstones: new Set(),
+  };
+
+  const project: Project = {
+    schemaVersion: 1,
+    id: 'neighbor-test-project',
+    name: 'Neighbor Test',
+    placements: [placement],
+    importGroups: [],
+    overlapPolicy: 'top-wins',
+    conflictOverlay: 'off',
+    metadata: { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
+    revision: 1,
+  };
+
+  const manager = new ChunkSceneManager();
+  manager.syncProject(project);
+
+  // Initial state:
+  // Both blocks touch at the chunk boundary (x=15 east face of chunk 0_0_0 meets x=0 west face of chunk 1_0_0).
+  // Each block has 5 faces rendered (1 face culled by the neighbor).
+  // 5 faces * 2 triangles/face = 10 triangles each, 20 total.
+  const initialStats = manager.getStats();
+  assertEqual(initialStats.triangleCount, 20, 'Initial touching blocks have 20 triangles (each has 5 unculled faces)');
+
+  // Now delete the block in chunk 0_0_0 (empty chunk 0_0_0)
+  indicesA[voxelIndex(15, 0, 0)] = 0;
+  volume.chunks.delete('0_0_0');
+  volume.nonAirCount = 1;
+  project.revision = 2;
+
+  // Queue sync with ONLY ['0_0_0'] in dirty list (e.g. after region:delete or clipboard:cut at 0_0_0)
+  manager.queueProjectSync(project, {
+    dirtyChunkKeysByPlacement: new Map([['p-neighbor-test', ['0_0_0']]]),
+  });
+  manager.processChunkQueue(50);
+
+  // Because dirtyChunkKeys was expanded with face neighbors (including 1_0_0)
+  // and its chunkRevisions invalidated, chunk 1_0_0 was re-meshed!
+  // Chunk 0_0_0 was removed (0 triangles).
+  // Chunk 1_0_0 west face is no longer culled -> 6 full faces * 2 triangles = 12 triangles!
+  const updatedStats = manager.getStats();
+  assertEqual(updatedStats.triangleCount, 12, 'Neighbor chunk re-meshed to 12 triangles (all 6 faces exposed)');
+
+  console.log('  ✓ ChunkSceneManager correctly re-meshes face-adjacent neighbor chunk');
 }
 
 console.log('\nAll Slice R3 Region Hit and CRUD tests passed successfully!');

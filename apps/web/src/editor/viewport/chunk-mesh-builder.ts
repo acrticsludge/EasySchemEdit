@@ -50,6 +50,39 @@ interface ChunkSlot {
 }
 
 /**
+ * Expands a list of chunk keys (in "cx,cy,cz" or "cx_cy_cz" format) with the 6 face-adjacent neighbor
+ * chunk keys (cx±1, cy, cz), (cx, cy±1, cz), (cx, cy, cz±1).
+ */
+export function expandChunkKeysWithFaceNeighbors(keys: string[]): string[] {
+  const result = new Set<string>();
+  for (const key of keys) {
+    if (!key) continue;
+    result.add(key);
+    const sep = key.includes(',') ? ',' : '_';
+    const parts = key.split(sep);
+    if (parts.length < 3) continue;
+    const cx = parseInt(parts[0], 10);
+    const cy = parseInt(parts[1], 10);
+    const cz = parseInt(parts[2], 10);
+    if (Number.isNaN(cx) || Number.isNaN(cy) || Number.isNaN(cz)) continue;
+
+    const neighbors: [number, number, number][] = [
+      [cx + 1, cy, cz],
+      [cx - 1, cy, cz],
+      [cx, cy + 1, cz],
+      [cx, cy - 1, cz],
+      [cx, cy, cz + 1],
+      [cx, cy, cz - 1],
+    ];
+
+    for (const [nx, ny, nz] of neighbors) {
+      result.add(`${nx}${sep}${ny}${sep}${nz}`);
+    }
+  }
+  return Array.from(result);
+}
+
+/**
  * Constructs a THREE.BufferGeometry from a chunk mesher pass geometry buffer.
  * Returns null if the buffer is empty (0 vertices or 0 indices).
  */
@@ -568,14 +601,17 @@ if (uShowChunkGrid > 0.5) {
       this.removeChunkSlot(placement.id, chunkKey, pass, groupEntry);
     }
 
-    const chunk = placement.volume.chunks.get(chunkKey);
+    const chunk = placement.volume.chunks.get(chunkKey) ??
+      (chunkKey.includes(',') ? placement.volume.chunks.get(chunkKey.replace(/,/g, '_')) : placement.volume.chunks.get(chunkKey.replace(/_/g, ',')));
     if (!chunk) {
       this.chunkRevisions.delete(revKey);
+      if (chunkKey.includes(',')) this.chunkRevisions.delete(`${placement.id}:${chunkKey.replace(/,/g, '_')}`);
+      if (chunkKey.includes('_')) this.chunkRevisions.delete(`${placement.id}:${chunkKey.replace(/_/g, ',')}`);
       return;
     }
 
     // Parse chunk origin in placement-local coordinates
-    const [cxStr, cyStr, czStr] = chunkKey.split('_');
+    const [cxStr, cyStr, czStr] = chunkKey.includes(',') ? chunkKey.split(',') : chunkKey.split('_');
     const cx = parseInt(cxStr ?? '0', 10) || 0;
     const cy = parseInt(cyStr ?? '0', 10) || 0;
     const cz = parseInt(czStr ?? '0', 10) || 0;
@@ -604,8 +640,7 @@ if (uShowChunkGrid > 0.5) {
       const ncy = Math.floor(wy / 16);
       const ncz = Math.floor(wz / 16);
       const nKey = `${ncx}_${ncy}_${ncz}`;
-
-      const nChunk = placement.volume.chunks.get(nKey);
+      const nChunk = placement.volume.chunks.get(nKey) ?? placement.volume.chunks.get(`${ncx},${ncy},${ncz}`);
       if (!nChunk) return null;
 
       const clx = ((wx % 16) + 16) % 16;
@@ -648,6 +683,12 @@ if (uShowChunkGrid > 0.5) {
       revision: chunk.revision,
       assetEpoch: this.assetEpoch,
     });
+    if (chunk.key && chunk.key !== chunkKey) {
+      this.chunkRevisions.set(`${placement.id}:${chunk.key}`, {
+        revision: chunk.revision,
+        assetEpoch: this.assetEpoch,
+      });
+    }
   }
 
   /**
@@ -671,7 +712,12 @@ if (uShowChunkGrid > 0.5) {
     let targetChunkKeys: string[];
 
     if (options?.dirtyChunkKeys) {
-      targetChunkKeys = options.dirtyChunkKeys;
+      targetChunkKeys = expandChunkKeysWithFaceNeighbors(options.dirtyChunkKeys);
+      for (const k of targetChunkKeys) {
+        this.chunkRevisions.delete(`${placement.id}:${k}`);
+        if (k.includes(',')) this.chunkRevisions.delete(`${placement.id}:${k.replace(/,/g, '_')}`);
+        if (k.includes('_')) this.chunkRevisions.delete(`${placement.id}:${k.replace(/_/g, ',')}`);
+      }
     } else {
       targetChunkKeys = [];
       for (const [chunkKey, chunk] of placement.volume.chunks) {
@@ -749,12 +795,25 @@ if (uShowChunkGrid > 0.5) {
     for (const placement of project.placements) {
       const dirtyForPlacement = options?.dirtyChunkKeysByPlacement?.get(placement.id);
       if (dirtyForPlacement) {
-        for (const chunkKey of dirtyForPlacement) {
-          if (placement.volume.chunks.has(chunkKey)) {
-            const fullKey = `${placement.id}:${chunkKey}`;
+        const expandedKeys = expandChunkKeysWithFaceNeighbors(dirtyForPlacement);
+        for (const chunkKey of expandedKeys) {
+          this.chunkRevisions.delete(`${placement.id}:${chunkKey}`);
+          if (chunkKey.includes(',')) this.chunkRevisions.delete(`${placement.id}:${chunkKey.replace(/,/g, '_')}`);
+          if (chunkKey.includes('_')) this.chunkRevisions.delete(`${placement.id}:${chunkKey.replace(/_/g, ',')}`);
+
+          const actualKey = placement.volume.chunks.has(chunkKey)
+            ? chunkKey
+            : chunkKey.includes(',') && placement.volume.chunks.has(chunkKey.replace(/,/g, '_'))
+            ? chunkKey.replace(/,/g, '_')
+            : chunkKey.includes('_') && placement.volume.chunks.has(chunkKey.replace(/_/g, ','))
+            ? chunkKey.replace(/_/g, ',')
+            : chunkKey;
+
+          if (placement.volume.chunks.has(actualKey)) {
+            const fullKey = `${placement.id}:${actualKey}`;
             if (!queuedKeys.has(fullKey)) {
               queuedKeys.add(fullKey);
-              this.pendingQueue.push({ placement, chunkKey });
+              this.pendingQueue.push({ placement, chunkKey: actualKey });
             }
           }
         }

@@ -13,6 +13,7 @@ import {
   isSelectionEmpty,
   type PersistedSelectionState,
   type PersistedUiPrefs,
+  type SavedRegion,
   SELECTION_STORAGE_PREFIX,
   CAMERA_STORAGE_PREFIX,
   UI_PREFS_STORAGE_KEY,
@@ -359,6 +360,85 @@ console.log('--- Test 7: Storage Exception Safety ---');
 
   assert(!threw, 'Functions must not throw when storage throws QuotaExceeded or SecurityError');
   console.log('  ✓ Storage exception safety verified');
+}
+
+// ---------------------------------------------------------------------------
+// Test 8: Multiple SavedRegions & ActiveRegionId Persistence Roundtrip
+// ---------------------------------------------------------------------------
+console.log('--- Test 8: Multiple SavedRegions & ActiveRegionId Roundtrip ---');
+{
+  const storage = new MockStorage();
+  const schemId = 'schem-multi-regions';
+
+  const r1: SavedRegion = {
+    id: 'region-1',
+    name: 'R1',
+    pos1: [0, 64, 0],
+    pos2: [15, 79, 15],
+    bounds: {
+      min: [0, 64, 0],
+      maxExclusive: [16, 80, 16],
+    },
+  };
+
+  const r2: SavedRegion = {
+    id: 'region-2',
+    name: 'R2',
+    pos1: [20, 60, -10],
+    pos2: [40, 90, 10],
+    bounds: {
+      min: [20, 60, -10],
+      maxExclusive: [41, 91, 11],
+    },
+  };
+
+  const stateWithRegions: PersistedSelectionState = {
+    pos1: r2.pos1,
+    pos2: r2.pos2,
+    bounds: r2.bounds,
+    selectedVoxel: null,
+    selectedPlacementId: null,
+    savedRegions: [r1, r2],
+    activeRegionId: 'region-2',
+  };
+
+  saveSchematicSelection(schemId, stateWithRegions, storage);
+  assert(storage.has(SELECTION_STORAGE_PREFIX + schemId), 'Key exists for multi-region state');
+
+  const loaded = loadSchematicSelection(schemId, storage);
+  assert(loaded !== null, 'Loaded state is not null');
+  assertEqual(loaded?.activeRegionId, 'region-2', 'activeRegionId matches');
+  assertEqual(loaded?.savedRegions?.length, 2, '2 saved regions restored');
+  assertDeepEqual(loaded?.savedRegions?.[0], r1, 'R1 matches exactly');
+  assertDeepEqual(loaded?.savedRegions?.[1], r2, 'R2 matches exactly');
+
+  // Test corrupt savedRegion filtering
+  storage.setItem(
+    SELECTION_STORAGE_PREFIX + 'corrupt-regions',
+    JSON.stringify({
+      pos1: null,
+      pos2: null,
+      bounds: null,
+      selectedVoxel: null,
+      selectedPlacementId: null,
+      activeRegionId: 'valid-id',
+      savedRegions: [
+        r1,
+        { id: '', name: 'bad-id', pos1: [0, 0, 0], pos2: [1, 1, 1], bounds: r1.bounds },
+        { id: 'bad-coords', name: 'bad', pos1: 'wrong', pos2: [1, 1, 1], bounds: r1.bounds },
+        'not-an-object',
+        r2,
+      ],
+    })
+  );
+
+  const filtered = loadSchematicSelection('corrupt-regions', storage);
+  assert(filtered !== null, 'Loaded filtered state is not null');
+  assertEqual(filtered?.savedRegions?.length, 2, 'Only the 2 valid regions kept');
+  assertEqual(filtered?.savedRegions?.[0].id, 'region-1', 'First is r1');
+  assertEqual(filtered?.savedRegions?.[1].id, 'region-2', 'Second is r2');
+
+  console.log('  ✓ Multiple saved regions and activeRegionId persisted and sanitized correctly');
 }
 
 console.log('\nAll Slice R3 selection and UI persistence tests passed successfully!');

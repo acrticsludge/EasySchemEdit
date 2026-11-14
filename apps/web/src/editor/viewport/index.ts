@@ -42,3 +42,19 @@ export {
   SelectedPlacementBar,
   type SelectedPlacementBarProps,
 } from './SelectedPlacementBar.tsx';
+
+export {
+  ClipboardDrawer,
+  type ClipboardDrawerProps,
+} from './ClipboardDrawer.tsx';
+
+export {
+  renderClipboardPreviewDataUrl,
+  getBlockRgb,
+  getClipboardDimensions,
+  getClipboardBlockCount,
+  extractSampledBlocks,
+  isAirLikeBlockId,
+  KNOWN_BLOCK_COLORS,
+  type SampledBlock,
+} from './clipboard-preview.ts';

@@ -312,6 +312,15 @@ export type ClipboardPasteCommand = {
   pasteAtOriginalPosition?: boolean;
 };
 
+export type ClipboardDeleteCommand = {
+  type: 'clipboard:delete' | 'clipboard.delete' | 'clipboard_delete';
+  entryId: string;
+};
+
+export type ClipboardClearCommand = {
+  type: 'clipboard:clear' | 'clipboard.clear' | 'clipboard_clear';
+};
+
 // ============================================================================
 // Bake Command
 // ============================================================================
@@ -353,6 +362,8 @@ export type Command =
   | ClipboardCopyCommand
   | ClipboardCutCommand
   | ClipboardPasteCommand
+  | ClipboardDeleteCommand
+  | ClipboardClearCommand
   | BakeCommand;
 
 // ============================================================================
@@ -403,6 +414,10 @@ export type GetHistoryQuery = {
   offset?: number;
 };
 
+export type ClipboardListQuery = {
+  type: 'clipboard:list' | 'clipboard.list' | 'clipboard_list' | 'listClipboard' | 'list_clipboard';
+};
+
 export type Query =
   | GetProjectQuery
   | ListPlacementsQuery
@@ -411,7 +426,8 @@ export type Query =
   | GetSelectionQuery
   | MaterialListQuery
   | DetectConflictsQuery
-  | GetHistoryQuery;
+  | GetHistoryQuery
+  | ClipboardListQuery;
 
 export interface HistoryQueryResult {
   undoStack: HistoryEntry[];
