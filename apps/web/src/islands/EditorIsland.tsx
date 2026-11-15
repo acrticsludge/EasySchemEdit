@@ -14,7 +14,12 @@ import {
   type Vec3Half,
   type Vec3i,
 } from '@easyschemedit/domain';
-import { createCuboidSelection, type ClipboardEntry } from '@easyschemedit/operations';
+import {
+  createCuboidSelection,
+  generateStructure,
+  generateShape,
+  type ClipboardEntry,
+} from '@easyschemedit/operations';
 import { packVxprojArchive, unpackVxprojArchive } from '@easyschemedit/persistence';
 import { toBlockStateId } from '../editor/viewport/region-hit.ts';
 import {
@@ -38,6 +43,7 @@ import {
   ProjectDialog,
   MaterialListPanel,
   ConflictsPanel,
+  AgentLogPanel,
   useImportWorkflow,
   ProjectExplorer,
   type GhostPreviewSpec,
@@ -55,9 +61,12 @@ import {
   createSchematic,
   renameSchematic,
   deleteSchematic,
+  loadSchematicArchive as getSchematicArchive,
 } from '../client/projects-client.ts';
+import { getMcpSyncState, updateMcpSyncState } from '../client/mcp-client.ts';
 import { LoginModal } from '../components/LoginModal.tsx';
 import { FirstProjectModal } from '../components/FirstProjectModal.tsx';
+import { McpConnectModal } from '../components/McpConnectModal.tsx';
 
 const DEFAULT_GUEST_PROJECT_ID = 'guest-project-draft';
 const DEFAULT_GUEST_SCHEMATIC_ID = 'guest-schem-untitled';
@@ -146,6 +155,13 @@ export default function EditorIsland() {
   const [isBakeOpen, setIsBakeOpen] = useState(false);
   const [isProjectsOpen, setIsProjectsOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isMcpModalOpen, setIsMcpModalOpen] = useState(false);
+  const [mcpLiveSyncEnabled, setMcpLiveSyncEnabled] = useState(true);
+  const [cloudMcpLogs, setCloudMcpLogs] = useState<
+    Array<{ id: string; tool: string; revision: number; changedCells: number; summary: string; createdAt: string }>
+  >([]);
+  const lastSyncedSelectionTimestampRef = useRef<string>('');
+  const selectionSyncDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingAuthAction, setPendingAuthAction] = useState<'save' | 'projects' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -332,6 +348,66 @@ export default function EditorIsland() {
     selectedPlacementId,
     savedRegions,
     activeRegionId,
+  ]);
+
+  // Browser -> Cloud Selection & Active Schematic Reporting (Slice M4b)
+  useEffect(() => {
+    if (!authUser) return;
+    if (!activeSchematicId || activeSchematicId.startsWith('guest-')) return;
+    if (isRestoringSelectionRef.current) return;
+
+    if (selectionSyncDebounceTimerRef.current) {
+      clearTimeout(selectionSyncDebounceTimerRef.current);
+    }
+
+    selectionSyncDebounceTimerRef.current = setTimeout(() => {
+      const nowIso = new Date().toISOString();
+      lastSyncedSelectionTimestampRef.current = nowIso;
+      updateMcpSyncState({
+        activeProjectId,
+        activeSchematicId,
+        selectionState: {
+          schematicId: activeSchematicId,
+          savedRegions: savedRegions.map((r) => ({
+            id: r.id,
+            name: r.name,
+            pos1: [r.pos1[0], r.pos1[1], r.pos1[2]],
+            pos2: [r.pos2[0], r.pos2[1], r.pos2[2]],
+            bounds: {
+              min: [r.bounds.min[0], r.bounds.min[1], r.bounds.min[2]],
+              maxExclusive: [r.bounds.maxExclusive[0], r.bounds.maxExclusive[1], r.bounds.maxExclusive[2]],
+            },
+          })),
+          activeRegionId,
+          bounds: regionBounds
+            ? {
+                min: [regionBounds.min[0], regionBounds.min[1], regionBounds.min[2]],
+                maxExclusive: [regionBounds.maxExclusive[0], regionBounds.maxExclusive[1], regionBounds.maxExclusive[2]],
+              }
+            : null,
+          pos1: regionPos1 ? [regionPos1[0], regionPos1[1], regionPos1[2]] : null,
+          pos2: regionPos2 ? [regionPos2[0], regionPos2[1], regionPos2[2]] : null,
+          updatedAt: nowIso,
+        },
+      }).catch((_err) => {
+        // Best-effort network update, catch silently
+      });
+    }, 400);
+
+    return () => {
+      if (selectionSyncDebounceTimerRef.current) {
+        clearTimeout(selectionSyncDebounceTimerRef.current);
+      }
+    };
+  }, [
+    authUser,
+    activeProjectId,
+    activeSchematicId,
+    savedRegions,
+    activeRegionId,
+    regionBounds,
+    regionPos1,
+    regionPos2,
   ]);
 
   // Check current session on mount (non-blocking)
@@ -923,6 +999,109 @@ export default function EditorIsland() {
       runtime,
     ],
   );
+
+  // Cloud -> Browser Live Real-Time Sync (Slice M4b)
+  const syncFromCloudMcp = useCallback(
+    async (forceReloadSchematic = false) => {
+      if (!authUser && !forceReloadSchematic) return;
+      try {
+        const sync = await getMcpSyncState(activeSchematicId);
+        if (sync.recentLogs) {
+          setCloudMcpLogs(
+            sync.recentLogs.map((log) => ({
+              id: log.id,
+              tool: log.tool,
+              revision: log.revision,
+              changedCells: log.changedCells,
+              summary: log.summary,
+              createdAt: log.createdAt,
+            }))
+          );
+        }
+
+        // Case A: AI switched active schematic or created a new project/schematic
+        if (
+          sync.activeSchematicId &&
+          sync.activeSchematicId !== activeSchematicId &&
+          !isSwitchingSchematicRef.current &&
+          !isSaving
+        ) {
+          const tree = await listWorkspaceTree();
+          setWorkspaceProjects(tree);
+          let targetProjId = sync.activeProjectId;
+          if (!targetProjId) {
+            for (const p of tree) {
+              if (p.schematics.some((s) => s.id === sync.activeSchematicId)) {
+                targetProjId = p.id;
+                break;
+              }
+            }
+          }
+          if (targetProjId) {
+            await handleSelectSchematic(targetProjId, sync.activeSchematicId);
+          }
+          return;
+        }
+
+        // Case B: AI modified the currently open schematic (sync.schematicRevision > currentRevision or forceReloadSchematic)
+        if (
+          activeSchematicId &&
+          !activeSchematicId.startsWith('guest-') &&
+          !isSaving &&
+          !isSwitchingSchematicRef.current
+        ) {
+          const currentRev = runtime.store.getSnapshot().revision;
+          const needsReload =
+            forceReloadSchematic ||
+            (typeof sync.schematicRevision === 'number' &&
+              sync.schematicRevision > currentRev &&
+              !runtime.persistence.isDirty());
+
+          if (needsReload) {
+            const buf = await getSchematicArchive(activeSchematicId);
+            const unpacked = unpackVxprojArchive(new Uint8Array(buf));
+            if (typeof (runtime.store as any).loadProject === 'function') {
+              (runtime.store as any).loadProject(unpacked);
+            } else {
+              await runtime.persistence.replaceProjectInSession(unpacked);
+            }
+            runtime.persistence.markClean();
+            const tree = await listWorkspaceTree();
+            setWorkspaceProjects(tree);
+          }
+        }
+
+        // Case C: AI updated region selections (sync.selectionState)
+        if (
+          sync.selectionState &&
+          sync.selectionState.schematicId === activeSchematicId &&
+          sync.selectionState.updatedAt &&
+          sync.selectionState.updatedAt !== lastSyncedSelectionTimestampRef.current
+        ) {
+          lastSyncedSelectionTimestampRef.current = sync.selectionState.updatedAt;
+          isRestoringSelectionRef.current = true;
+          setSavedRegions(sync.selectionState.savedRegions ?? []);
+          setActiveRegionId(sync.selectionState.activeRegionId ?? null);
+          setRegionBounds(sync.selectionState.bounds ?? null);
+          setRegionPos1(null);
+          setRegionPos2(null);
+        }
+      } catch (_err) {
+        // Silently catch sync poll errors
+      }
+    },
+    [authUser, activeSchematicId, isSaving, runtime, handleSelectSchematic]
+  );
+
+  // Poll cloud MCP sync every 2500ms when user is logged in & live sync is enabled
+  useEffect(() => {
+    if (!authUser || !mcpLiveSyncEnabled) return;
+    const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void syncFromCloudMcp();
+    }, 2500);
+    return () => clearInterval(interval);
+  }, [authUser, mcpLiveSyncEnabled, syncFromCloudMcp]);
 
   const handleCreateProject = useCallback(
     async (name: string) => {
@@ -1993,6 +2172,8 @@ export default function EditorIsland() {
         onBake={() => setIsBakeOpen(true)}
         onSave={handleSave}
         onOpenProjects={handleOpenProjects}
+        onOpenMcpHub={() => setIsMcpModalOpen(true)}
+        mcpLiveSyncActive={Boolean(authUser && mcpLiveSyncEnabled)}
         isDirty={isDirty}
         isSaving={isSaving}
         authUser={authUser}
@@ -2077,6 +2258,15 @@ export default function EditorIsland() {
           assets: <AssetLoadPanel manager={runtime.assetManager} />,
           materials: <MaterialListPanel controller={runtime.materialListController} />,
           conflicts: <ConflictsPanel controller={runtime.conflictsController} onOpenBake={() => setIsBakeOpen(true)} />,
+          'agent-log': (
+            <AgentLogPanel
+              client={runtime.mcpClient}
+              session={runtime.store.session}
+              cloudLogs={cloudMcpLogs}
+              onOpenMcpHub={() => setIsMcpModalOpen(true)}
+              liveSyncEnabled={mcpLiveSyncEnabled}
+            />
+          ),
         }}
       />
 
@@ -2166,6 +2356,53 @@ export default function EditorIsland() {
           setPendingAuthAction(null);
         }}
         onSuccess={handleAuthSuccess}
+      />
+
+      {/* Account MCP & AI Builder Hub Modal */}
+      <McpConnectModal
+        isOpen={isMcpModalOpen}
+        onClose={() => setIsMcpModalOpen(false)}
+        authUser={authUser}
+        onRequestSignIn={() => {
+          setIsMcpModalOpen(false);
+          setPendingAuthAction(null);
+          setIsLoginModalOpen(true);
+        }}
+        activeProjectId={activeProjectId}
+        activeSchematicId={activeSchematicId}
+        defaultPosition={
+          selectedVoxel
+            ? [selectedVoxel.position[0], selectedVoxel.position[1], selectedVoxel.position[2]]
+            : regionBounds
+            ? [regionBounds.min[0], regionBounds.min[1], regionBounds.min[2]]
+            : [0, 64, 0]
+        }
+        onMcpMutationComplete={async () => {
+          await syncFromCloudMcp(true);
+        }}
+        liveSyncEnabled={mcpLiveSyncEnabled}
+        onToggleLiveSync={setMcpLiveSyncEnabled}
+        onLocalGenerateStructure={(spec) => {
+          const res = generateStructure(runtime.store.session, {
+            kind: spec.structure as any,
+            style: spec.style as any,
+            position: spec.position,
+            placementName: spec.name,
+          });
+          return { placementId: res.placementId, blockCount: res.changedCells };
+        }}
+        onLocalGenerateShape={(spec) => {
+          const res = generateShape(runtime.store.session, {
+            kind: spec.shape as any,
+            block: spec.block,
+            center: spec.position,
+            radius: spec.radius,
+            height: spec.height,
+            hollow: spec.hollow,
+            placementName: spec.name,
+          });
+          return { placementId: res.placementId, blockCount: res.changedCells };
+        }}
       />
     </div>
   );

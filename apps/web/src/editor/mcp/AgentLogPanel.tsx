@@ -12,9 +12,26 @@ export interface AgentLogPanelProps {
   client: McpBridgeClient;
   session: EditorSession;
   className?: string;
+  cloudLogs?: Array<{
+    id: string;
+    tool: string;
+    revision: number;
+    changedCells: number;
+    summary: string;
+    createdAt: string;
+  }>;
+  onOpenMcpHub?: () => void;
+  liveSyncEnabled?: boolean;
 }
 
-export function AgentLogPanel({ client, session, className }: AgentLogPanelProps) {
+export function AgentLogPanel({
+  client,
+  session,
+  className,
+  cloudLogs,
+  onOpenMcpHub,
+  liveSyncEnabled = false,
+}: AgentLogPanelProps) {
   const [pairingToken, setPairingToken] = useState('');
   const [isPairing, setIsPairing] = useState(false);
   const [, setRevisionTick] = useState(0);
@@ -54,7 +71,68 @@ export function AgentLogPanel({ client, session, className }: AgentLogPanelProps
   const isConnected = client.status === 'connected';
   const isConnecting = client.status === 'connecting' || isPairing;
   const isError = client.status === 'error';
-  const entries = [...client.getEntries()].reverse();
+
+  interface DisplayAgentEntry {
+    id: string;
+    timestamp: string;
+    tool: string;
+    revision: number;
+    changedCells: number;
+    resultSummary: string;
+    warnings: string[];
+    undone: boolean;
+    source: 'local' | 'cloud';
+  }
+
+  const localEntries: DisplayAgentEntry[] = client.getEntries().map((entry) => ({
+    id: entry.id,
+    timestamp: entry.timestamp,
+    tool: entry.tool,
+    revision: entry.revision,
+    changedCells: entry.changedCells,
+    resultSummary: entry.resultSummary,
+    warnings: entry.warnings ?? [],
+    undone: Boolean(entry.undone),
+    source: 'local',
+  }));
+
+  const cloudEntries: DisplayAgentEntry[] = (cloudLogs ?? []).map((cl) => ({
+    id: cl.id,
+    timestamp: cl.createdAt,
+    tool: cl.tool,
+    revision: cl.revision,
+    changedCells: cl.changedCells,
+    resultSummary: cl.summary,
+    warnings: [],
+    undone: false,
+    source: 'cloud',
+  }));
+
+  const seenIds = new Set<string>();
+  const entries: DisplayAgentEntry[] = [];
+  for (const item of [...localEntries].reverse()) {
+    if (!seenIds.has(item.id)) {
+      seenIds.add(item.id);
+      entries.push(item);
+    }
+  }
+  for (const item of [...cloudEntries].reverse()) {
+    if (!seenIds.has(item.id)) {
+      seenIds.add(item.id);
+      entries.push(item);
+    }
+  }
+
+  if (localEntries.length > 0 && cloudEntries.length > 0) {
+    entries.sort((a, b) => {
+      const tA = new Date(a.timestamp).getTime();
+      const tB = new Date(b.timestamp).getTime();
+      if (!isNaN(tA) && !isNaN(tB) && tA !== tB) {
+        return tB - tA;
+      }
+      return b.revision - a.revision;
+    });
+  }
 
   // Clean host display: e.g. "127.0.0.1:43127"
   const hostDisplay = client.baseUrl.replace(/^https?:\/\//, '');
@@ -148,6 +226,42 @@ export function AgentLogPanel({ client, session, className }: AgentLogPanelProps
             }}
           >
             {isConnecting ? 'Pairing...' : 'Pair Browser'}
+          </button>
+        )}
+
+        {onOpenMcpHub && (
+          <button
+            type="button"
+            onClick={onOpenMcpHub}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              backgroundColor: 'rgba(59, 130, 246, 0.15)',
+              color: '#60a5fa',
+              border: '1px solid #3b82f6',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '12px',
+            }}
+            title="Account MCP Keys & AI Builder"
+          >
+            <span>🔑 Connect Account / AI Builder</span>
+            {liveSyncEnabled && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: '#22c55e',
+                  boxShadow: '0 0 6px #22c55e',
+                }}
+                title="Live Sync Active"
+              />
+            )}
           </button>
         )}
 
@@ -292,8 +406,9 @@ export function AgentLogPanel({ client, session, className }: AgentLogPanelProps
               </tr>
             </thead>
             <tbody>
-              {entries.map((entry: BrowserAgentLogEntry) => {
-                const undoAvailable = client.isUndoAvailable(entry.id, session.revision);
+              {entries.map((entry) => {
+                const isLocal = entry.source === 'local';
+                const undoAvailable = isLocal && client.isUndoAvailable(entry.id, session.revision);
                 const timeStr = entry.timestamp.includes('T')
                   ? entry.timestamp.split('T')[1].slice(0, 8)
                   : entry.timestamp;
@@ -310,16 +425,32 @@ export function AgentLogPanel({ client, session, className }: AgentLogPanelProps
                       {timeStr}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
-                      <code
-                        style={{
-                          backgroundColor: '#27272a',
-                          padding: '2px 5px',
-                          borderRadius: '3px',
-                          fontSize: '12px',
-                        }}
-                      >
-                        {entry.tool}
-                      </code>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                        <code
+                          style={{
+                            backgroundColor: '#27272a',
+                            padding: '2px 5px',
+                            borderRadius: '3px',
+                            fontSize: '12px',
+                          }}
+                        >
+                          {entry.tool}
+                        </code>
+                        {entry.source === 'cloud' && (
+                          <span
+                            style={{
+                              fontSize: '9px',
+                              padding: '1px 4px',
+                              borderRadius: '3px',
+                              backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                              color: '#60a5fa',
+                              border: '1px solid rgba(59, 130, 246, 0.4)',
+                            }}
+                          >
+                            Cloud
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td style={{ padding: '6px 8px', fontFamily: 'monospace' }}>
                       #{entry.revision}
@@ -347,9 +478,11 @@ export function AgentLogPanel({ client, session, className }: AgentLogPanelProps
                             ? 'Undo this operation'
                             : entry.undone
                             ? 'This operation has already been undone'
-                            : 'Only the latest revision can be undone directly'
+                            : isLocal
+                            ? 'Only the latest revision can be undone directly'
+                            : 'Cloud activity synchronized via MCP Hub'
                         }
-                        onClick={() => handleUndo(entry.id)}
+                        onClick={() => isLocal && handleUndo(entry.id)}
                         style={{
                           padding: '3px 8px',
                           fontSize: '11px',

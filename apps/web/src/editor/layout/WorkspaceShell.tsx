@@ -39,6 +39,8 @@ export interface WorkspaceShellProps {
   onBake?: () => void;
   onSave?: () => void;
   onOpenProjects?: () => void;
+  onOpenMcpHub?: () => void;
+  mcpLiveSyncActive?: boolean;
   isDirty?: boolean;
   isSaving?: boolean;
   authUser?: AuthUser | null;
@@ -70,6 +72,8 @@ export function WorkspaceShell({
   onBake,
   onSave,
   onOpenProjects,
+  onOpenMcpHub,
+  mcpLiveSyncActive,
   isDirty,
   isSaving,
   authUser,
@@ -260,6 +264,8 @@ export function WorkspaceShell({
         onBake={onBake}
         onSave={onSave}
         onOpenProjects={onOpenProjects}
+        onOpenMcpHub={onOpenMcpHub}
+        mcpLiveSyncActive={mcpLiveSyncActive}
         isDirty={isDirty}
         isSaving={isSaving}
         authUser={authUser}

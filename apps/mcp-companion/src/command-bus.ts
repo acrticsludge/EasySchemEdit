@@ -22,6 +22,18 @@ import {
 import type { Project, Placement } from '../../../packages/domain/placement.ts';
 import { placementWorldBounds } from '../../../packages/domain/coordinates.ts';
 import type { BlockStateMatcher } from '../../../packages/operations/src/region-ops.ts';
+import {
+  generateShape,
+  generateStructure,
+  executeBlueprint,
+  setVoxelBlockAt,
+  setVoxelBlocksBatch,
+  getVoxelBlockAt,
+  inspectRegionVoxels,
+  type ShapeGenerationSpec,
+  type StructureGenerationSpec,
+  type BlueprintSpec,
+} from '../../../packages/operations/src/build-generator.ts';
 
 // ============================================================================
 // Types
@@ -35,6 +47,12 @@ export type CommandBusState = {
   projectId: string;
   revision: number;
   documentLoaded: boolean;
+};
+
+export type SavedRegion = {
+  id: string;
+  name: string;
+  bounds: number[];
 };
 
 export type CommandBus = {
@@ -199,7 +217,11 @@ function ensureDefaultPlacementIfNeeded(session: EditorSession, bounds?: Bounds3
   session.execute({ type: 'placement:add', placement: p });
 }
 
-export function mapToolToCommands(operation: CommandOperation, args: CommandArgs): Command[] {
+export function mapToolToCommands(
+  operation: CommandOperation,
+  args: CommandArgs,
+  session?: EditorSession,
+): Command[] {
   switch (operation) {
     case 'fill_selection': {
       const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
@@ -262,7 +284,11 @@ export function mapToolToCommands(operation: CommandOperation, args: CommandArgs
         type: 'region:walls',
         bounds: tupleToBounds(rawBounds),
         wallBlock: parseBlockState((args.blockType ?? args.wallBlock) as string | undefined),
-        fillInterior: args.replacementBlock ? parseBlockState(args.replacementBlock as string) : (args.fillInterior ? parseBlockState(args.fillInterior as string) : null),
+        fillInterior: args.replacementBlock
+          ? parseBlockState(args.replacementBlock as string)
+          : args.fillInterior
+            ? parseBlockState(args.fillInterior as string)
+            : null,
         placementId: args.placementId as string | undefined,
       }];
     }
@@ -322,13 +348,38 @@ export function mapToolToCommands(operation: CommandOperation, args: CommandArgs
       const cmds: Command[] = [];
       const pid = args.placementId as string;
       if (Array.isArray(args.translation)) {
-        cmds.push({ type: 'placement:move', placementId: pid, translation: args.translation as unknown as Vec3i });
+        cmds.push({
+          type: 'placement:move',
+          placementId: pid,
+          translation: args.translation as unknown as Vec3i,
+        });
+      } else if (Array.isArray(args.offset) && session) {
+        const p = session.snapshot().placements.find((pl) => pl.id === pid);
+        const currentTr = p ? p.transform.translation : [0, 0, 0];
+        const newTr: Vec3i = [
+          currentTr[0] + (args.offset[0] as number),
+          currentTr[1] + (args.offset[1] as number),
+          currentTr[2] + (args.offset[2] as number),
+        ];
+        cmds.push({
+          type: 'placement:move',
+          placementId: pid,
+          translation: newTr,
+        });
       }
       if (typeof args.rotation === 'string' || typeof args.rotation === 'number') {
-        cmds.push({ type: 'placement:rotate', placementId: pid, rotationY: Number(args.rotation) as 0 | 90 | 180 | 270 });
+        cmds.push({
+          type: 'placement:rotate',
+          placementId: pid,
+          rotationY: Number(args.rotation) as 0 | 90 | 180 | 270,
+        });
       }
       if (typeof args.mirror === 'string') {
-        cmds.push({ type: 'placement:mirror', placementId: pid, mirror: args.mirror as 'none' | 'x' | 'z' });
+        cmds.push({
+          type: 'placement:mirror',
+          placementId: pid,
+          mirror: args.mirror as 'none' | 'x' | 'z',
+        });
       }
       return cmds;
     }
@@ -349,6 +400,7 @@ export function mapToolToCommands(operation: CommandOperation, args: CommandArgs
     }
     case 'create_selection': {
       const b = (args.bounds ?? args.worldBounds) as number[];
+      if (!b || b.length !== 6) return [];
       return [{
         type: 'selection:edit',
         bounds: { minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5] },
@@ -387,6 +439,11 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
   const cache = new Map<string, ExecutionResult>();
   const session = options?.session ?? new EditorSession();
 
+  // Multi-region selection state
+  const savedRegions: SavedRegion[] = [];
+  let activeRegionId: string | null = null;
+  let regionSeq = 0;
+
   function state(): CommandBusState {
     return {
       projectId,
@@ -410,6 +467,74 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
   function preview(operation: CommandOperation, args: CommandArgs): PreviewResult {
     if (options?.previewEstimator) {
       return options.previewEstimator(operation, args);
+    }
+
+    // Procedural build preview
+    if (
+      operation === 'set_block' ||
+      operation === 'set_blocks' ||
+      operation === 'generate_shape' ||
+      operation === 'generate_structure' ||
+      operation === 'generate_build' ||
+      operation === 'build_blueprint' ||
+      operation === 'stack_region' ||
+      operation === 'copy_paste_region'
+    ) {
+      const cloned = new EditorSession(session.snapshot());
+      let changedCells = 0;
+      let placementId = '';
+      let bounds: Bounds3i = { min: [0, 0, 0], maxExclusive: [0, 0, 0] };
+
+      if (operation === 'set_block') {
+        const res = setVoxelBlockAt(cloned, args.pos as Vec3i, args.block as string, {
+          placementId: args.placementId as string,
+          placementName: args.placementName as string,
+          createNewPlacement: args.createNewPlacement as boolean,
+        });
+        changedCells = res.changedCells;
+        placementId = res.placementId;
+        bounds = res.bounds;
+      } else if (operation === 'set_blocks') {
+        const res = setVoxelBlocksBatch(
+          cloned,
+          args.voxels as Array<{ pos: Vec3i; block: string }>,
+          {
+            placementId: args.placementId as string,
+            placementName: args.placementName as string,
+            createNewPlacement: args.createNewPlacement as boolean,
+          },
+        );
+        changedCells = res.changedCells;
+        placementId = res.placementId;
+        bounds = res.bounds;
+      } else if (operation === 'generate_shape') {
+        const res = generateShape(cloned, args as unknown as ShapeGenerationSpec);
+        changedCells = res.changedCells;
+        placementId = res.placementId;
+        bounds = res.bounds;
+      } else if (operation === 'generate_structure' || operation === 'generate_build') {
+        const res = generateStructure(cloned, args as unknown as StructureGenerationSpec);
+        changedCells = res.changedCells;
+        placementId = res.placementId;
+        bounds = res.bounds;
+      } else if (operation === 'build_blueprint') {
+        const res = executeBlueprint(cloned, args as unknown as BlueprintSpec);
+        changedCells = res.changedCells;
+        placementId = res.placementId;
+        bounds = res.bounds;
+      }
+
+      return {
+        operation,
+        affectedPlacementIds: placementId ? [placementId] : [],
+        affectedBounds: [bounds],
+        candidateCells: changedCells,
+        changedCells,
+        resultingNonAirCount: countTotalNonAir(cloned.snapshot()),
+        conflictImpact: { sameStateOverlapsResolved: 0, stateConflictsResolved: 0 },
+        estimatedUndoBytes: changedCells * 32,
+        warnings: [],
+      };
     }
 
     let candidateCells = 0;
@@ -464,7 +589,11 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
     }
 
     // Check locked placement
-    if (typeof args.placementId === 'string' && operation !== 'set_placement_lock' && operation !== 'set_placement_visibility') {
+    if (
+      typeof args.placementId === 'string' &&
+      operation !== 'set_placement_lock' &&
+      operation !== 'set_placement_visibility'
+    ) {
       const p = session.snapshot().placements.find((pl) => pl.id === args.placementId);
       if (p && p.locked) {
         return {
@@ -536,7 +665,7 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
         res.changed.placementIds.forEach((id) => affectedPlacements.add(id));
       }
     } else {
-      const cmds = mapToolToCommands(operation, args);
+      const cmds = mapToolToCommands(operation, args, cloned);
       for (const cmd of cmds) {
         const res = cloned.execute(cmd);
         if (!res.ok) {
@@ -583,6 +712,363 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
       return relayed;
     }
 
+    // 1. Procedural build operations
+    if (operation === 'set_block') {
+      const res = setVoxelBlockAt(session, args.pos as Vec3i, args.block as string, {
+        placementId: args.placementId as string,
+        placementName: args.placementName as string,
+        createNewPlacement: args.createNewPlacement as boolean,
+      });
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+        errorCode: res.ok ? undefined : 'SET_BLOCK_FAILED',
+        errorMessage: res.error,
+      };
+    }
+
+    if (operation === 'set_blocks') {
+      const res = setVoxelBlocksBatch(
+        session,
+        args.voxels as Array<{ pos: Vec3i; block: string }>,
+        {
+          placementId: args.placementId as string,
+          placementName: args.placementName as string,
+          createNewPlacement: args.createNewPlacement as boolean,
+        },
+      );
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+        errorCode: res.ok ? undefined : 'SET_BLOCKS_FAILED',
+        errorMessage: res.error,
+      };
+    }
+
+    if (operation === 'generate_shape') {
+      const res = generateShape(session, args as unknown as ShapeGenerationSpec);
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+        errorCode: res.ok ? undefined : 'GENERATE_SHAPE_FAILED',
+        errorMessage: res.error,
+      };
+    }
+
+    if (operation === 'generate_structure' || operation === 'generate_build') {
+      const res = generateStructure(session, args as unknown as StructureGenerationSpec);
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+        errorCode: res.ok ? undefined : 'GENERATE_STRUCTURE_FAILED',
+        errorMessage: res.error,
+      };
+    }
+
+    if (operation === 'build_blueprint') {
+      const res = executeBlueprint(session, args as unknown as BlueprintSpec);
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+        errorCode: res.ok ? undefined : 'BLUEPRINT_FAILED',
+        errorMessage: res.error,
+      };
+    }
+
+    if (operation === 'create_placement') {
+      const id =
+        (args.placementId as string) ||
+        `placement-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const name = (args.name as string) || 'New Placement';
+      const translation = (args.translation as Vec3i) || [0, 0, 0];
+      const origin = (args.origin as Vec3Half) || [0, 0, 0];
+      const p: Placement = {
+        id,
+        name,
+        volume: {
+          bounds: { min: [0, 0, 0], maxExclusive: [16, 16, 16] },
+          chunkSize: 16,
+          chunks: new Map(),
+          nonAirCount: 0,
+          paletteCardinality: 1,
+        },
+        transform: { translation, rotationY: 0, mirror: 'none' },
+        origin,
+        ancillary: {
+          blockEntities: new Map(),
+          entities: [],
+          pendingBlockTicks: [],
+          pendingFluidTicks: [],
+          unknownTags: new Map(),
+        },
+        visible: true,
+        locked: false,
+        createdAt: new Date().toISOString(),
+        source: { format: 'generated', diagnostics: [] },
+        eraseTombstones: new Set(),
+      };
+      const res = session.execute({ type: 'placement:add', placement: p });
+      return {
+        success: res.ok,
+        revision: res.ok ? res.revision : session.revision,
+        changedCells: 0,
+        changedPlacements: res.ok ? [id] : [],
+        warnings: [],
+      };
+    }
+
+    if (operation === 'stack_region') {
+      const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
+      let bounds: Bounds3i;
+      if (rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6) {
+        bounds = tupleToBounds(rawBounds);
+      } else if (activeRegionId) {
+        const reg = savedRegions.find((r) => r.id === activeRegionId);
+        bounds = reg ? tupleToBounds(reg.bounds) : { min: [0, 0, 0], maxExclusive: [16, 16, 16] };
+      } else {
+        bounds = { min: [0, 0, 0], maxExclusive: [16, 16, 16] };
+      }
+      const count = typeof args.count === 'number' && args.count > 0 ? args.count : 1;
+      const offset = (args.offset as Vec3i) || [0, 0, 0];
+
+      const inspection = inspectRegionVoxels(session, bounds, { maxBlocks: 250000 });
+      const shiftedVoxels: Array<{ pos: Vec3i; block: string }> = [];
+
+      for (let step = 1; step <= count; step++) {
+        const dx = offset[0] * step;
+        const dy = offset[1] * step;
+        const dz = offset[2] * step;
+        for (const b of inspection.blocks) {
+          shiftedVoxels.push({
+            pos: [b.pos[0] + dx, b.pos[1] + dy, b.pos[2] + dz],
+            block: b.block,
+          });
+        }
+      }
+
+      const res = setVoxelBlocksBatch(session, shiftedVoxels, {
+        placementId: args.placementId as string | undefined,
+      });
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+      };
+    }
+
+    if (operation === 'copy_paste_region') {
+      const rawBounds = (args.sourceBounds ?? args.worldBounds ?? args.bounds) as number[] | undefined;
+      let bounds: Bounds3i;
+      if (rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6) {
+        bounds = tupleToBounds(rawBounds);
+      } else if (activeRegionId) {
+        const reg = savedRegions.find((r) => r.id === activeRegionId);
+        bounds = reg ? tupleToBounds(reg.bounds) : { min: [0, 0, 0], maxExclusive: [16, 16, 16] };
+      } else {
+        bounds = { min: [0, 0, 0], maxExclusive: [16, 16, 16] };
+      }
+      const targetOrigin = (args.targetOrigin as Vec3i) || [0, 0, 0];
+      const inspection = inspectRegionVoxels(session, bounds, { maxBlocks: 250000 });
+      const dx = targetOrigin[0] - bounds.min[0];
+      const dy = targetOrigin[1] - bounds.min[1];
+      const dz = targetOrigin[2] - bounds.min[2];
+
+      const shiftedVoxels: Array<{ pos: Vec3i; block: string }> = inspection.blocks.map((b) => ({
+        pos: [b.pos[0] + dx, b.pos[1] + dy, b.pos[2] + dz],
+        block: b.block,
+      }));
+
+      const res = setVoxelBlocksBatch(session, shiftedVoxels, {
+        placementId: args.placementId as string | undefined,
+      });
+      return {
+        success: res.ok,
+        revision: res.revision,
+        changedCells: res.changedCells,
+        changedPlacements: [res.placementId],
+        warnings: [],
+      };
+    }
+
+    // 2. Multi-region selection operations
+    if (operation === 'create_selection') {
+      const rawBounds = (args.bounds ?? args.worldBounds) as number[] | undefined;
+      if (rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6) {
+        const id = (args.id as string) || (args.name as string) || `R${++regionSeq}`;
+        const name = (args.name as string) || id;
+        const existingIndex = savedRegions.findIndex((r) => r.id === id);
+        if (existingIndex !== -1) {
+          savedRegions[existingIndex] = { id, name, bounds: rawBounds };
+        } else {
+          savedRegions.push({ id, name, bounds: rawBounds });
+        }
+        activeRegionId = id;
+      }
+    } else if (operation === 'select_region') {
+      let target: SavedRegion | undefined;
+      if (typeof args.id === 'string') {
+        target = savedRegions.find((r) => r.id === args.id);
+      } else if (typeof args.index === 'number' && args.index >= 0 && args.index < savedRegions.length) {
+        target = savedRegions[args.index];
+      }
+      if (target) {
+        activeRegionId = target.id;
+        const b = target.bounds;
+        session.execute({
+          type: 'selection:edit',
+          bounds: { minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5] },
+        });
+        return {
+          success: true,
+          revision: session.revision,
+          changedCells: 0,
+          changedPlacements: [],
+          warnings: [],
+        };
+      }
+      return {
+        success: false,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+        errorCode: 'REGION_NOT_FOUND',
+        errorMessage: 'Specified region was not found',
+      };
+    } else if (operation === 'remove_region') {
+      let idx = -1;
+      if (typeof args.id === 'string') {
+        idx = savedRegions.findIndex((r) => r.id === args.id);
+      } else if (typeof args.index === 'number') {
+        idx = args.index;
+      }
+      if (idx >= 0 && idx < savedRegions.length) {
+        const removed = savedRegions.splice(idx, 1)[0];
+        if (activeRegionId === removed.id) {
+          if (savedRegions.length > 0) {
+            activeRegionId = savedRegions[0].id;
+            const b = savedRegions[0].bounds;
+            session.execute({
+              type: 'selection:edit',
+              bounds: { minX: b[0], minY: b[1], minZ: b[2], maxX: b[3], maxY: b[4], maxZ: b[5] },
+            });
+          } else {
+            activeRegionId = null;
+            session.execute({ type: 'selection:clear' });
+          }
+        }
+        return {
+          success: true,
+          revision: session.revision,
+          changedCells: 0,
+          changedPlacements: [],
+          warnings: [],
+        };
+      }
+      return {
+        success: false,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+        errorCode: 'REGION_NOT_FOUND',
+        errorMessage: 'Specified region was not found',
+      };
+    } else if (operation === 'clear_selection') {
+      activeRegionId = null;
+      session.execute({ type: 'selection:clear' });
+      return {
+        success: true,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+      };
+    }
+
+    // 3. Project & Workspace management operations
+    if (operation === 'create_project') {
+      const pid = `proj-${Date.now()}`;
+      setProjectId(pid);
+      if (args.name && typeof args.name === 'string') {
+        (session as any).project.name = args.name;
+      }
+      return {
+        success: true,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+      };
+    }
+
+    if (operation === 'rename_project') {
+      if (args.name && typeof args.name === 'string') {
+        (session as any).project.name = args.name;
+      }
+      return {
+        success: true,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+      };
+    }
+
+    if (operation === 'delete_project') {
+      return {
+        success: true,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+      };
+    }
+
+    if (operation === 'create_schematic') {
+      return execute('create_placement', { name: args.name });
+    }
+
+    if (operation === 'rename_schematic') {
+      return execute('rename_placement', { placementId: args.id, name: args.name });
+    }
+
+    if (operation === 'delete_schematic') {
+      return execute('delete_placement', { placementId: args.id });
+    }
+
+    if (operation === 'duplicate_schematic') {
+      return execute('duplicate_placement', { placementId: args.id });
+    }
+
+    if (operation === 'set_active_schematic') {
+      return {
+        success: true,
+        revision: session.revision,
+        changedCells: 0,
+        changedPlacements: [],
+        warnings: [],
+      };
+    }
+
+    // 4. Standard operations
     const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
     if (rawBounds && (operation.startsWith('fill') || operation === 'fill_selection')) {
       ensureDefaultPlacementIfNeeded(session, tupleToBounds(rawBounds));
@@ -632,7 +1118,7 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
       };
     }
 
-    const cmds = mapToolToCommands(operation, args);
+    const cmds = mapToolToCommands(operation, args, session);
     if (cmds.length === 0) {
       return {
         success: true,
@@ -776,6 +1262,81 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
       case 'get_selection': {
         return session.query({ type: 'getSelection' });
       }
+      case 'list_selections': {
+        return {
+          regions: savedRegions.map((r, i) => ({
+            id: r.id,
+            name: r.name,
+            bounds: r.bounds,
+            isActive: r.id === activeRegionId,
+            index: i,
+          })),
+          activeRegionId,
+          total: savedRegions.length,
+        };
+      }
+      case 'get_block': {
+        const pos = args.pos as Vec3i;
+        const pid = args.placementId as string | undefined;
+        return getVoxelBlockAt(session, pos, pid);
+      }
+      case 'inspect_region': {
+        const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
+        let bounds: Bounds3i;
+        if (rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6) {
+          bounds = tupleToBounds(rawBounds);
+        } else {
+          const snap = session.snapshot();
+          if (snap.placements.length > 0) {
+            bounds = snap.placements[0].volume.bounds;
+          } else {
+            bounds = { min: [0, 0, 0], maxExclusive: [16, 16, 16] };
+          }
+        }
+        return inspectRegionVoxels(session, bounds, {
+          maxBlocks: typeof args.maxBlocks === 'number' ? args.maxBlocks : 512,
+          includeAir: Boolean(args.includeAir),
+          placementId: args.placementId as string | undefined,
+        });
+      }
+      case 'get_account_info': {
+        return {
+          authenticated: true,
+          user: { id: 'local-user', name: 'Local User', email: 'user@easyschemedit.local' },
+          cloudSync: false,
+        };
+      }
+      case 'list_workspace': {
+        const snap = session.snapshot();
+        return {
+          workspace: projectId,
+          projects: [{ id: snap.id, name: snap.name, revision: snap.revision }],
+          schematics: snap.placements.map((p) => ({
+            id: p.id,
+            name: p.name,
+            nonAirCount: p.volume.nonAirCount,
+          })),
+        };
+      }
+      case 'list_projects': {
+        const snap = session.snapshot();
+        return {
+          projects: [{ id: snap.id, name: snap.name, revision: snap.revision }],
+          total: 1,
+        };
+      }
+      case 'list_schematics': {
+        const snap = session.snapshot();
+        return {
+          schematics: snap.placements.map((p) => ({
+            id: p.id,
+            name: p.name,
+            nonAirCount: p.volume.nonAirCount,
+            bounds: p.volume.bounds,
+          })),
+          total: snap.placements.length,
+        };
+      }
       case 'get_color_mode': {
         return { mode: session.snapshot().conflictOverlay };
       }
@@ -818,6 +1379,9 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
     projectId = 'default';
     documentLoaded = false;
     cache.clear();
+    savedRegions.length = 0;
+    activeRegionId = null;
+    regionSeq = 0;
   }
 
   return {

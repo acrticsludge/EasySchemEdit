@@ -233,3 +233,28 @@ export {
   EditorSession,
 } from './session.ts';
 
+export type {
+  ShapeKind,
+  ShapeGenerationSpec,
+  StructureKind,
+  StructureStyle,
+  StructurePalette,
+  StructureGenerationSpec,
+  BlueprintStep,
+  BlueprintSpec,
+  BuildGeneratorResult,
+} from './build-generator.ts';
+
+export {
+  DEFAULT_STYLE_PALETTES,
+  parseVoxelBlockState,
+  getVoxelBlockAt,
+  inspectRegionVoxels,
+  setVoxelBlockAt,
+  setVoxelBlocksBatch,
+  generateShape,
+  generateStructure,
+  executeBlueprint,
+} from './build-generator.ts';
+
+

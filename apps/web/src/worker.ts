@@ -24,10 +24,19 @@ import {
   handleRenameSchematic,
   handleDeleteSchematic,
 } from './server/projects.ts';
+import {
+  handleListApiKeys,
+  handleCreateApiKey,
+  handleRevokeApiKey,
+  handleGetMcpSyncState,
+  handleUpdateMcpSyncState,
+} from './server/mcp-keys.ts';
+import { handleMcpRequest } from './server/mcp-server.ts';
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const sqlOverride = (env as any)?.sqlOverride ?? (env as any)?._sql;
 
     // Root redirect: / -> /editor
     if (url.pathname === '/') {
@@ -170,6 +179,43 @@ export default {
       }
       if (request.method === 'DELETE') {
         return handleDeleteSchematic(request, env, id);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // MCP API and Streamable JSON-RPC Endpoints: /api/mcp and /mcp
+    if (url.pathname === '/api/mcp' || url.pathname === '/mcp') {
+      return handleMcpRequest(request, env, sqlOverride);
+    }
+
+    // MCP API Keys collection: /api/mcp/keys
+    if (url.pathname === '/api/mcp/keys') {
+      if (request.method === 'GET') {
+        return handleListApiKeys(request, env, sqlOverride);
+      }
+      if (request.method === 'POST') {
+        return handleCreateApiKey(request, env, sqlOverride);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // MCP API Key item: /api/mcp/keys/:id
+    const mcpKeyMatch = url.pathname.match(/^\/api\/mcp\/keys\/([^/]+)$/);
+    if (mcpKeyMatch) {
+      const keyId = decodeURIComponent(mcpKeyMatch[1]);
+      if (request.method === 'DELETE') {
+        return handleRevokeApiKey(request, env, keyId, sqlOverride);
+      }
+      return errorJson('Method Not Allowed', 405);
+    }
+
+    // MCP Sync State: /api/mcp/sync
+    if (url.pathname === '/api/mcp/sync') {
+      if (request.method === 'GET') {
+        return handleGetMcpSyncState(request, env, sqlOverride);
+      }
+      if (request.method === 'PUT') {
+        return handleUpdateMcpSyncState(request, env, sqlOverride);
       }
       return errorJson('Method Not Allowed', 405);
     }

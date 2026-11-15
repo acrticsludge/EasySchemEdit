@@ -1,7 +1,9 @@
 // apps/mcp-companion/src/server.ts
-// MCP Companion — stdio server (SUBSPEC-F §5, §6; SUBSPEC-H §1 H13, §4.4).
-// Registers all SPEC-F §5 MCP tools, validates with Zod, applies two-phase destructive
-// protocol and routes mutations/queries to the shared CommandBus (backed by EditorSession).
+// MCP Companion — stdio server (SUBSPEC-F §5, §6; SUBSPEC-H §1 H13, §4.4, Slice M3).
+// Registers all SPEC-F §5 MCP tools, procedural build tools, voxel editing/inspection,
+// multi-region selection, and cloud workspace tools.
+// Validates with Zod, applies two-phase destructive protocol with autoConfirm support,
+// and supports remote proxy mode to cloud accounts when EASYSCHEM_API_KEY is set.
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -25,7 +27,43 @@ import { createMcpExporter, type McpExporter } from './mcp-export.ts';
 import { createCommandBus, type CommandBus } from './command-bus.ts';
 
 // ============================================================================
-// Tool Descriptions (SPEC-F §5)
+// Extended Tool Sets (Slice M3)
+// ============================================================================
+
+export const EXTENDED_READ_TOOLS: ReadonlySet<string> = new Set([
+  'get_block',
+  'inspect_region',
+  'list_selections',
+  'get_account_info',
+  'list_workspace',
+  'list_projects',
+  'list_schematics',
+]);
+
+export const EXTENDED_IMMEDIATE_TOOLS: ReadonlySet<string> = new Set([
+  'set_block',
+  'set_blocks',
+  'generate_shape',
+  'generate_structure',
+  'generate_build',
+  'build_blueprint',
+  'create_placement',
+  'stack_region',
+  'copy_paste_region',
+  'select_region',
+  'remove_region',
+  'create_project',
+  'rename_project',
+  'delete_project',
+  'create_schematic',
+  'rename_schematic',
+  'delete_schematic',
+  'duplicate_schematic',
+  'set_active_schematic',
+]);
+
+// ============================================================================
+// Tool Descriptions (SPEC-F §5 + Slice M3)
 // ============================================================================
 
 export const TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -42,7 +80,7 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   get_history: 'Get bounded undo/redo history entries',
   get_diagnostics: 'Get diagnostics and validation reports for the project',
   load_schematic: 'Import a schematic file from an approved path',
-  transform_placement: 'Translate, rotate, or mirror a placement',
+  transform_placement: 'Translate, rotate, mirror, or relative-offset a placement',
   transform_placements: 'Batch transform multiple placements together',
   set_placement_visibility: 'Set placement visibility (show or hide)',
   set_placement_lock: 'Lock or unlock a placement against mutations',
@@ -51,9 +89,13 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   duplicate_placement: 'Duplicate a placement with optional offset',
   set_origin: 'Set the origin coordinate for a placement',
   bake_placements: 'Bake multiple placements into a single placement (destructive, two-phase)',
-  create_selection: 'Create or update a cuboid selection region',
-  clear_selection: 'Clear the current selection',
+  create_placement: 'Create a new placement volume at origin or world translation',
+  create_selection: 'Create or update a cuboid selection region (stored in multi-region list)',
+  clear_selection: 'Clear the current selection and active region',
   select_placements: 'Select one or more placements',
+  list_selections: 'List all saved selection regions and active region ID',
+  select_region: 'Set the active selection region by ID or index',
+  remove_region: 'Remove a saved selection region by ID or index',
   fill_selection: 'Fill selection region with a block type (destructive, two-phase)',
   replace_selection: 'Replace matched blocks in selection region (destructive, two-phase)',
   delete_selection: 'Delete blocks in selection region (destructive, two-phase)',
@@ -63,6 +105,28 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   hollow_selection: 'Hollow selection region with specified shell thickness (destructive, two-phase)',
   walls_selection: 'Create walls around selection region (destructive, two-phase)',
   move_selection: 'Move blocks within selection region by offset (destructive, two-phase)',
+  stack_region: 'Repeat and stack a region of blocks count times with an offset',
+  copy_paste_region: 'Copy blocks from source bounds and paste at target origin',
+  set_block: 'Set a single block at world coordinates',
+  set_blocks: 'Set multiple blocks at world coordinates in one batch',
+  get_block: 'Get effective block state at a world coordinate',
+  inspect_region: 'Scan a region in world space and return block counts and voxel details',
+  generate_shape: 'Procedurally generate 3D geometric shapes (box, sphere, ellipsoid, cylinder, pyramid, cone, arch, line, roof, stairs, torus)',
+  generate_structure: 'Procedurally generate Minecraft structures (house, tower, castle, temple, bridge, tree, fountain, island, modern_villa, pagoda, ship)',
+  generate_build: 'Procedurally generate Minecraft structures (alias of generate_structure)',
+  build_blueprint: 'Execute multi-step procedural build blueprint sequence',
+  get_account_info: 'Get account and cloud workspace info',
+  list_workspace: 'List workspace files, schematics, and projects',
+  list_projects: 'List available projects',
+  create_project: 'Create a new project workspace',
+  rename_project: 'Rename a project workspace',
+  delete_project: 'Delete a project workspace',
+  list_schematics: 'List schematics in current project or cloud workspace',
+  create_schematic: 'Create a new schematic',
+  rename_schematic: 'Rename a schematic',
+  delete_schematic: 'Delete a schematic',
+  duplicate_schematic: 'Duplicate a schematic',
+  set_active_schematic: 'Set active schematic in project',
   undo: 'Undo the last committed operation',
   redo: 'Redo the last undone operation',
   export_schematic: 'Export schematic to an approved workspace path',
@@ -78,9 +142,15 @@ export function getToolDescription(name: string): string {
 // Zod to JSON Schema Converter
 // ============================================================================
 
-function zodTypeToJson(zType: any): Record<string, unknown> {
+export function zodTypeToJson(zType: any): Record<string, unknown> {
   const typeName = zType?._def?.typeName;
   if (typeName === 'ZodOptional') {
+    return zodTypeToJson(zType._def.innerType);
+  }
+  if (typeName === 'ZodNullable') {
+    return zodTypeToJson(zType._def.innerType);
+  }
+  if (typeName === 'ZodDefault') {
     return zodTypeToJson(zType._def.innerType);
   }
   if (typeName === 'ZodString') {
@@ -102,6 +172,19 @@ function zodTypeToJson(zType: any): Record<string, unknown> {
       items: itemType ? zodTypeToJson(itemType) : { type: 'string' },
     };
   }
+  if (typeName === 'ZodObject') {
+    return zodObjectToJsonSchema(zType);
+  }
+  if (typeName === 'ZodRecord') {
+    const valType = zType._def.valueType;
+    return {
+      type: 'object',
+      additionalProperties: valType ? zodTypeToJson(valType) : true,
+    };
+  }
+  if (typeName === 'ZodAny') {
+    return {};
+  }
   return { type: 'string' };
 }
 
@@ -112,7 +195,8 @@ export function zodObjectToJsonSchema(zodObj: z.ZodObject<any>): Record<string, 
 
   for (const [key, prop] of Object.entries(shape)) {
     properties[key] = zodTypeToJson(prop);
-    if ((prop as any)?._def?.typeName !== 'ZodOptional') {
+    const inner = (prop as any)?._def;
+    if (inner?.typeName !== 'ZodOptional') {
       required.push(key);
     }
   }
@@ -128,6 +212,12 @@ export function zodObjectToJsonSchema(zodObj: z.ZodObject<any>): Record<string, 
 // Server Factory
 // ============================================================================
 
+export type CloudConfig = {
+  apiKey?: string;
+  serverUrl?: string;
+  fetchFn?: typeof fetch;
+};
+
 export type McpCompanionServerDeps = {
   commandBus?: CommandBus;
   protocol?: DestructiveProtocol;
@@ -135,10 +225,34 @@ export type McpCompanionServerDeps = {
   exporter?: McpExporter;
   name?: string;
   version?: string;
+  cloudConfig?: CloudConfig;
 };
+
+function getCliArg(prefix: string): string | undefined {
+  if (typeof process === 'undefined' || !Array.isArray(process.argv)) return undefined;
+  const arg = process.argv.find((a) => a.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : undefined;
+}
 
 export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server {
   const commandBus = deps?.commandBus ?? createCommandBus({ projectId: 'default' });
+
+  // Resolve Cloud Proxy config
+  const cliApiKey = getCliArg('--api-key=');
+  const cliServerUrl = getCliArg('--server-url=');
+
+  const apiKey =
+    deps?.cloudConfig?.apiKey ??
+    (typeof process !== 'undefined' ? process.env?.EASYSCHEM_API_KEY : undefined) ??
+    cliApiKey;
+
+  const serverUrl =
+    deps?.cloudConfig?.serverUrl ??
+    (typeof process !== 'undefined' ? process.env?.EASYSCHEM_SERVER_URL : undefined) ??
+    cliServerUrl ??
+    'https://easyschemedit.pages.dev';
+
+  const fetchFn = deps?.cloudConfig?.fetchFn ?? globalThis.fetch;
 
   const protocolServices: DestructiveProtocolServices = {
     getRevision: (projectId) => {
@@ -177,10 +291,12 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
     canonicalizeAfterWrite: (p: string) => p,
     maxExportBytes: 256 * 1024 * 1024,
   };
-  const exporter = deps?.exporter ?? createMcpExporter({
-    approvedDirectories: [],
-    services: defaultExportServices,
-  });
+  const exporter =
+    deps?.exporter ??
+    createMcpExporter({
+      approvedDirectories: [],
+      services: defaultExportServices,
+    });
 
   const server = new Server(
     {
@@ -210,6 +326,59 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
   // Call tool handler
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
+
+    // Cloud Account Remote Proxy Mode (Slice M3)
+    if (apiKey) {
+      try {
+        const response = await fetchFn(`${serverUrl}/api/mcp`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: { name, arguments: rawArgs ?? {} },
+          }),
+        });
+
+        const data = (await response.json()) as any;
+        if (data.error) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: JSON.stringify(data.error) }],
+          };
+        }
+        if (data.result) {
+          return data.result;
+        }
+        if (data.content) {
+          return data;
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(data) }],
+        };
+      } catch (err) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                ok: false,
+                error: {
+                  code: 'CLOUD_PROXY_ERROR',
+                  message: err instanceof Error ? err.message : String(err),
+                },
+              }),
+            },
+          ],
+        };
+      }
+    }
+
     const toolSchema = getToolSchema(name);
     if (!toolSchema) {
       return {
@@ -254,7 +423,7 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
     const startTime = Date.now();
 
     // 1. Read tools
-    if (READ_TOOLS.has(name)) {
+    if (READ_TOOLS.has(name) || EXTENDED_READ_TOOLS.has(name)) {
       try {
         const result = commandBus.query(name, args);
         log.append({
@@ -291,6 +460,60 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
     if (name === 'export_schematic') {
       const exportPath = (args.filePath as string) || '';
       const format = (args.format ? `.${args.format}` : '.vxproj') as any;
+
+      if (args.autoConfirm === true) {
+        const testExport = exporter.exportSchematic({
+          projectId,
+          relativePath: exportPath,
+          format,
+          data: new ArrayBuffer(0),
+        });
+        if (!testExport.ok) {
+          return {
+            isError: true,
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify({
+                  ok: false,
+                  error: testExport.error,
+                }),
+              },
+            ],
+          };
+        }
+
+        const dryRun = protocol.dryRun(
+          projectId,
+          name,
+          args,
+          (args.expectedRevision as number) ?? commandBus.state().revision,
+          { allowLimitIncrease: Boolean(args.allowLimitIncrease) },
+          args.requestId as string | undefined,
+        );
+        if (dryRun.error) {
+          return {
+            isError: true,
+            content: [{ type: 'text', text: JSON.stringify(dryRun) }],
+          };
+        }
+        if (dryRun.confirmationToken) {
+          const applied = protocol.apply(
+            projectId,
+            dryRun.requestId,
+            dryRun.confirmationToken,
+            dryRun.revision,
+            { allowLimitIncrease: Boolean(args.allowLimitIncrease) },
+          );
+          return {
+            isError: applied.error !== undefined,
+            content: [{ type: 'text', text: JSON.stringify(applied) }],
+          };
+        }
+        return {
+          content: [{ type: 'text', text: JSON.stringify(dryRun) }],
+        };
+      }
 
       if (typeof args.confirmationToken === 'string' && args.confirmationToken.length > 0) {
         // Path containment check before write
@@ -367,6 +590,52 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
 
     // 3. Confirmation-required tools (Phase 1 dry-run or Phase 2 apply)
     if (CONFIRMATION_REQUIRED_TOOLS.has(name)) {
+      if (args.autoConfirm === true) {
+        const dryRun = protocol.dryRun(
+          projectId,
+          name,
+          args,
+          (args.expectedRevision as number) ?? commandBus.state().revision,
+          { allowLimitIncrease: Boolean(args.allowLimitIncrease) },
+          args.requestId as string | undefined,
+        );
+        if (dryRun.error || !dryRun.confirmationToken) {
+          log.append({
+            tool: name,
+            projectId,
+            revision: dryRun.revision,
+            resultSummary: 'autoConfirm dry-run failed',
+            durationMs: Date.now() - startTime,
+            inputs: args,
+          });
+          return {
+            isError: true,
+            content: [{ type: 'text', text: JSON.stringify(dryRun) }],
+          };
+        }
+        const applied = protocol.apply(
+          projectId,
+          dryRun.requestId,
+          dryRun.confirmationToken,
+          dryRun.revision,
+          { allowLimitIncrease: Boolean(args.allowLimitIncrease) },
+        );
+        log.append({
+          tool: name,
+          projectId,
+          revision: applied.revision,
+          resultSummary: applied.applied ? `autoConfirm applied: ${applied.changedCells} cells` : 'autoConfirm apply rejected',
+          changedBlockCount: applied.changedCells,
+          warnings: applied.warnings.map((w) => w.message),
+          durationMs: Date.now() - startTime,
+          inputs: args,
+        });
+        return {
+          isError: applied.error !== undefined,
+          content: [{ type: 'text', text: JSON.stringify(applied) }],
+        };
+      }
+
       if (typeof args.confirmationToken === 'string' && args.confirmationToken.length > 0) {
         const applied = protocol.apply(
           projectId,
@@ -415,8 +684,15 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
       };
     }
 
-    // 4. Immediate tools
-    if (IMMEDIATE_TOOLS.has(name)) {
+    // 4. Immediate tools and extended procedural / voxel tools
+    if (IMMEDIATE_TOOLS.has(name) || EXTENDED_IMMEDIATE_TOOLS.has(name)) {
+      if (args.dryRun === true) {
+        const preview = commandBus.preview(name, args);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(preview) }],
+        };
+      }
+
       const applied = protocol.executeImmediate(
         projectId,
         name,
@@ -428,7 +704,9 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
         tool: name,
         projectId,
         revision: applied.revision,
-        resultSummary: applied.applied ? `executed immediate: ${applied.changedCells} cells` : 'rejected',
+        resultSummary: applied.applied
+          ? `executed immediate: ${applied.changedCells} cells`
+          : 'rejected',
         changedBlockCount: applied.changedCells,
         warnings: applied.warnings.map((w) => w.message),
         durationMs: Date.now() - startTime,

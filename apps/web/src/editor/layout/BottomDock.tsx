@@ -30,6 +30,7 @@ const TABS: TabItem[] = [
   { id: 'materials', label: 'Materials', icon: '🧱' },
   { id: 'conflicts', label: 'Conflicts', icon: '⚠' },
   { id: 'history', label: 'History', icon: '⏱' },
+  { id: 'agent-log', label: 'AI / MCP', icon: '🤖' },
 ];
 
 export function BottomDock({
@@ -298,6 +299,16 @@ function DefaultTabContent({
           <div style={{ fontSize: '11px', marginTop: '4px', color: '#888888' }}>
             Default vanilla textures active. Drop a .zip resource pack into the viewport to layer overrides.
           </div>
+        </div>
+      );
+
+    case 'agent-log':
+      return (
+        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
+          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>AI & MCP Companion Bridge</div>
+          <p style={{ margin: 0 }}>
+            Connect Claude, Cursor, Antigravity or Windsurf via the MCP companion bridge or Account API Key.
+          </p>
         </div>
       );
 

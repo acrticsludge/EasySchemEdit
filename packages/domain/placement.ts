@@ -122,6 +122,7 @@ export function checkInvariants(project: Project): InvariantResult {
       violations.push(`Placement ${p.id}: origin ${p.origin} is not integral`);
     }
 
+    let totalNonAir = 0;
     for (const [key, chunk] of p.volume.chunks) {
       // 6. chunk key maps to chunkCoord within bounds
       const [cx, cy, cz] = (key.split('_').map(Number) as unknown as ChunkCoord);
@@ -166,22 +167,23 @@ export function checkInvariants(project: Project): InvariantResult {
       }
 
       // 11. nonAirCount matches actual count
-      let actualNonAir = 0;
+      let chunkNonAir = 0;
       for (let i = 0; i < chunk.indices.length; i++) {
         const state = chunk.palette[chunk.indices[i]];
         if (state && !VANILLA_AIR_LIKE.has(state.id)) {
-          actualNonAir++;
+          chunkNonAir++;
         }
       }
-      if (p.volume.nonAirCount !== actualNonAir) {
-        violations.push(`Placement ${p.id} chunk ${key}: nonAirCount ${p.volume.nonAirCount} !== actual ${actualNonAir}`);
-      }
+      totalNonAir += chunkNonAir;
 
       // 13. all-air chunks omitted (if chunk exists, it has at least one non-air)
-      const hasNonAir = actualNonAir > 0;
-      if (!hasNonAir) {
+      if (chunkNonAir === 0) {
         violations.push(`Placement ${p.id} chunk ${key}: all-air chunk not omitted`);
       }
+    }
+
+    if (p.volume.nonAirCount !== totalNonAir) {
+      violations.push(`Placement ${p.id}: nonAirCount ${p.volume.nonAirCount} !== actual ${totalNonAir}`);
     }
 
     // 12. tombstone positions inside bounds

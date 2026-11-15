@@ -15,6 +15,8 @@ export interface ToolbarProps {
   onBake?: () => void;
   onSave?: () => void;
   onOpenProjects?: () => void;
+  onOpenMcpHub?: () => void;
+  mcpLiveSyncActive?: boolean;
   isDirty?: boolean;
   isSaving?: boolean;
   authUser?: AuthUser | null;
@@ -51,6 +53,8 @@ export function Toolbar({
   onBake,
   onSave,
   onOpenProjects,
+  onOpenMcpHub,
+  mcpLiveSyncActive = false,
   isDirty = false,
   isSaving = false,
   authUser,
@@ -298,6 +302,40 @@ export function Toolbar({
           onClick={() => onToggleOverlay?.('conflicts')}
           color="#ef4444"
         />
+
+        {onOpenMcpHub && (
+          <button
+            type="button"
+            onClick={onOpenMcpHub}
+            aria-label="AI and MCP Hub"
+            style={{
+              ...actionButtonStyle,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '3px 8px',
+              fontSize: '11px',
+              background: mcpLiveSyncActive ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-bg-secondary, #1a1a1a)',
+              borderColor: mcpLiveSyncActive ? '#22c55e' : '#444444',
+              color: mcpLiveSyncActive ? '#86efac' : 'var(--color-text-primary, #eaeaea)',
+            }}
+            title="Account MCP Hub & AI Builder (Cursor, Claude, Antigravity, Windsurf)"
+          >
+            <span>🤖 AI / MCP</span>
+            {mcpLiveSyncActive && (
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: '#22c55e',
+                  boxShadow: '0 0 6px #22c55e',
+                }}
+              />
+            )}
+          </button>
+        )}
 
         <div style={{ width: '1px', height: '18px', backgroundColor: '#333333', margin: '0 4px' }} />
 

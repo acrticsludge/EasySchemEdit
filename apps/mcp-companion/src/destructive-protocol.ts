@@ -254,11 +254,15 @@ export type DestructiveProtocolOptions = {
 export type DryRunOptions = {
   /** SPEC-F §4.3: explicit limit increase for over-default operations. */
   allowLimitIncrease?: boolean;
+  /** Auto-confirm: immediately apply if valid. */
+  autoConfirm?: boolean;
 };
 
 export type ApplyOptions = {
   /** Must match the dry-run's explicit limit increase. */
   allowLimitIncrease?: boolean;
+  /** Auto-confirm: immediately apply if valid. */
+  autoConfirm?: boolean;
 };
 
 export type DestructiveProtocol = {
