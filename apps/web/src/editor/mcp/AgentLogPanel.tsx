@@ -341,24 +341,55 @@ export function AgentLogPanel({
           )}
 
           {!isConnected && !isConnecting && !isError && (
-            <span
-              className="badge badge-disconnected"
-              role="status"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '2px 8px',
-                borderRadius: '9999px',
-                backgroundColor: 'rgba(113, 113, 122, 0.2)',
-                color: '#a1a1aa',
-                border: '1px solid rgba(113, 113, 122, 0.4)',
-                fontSize: '11px',
-                fontWeight: 600,
-              }}
-            >
-              Disconnected
-            </span>
+            liveSyncEnabled ? (
+              <span
+                className="badge badge-cloud-sync"
+                role="status"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(34, 197, 94, 0.16)',
+                  color: '#4ade80',
+                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+                title="Cloud MCP endpoint is live; local companion bridge (127.0.0.1:43127) is optional"
+              >
+                <span
+                  style={{
+                    width: '6px',
+                    height: '6px',
+                    borderRadius: '50%',
+                    backgroundColor: '#4ade80',
+                  }}
+                />
+                Cloud Sync Active
+              </span>
+            ) : (
+              <span
+                className="badge badge-disconnected"
+                role="status"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  backgroundColor: 'rgba(113, 113, 122, 0.2)',
+                  color: '#a1a1aa',
+                  border: '1px solid rgba(113, 113, 122, 0.4)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                }}
+                title="Local companion bridge (127.0.0.1:43127) is offline"
+              >
+                Bridge Offline
+              </span>
+            )
           )}
         </div>
       </header>

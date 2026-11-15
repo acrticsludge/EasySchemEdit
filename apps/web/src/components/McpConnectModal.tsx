@@ -553,10 +553,11 @@ export function McpConnectModal({
       });
       if (res.ok) {
         const data = (await res.json()) as {
+          recentLogs?: McpActivityItem[];
           entries?: McpActivityItem[];
           activity?: McpActivityItem[];
         } | McpActivityItem[];
-        const list = Array.isArray(data) ? data : data.entries || data.activity || [];
+        const list = Array.isArray(data) ? data : data.recentLogs || data.entries || data.activity || [];
         setActivities(list);
       }
     } catch (err) {
@@ -666,6 +667,7 @@ export function McpConnectModal({
 
       // 1. Try MCP endpoint if signed in and project schematic exists
       let calledRemote = false;
+      let remoteError: Error | null = null;
       if (authUser && activeSchematicId) {
         try {
           const res = await fetch('/api/mcp', {
@@ -689,14 +691,60 @@ export function McpConnectModal({
             }),
           });
           if (res.ok) {
-            calledRemote = true;
             const data = (await res.json()) as {
-              result?: { blockCount?: number; placementId?: string };
+              result?: {
+                content?: Array<{ type: string; text?: string }>;
+                isError?: boolean;
+                blockCount?: number;
+                placementId?: string;
+              };
             };
-            createdBlockCount = data.result?.blockCount ?? 0;
-            createdPlacementId = data.result?.placementId;
+
+            if (data.result?.isError) {
+              let errMsg = 'MCP server returned an error while generating structure.';
+              const rawText = data.result.content?.[0]?.text;
+              if (rawText) {
+                try {
+                  const parsed = JSON.parse(rawText) as { error?: string; message?: string };
+                  errMsg = parsed.error || parsed.message || rawText;
+                } catch {
+                  errMsg = rawText;
+                }
+              }
+              throw new Error(errMsg);
+            }
+
+            let textPayload: { blockCount?: number; placementId?: string } | null = null;
+            const rawText = data.result?.content?.[0]?.text;
+            if (rawText) {
+              try {
+                textPayload = JSON.parse(rawText) as { blockCount?: number; placementId?: string };
+              } catch {
+                // Ignore text parse errors
+              }
+            }
+
+            createdBlockCount = textPayload?.blockCount ?? data.result?.blockCount ?? 0;
+            createdPlacementId = textPayload?.placementId ?? data.result?.placementId;
+            calledRemote = true;
+          } else {
+            let errMsg = `MCP server error (${res.status})`;
+            try {
+              const errBody = (await res.json()) as { error?: { message?: string } | string; message?: string };
+              if (typeof errBody.error === 'object' && errBody.error?.message) {
+                errMsg = errBody.error.message;
+              } else if (typeof errBody.error === 'string') {
+                errMsg = errBody.error;
+              } else if (errBody.message) {
+                errMsg = errBody.message;
+              }
+            } catch {
+              // ignore
+            }
+            throw new Error(errMsg);
           }
-        } catch {
+        } catch (err) {
+          remoteError = err instanceof Error ? err : new Error(String(err));
           // Fall through to local fallback
         }
       }
@@ -717,7 +765,7 @@ export function McpConnectModal({
         } else if (!authUser) {
           throw new Error('Local structure generator not connected or sign-in required for cloud builds.');
         } else {
-          throw new Error('MCP server returned an error while generating structure.');
+          throw remoteError || new Error('MCP server returned an error while generating structure.');
         }
       }
 
@@ -752,6 +800,7 @@ export function McpConnectModal({
       let createdPlacementId: string | undefined;
 
       let calledRemote = false;
+      let remoteError: Error | null = null;
       if (authUser && activeSchematicId) {
         try {
           const res = await fetch('/api/mcp', {
@@ -778,14 +827,60 @@ export function McpConnectModal({
             }),
           });
           if (res.ok) {
-            calledRemote = true;
             const data = (await res.json()) as {
-              result?: { blockCount?: number; placementId?: string };
+              result?: {
+                content?: Array<{ type: string; text?: string }>;
+                isError?: boolean;
+                blockCount?: number;
+                placementId?: string;
+              };
             };
-            createdBlockCount = data.result?.blockCount ?? 0;
-            createdPlacementId = data.result?.placementId;
+
+            if (data.result?.isError) {
+              let errMsg = 'MCP server returned an error while generating shape.';
+              const rawText = data.result.content?.[0]?.text;
+              if (rawText) {
+                try {
+                  const parsed = JSON.parse(rawText) as { error?: string; message?: string };
+                  errMsg = parsed.error || parsed.message || rawText;
+                } catch {
+                  errMsg = rawText;
+                }
+              }
+              throw new Error(errMsg);
+            }
+
+            let textPayload: { blockCount?: number; placementId?: string } | null = null;
+            const rawText = data.result?.content?.[0]?.text;
+            if (rawText) {
+              try {
+                textPayload = JSON.parse(rawText) as { blockCount?: number; placementId?: string };
+              } catch {
+                // Ignore text parse errors
+              }
+            }
+
+            createdBlockCount = textPayload?.blockCount ?? data.result?.blockCount ?? 0;
+            createdPlacementId = textPayload?.placementId ?? data.result?.placementId;
+            calledRemote = true;
+          } else {
+            let errMsg = `MCP server error (${res.status})`;
+            try {
+              const errBody = (await res.json()) as { error?: { message?: string } | string; message?: string };
+              if (typeof errBody.error === 'object' && errBody.error?.message) {
+                errMsg = errBody.error.message;
+              } else if (typeof errBody.error === 'string') {
+                errMsg = errBody.error;
+              } else if (errBody.message) {
+                errMsg = errBody.message;
+              }
+            } catch {
+              // ignore
+            }
+            throw new Error(errMsg);
           }
-        } catch {
+        } catch (err) {
+          remoteError = err instanceof Error ? err : new Error(String(err));
           // Fall through to local fallback
         }
       }
@@ -808,7 +903,7 @@ export function McpConnectModal({
         } else if (!authUser) {
           throw new Error('Local shape generator not connected or sign-in required for cloud builds.');
         } else {
-          throw new Error('MCP server returned an error while generating shape.');
+          throw remoteError || new Error('MCP server returned an error while generating shape.');
         }
       }
 
@@ -937,6 +1032,7 @@ export function McpConnectModal({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          boxSizing: 'border-box',
         }}
       >
         {/* Header */}
@@ -948,11 +1044,14 @@ export function McpConnectModal({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexShrink: 0,
+            flexWrap: 'wrap',
+            gap: '10px',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ fontSize: '20px' }}>⚡</span>
-            <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: '1 1 280px' }}>
+            <span style={{ fontSize: '20px', flexShrink: 0 }}>⚡</span>
+            <div style={{ minWidth: 0 }}>
               <h2
                 style={{
                   margin: 0,
@@ -969,6 +1068,7 @@ export function McpConnectModal({
                   margin: '2px 0 0',
                   fontSize: '12px',
                   color: '#8b929e',
+                  wordBreak: 'break-word',
                 }}
               >
                 Connect Cursor, Claude Desktop, Antigravity or test procedural Minecraft builds
@@ -989,6 +1089,7 @@ export function McpConnectModal({
               padding: '6px 8px',
               borderRadius: '4px',
               lineHeight: 1,
+              flexShrink: 0,
             }}
             onMouseEnter={(e) => (e.currentTarget.style.color = '#ffffff')}
             onMouseLeave={(e) => (e.currentTarget.style.color = '#8b929e')}
@@ -1002,10 +1103,12 @@ export function McpConnectModal({
           role="tablist"
           style={{
             display: 'flex',
-            gap: '6px',
+            flexWrap: 'wrap',
+            gap: '4px',
             padding: '10px 20px',
             backgroundColor: '#101217',
             borderBottom: '1px solid #232731',
+            flexShrink: 0,
           }}
         >
           <button
@@ -1042,19 +1145,22 @@ export function McpConnectModal({
         {/* Modal Scrollable Body */}
         <div
           style={{
-            flex: 1,
+            flex: '1 1 auto',
+            minHeight: 0,
             overflowY: 'auto',
+            overflowX: 'hidden',
             padding: '20px',
             display: 'flex',
             flexDirection: 'column',
             gap: '18px',
+            boxSizing: 'border-box',
           }}
         >
           {/* ================================================================= */}
           {/* TAB 1: CONNECT & API KEYS */}
           {/* ================================================================= */}
           {activeTab === 'keys' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', minWidth: 0 }}>
               {!authUser ? (
                 // Unauthenticated guest prompt
                 <div
@@ -1068,6 +1174,10 @@ export function McpConnectModal({
                     flexDirection: 'column',
                     alignItems: 'center',
                     gap: '12px',
+                    flexShrink: 0,
+                    boxSizing: 'border-box',
+                    minWidth: 0,
+                    maxWidth: '100%',
                   }}
                 >
                   <div
@@ -1080,6 +1190,7 @@ export function McpConnectModal({
                       alignItems: 'center',
                       justifyContent: 'center',
                       fontSize: '22px',
+                      flexShrink: 0,
                     }}
                   >
                     🔒
@@ -1111,6 +1222,7 @@ export function McpConnectModal({
                       fontSize: '12px',
                       color: '#86efac',
                       maxWidth: '480px',
+                      boxSizing: 'border-box',
                     }}
                   >
                     💡 <strong>Guest Mode:</strong> You can still use the built-in{' '}
@@ -1132,7 +1244,7 @@ export function McpConnectModal({
                     right now without signing in!
                   </div>
 
-                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px' }}>
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
                     <button
                       type="button"
                       onClick={() => {
@@ -1143,6 +1255,7 @@ export function McpConnectModal({
                         ...primaryButtonStyle,
                         padding: '10px 20px',
                         fontSize: '14px',
+                        flexShrink: 0,
                       }}
                     >
                       Sign In / Create Account
@@ -1154,8 +1267,8 @@ export function McpConnectModal({
                 <>
                   {/* Create API Key Bar */}
                   <div style={cardStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                      <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '10px' }}>
+                      <div style={{ minWidth: 0 }}>
                         <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f4f4f5' }}>
                           🔑 Create New MCP API Key
                         </h3>
@@ -1165,14 +1278,14 @@ export function McpConnectModal({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                       <input
                         type="text"
                         value={keyNameInput}
                         onChange={(e) => setKeyNameInput(e.target.value)}
                         placeholder="Key Name (e.g. Cursor / Claude Desktop / Antigravity)"
                         disabled={isGeneratingKey}
-                        style={{ ...inputStyle, flex: 1 }}
+                        style={{ ...inputStyle, flex: '1 1 220px', minWidth: '180px' }}
                       />
                       <button
                         type="button"
@@ -1182,6 +1295,7 @@ export function McpConnectModal({
                           ...primaryButtonStyle,
                           whiteSpace: 'nowrap',
                           minWidth: '150px',
+                          flexShrink: 0,
                         }}
                       >
                         {isGeneratingKey ? 'Generating...' : '✨ Generate Key'}
@@ -1198,6 +1312,7 @@ export function McpConnectModal({
                           borderRadius: '4px',
                           color: '#f87171',
                           fontSize: '12px',
+                          wordBreak: 'break-word',
                         }}
                       >
                         {keyError}
@@ -1216,24 +1331,29 @@ export function McpConnectModal({
                         display: 'flex',
                         flexDirection: 'column',
                         gap: '10px',
+                        flexShrink: 0,
+                        boxSizing: 'border-box',
+                        minWidth: 0,
+                        maxWidth: '100%',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontSize: '18px' }}>🎉</span>
-                          <strong style={{ fontSize: '13px', color: '#6ee7b7' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <span style={{ fontSize: '18px', flexShrink: 0 }}>🎉</span>
+                          <strong style={{ fontSize: '13px', color: '#6ee7b7', wordBreak: 'break-word' }}>
                             New API Key Created: {newlyCreatedKey.name}
                           </strong>
                         </div>
-                        <span style={{ fontSize: '11px', color: '#a7f3d0' }}>
+                        <span style={{ fontSize: '11px', color: '#a7f3d0', flexShrink: 0 }}>
                           ⚠️ Copy now! This full key will not be shown again.
                         </span>
                       </div>
 
-                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
                         <code
                           style={{
-                            flex: 1,
+                            flex: '1 1 240px',
+                            minWidth: 0,
                             backgroundColor: '#0c0d10',
                             border: '1px solid #10b981',
                             borderRadius: '4px',
@@ -1242,6 +1362,7 @@ export function McpConnectModal({
                             fontFamily: "'JetBrains Mono', Consolas, monospace",
                             fontSize: '13px',
                             wordBreak: 'break-all',
+                            boxSizing: 'border-box',
                           }}
                         >
                           {newlyCreatedKey.rawKey}
@@ -1253,6 +1374,7 @@ export function McpConnectModal({
                             ...primaryButtonStyle,
                             backgroundColor: copiedId === 'new-raw-key' ? '#10b981' : '#059669',
                             whiteSpace: 'nowrap',
+                            flexShrink: 0,
                           }}
                         >
                           {copiedId === 'new-raw-key' ? '✓ Copied!' : 'Copy Key'}
@@ -1263,8 +1385,8 @@ export function McpConnectModal({
 
                   {/* One-Click MCP Config Snippets */}
                   <div style={cardStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                      <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                      <div style={{ minWidth: 0, flex: '1 1 240px' }}>
                         <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f4f4f5' }}>
                           📋 One-Click MCP Config Snippets
                         </h3>
@@ -1274,7 +1396,7 @@ export function McpConnectModal({
                       </div>
 
                       {/* Optional Key selector / input for snippet generation */}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px', flexShrink: 0 }}>
                         <span style={{ fontSize: '11px', color: '#64748b' }}>Key in snippet:</span>
                         <input
                           type="text"
@@ -1285,6 +1407,7 @@ export function McpConnectModal({
                           style={{
                             ...inputStyle,
                             width: '180px',
+                            minWidth: '140px',
                             padding: '4px 8px',
                             fontSize: '11px',
                           }}
@@ -1293,7 +1416,7 @@ export function McpConnectModal({
                     </div>
 
                     {/* Snippet Sub-tabs */}
-                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '12px' }}>
                       <button
                         type="button"
                         onClick={() => setSnippetTab('http')}
@@ -1311,17 +1434,17 @@ export function McpConnectModal({
                     </div>
 
                     {snippetTab === 'http' ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', minWidth: 0 }}>
                         {/* URL Option 1: Direct endpoint URL */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>
                               Option A: Direct MCP Endpoint URL (Cursor / Windsurf SSE)
                             </span>
                             <button
                               type="button"
                               onClick={() => copyToClipboard(directEndpointUrl, 'copy-url')}
-                              style={copyButtonStyle}
+                              style={{ ...copyButtonStyle, flexShrink: 0 }}
                             >
                               {copiedId === 'copy-url' ? '✓ Copied URL' : 'Copy URL'}
                             </button>
@@ -1331,14 +1454,14 @@ export function McpConnectModal({
 
                         {/* URL Option 2: Config JSON */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>
                               Option B: mcp.json / settings.json (Query Param URL)
                             </span>
                             <button
                               type="button"
                               onClick={() => copyToClipboard(queryJsonConfig, 'copy-query-json')}
-                              style={copyButtonStyle}
+                              style={{ ...copyButtonStyle, flexShrink: 0 }}
                             >
                               {copiedId === 'copy-query-json' ? '✓ Copied JSON' : 'Copy JSON'}
                             </button>
@@ -1348,14 +1471,14 @@ export function McpConnectModal({
 
                         {/* URL Option 3: Authorization Header JSON */}
                         <div>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>
                               Option C: Bearer Header JSON (Secure headers format)
                             </span>
                             <button
                               type="button"
                               onClick={() => copyToClipboard(headerJsonConfig, 'copy-header-json')}
-                              style={copyButtonStyle}
+                              style={{ ...copyButtonStyle, flexShrink: 0 }}
                             >
                               {copiedId === 'copy-header-json' ? '✓ Copied Header JSON' : 'Copy Header JSON'}
                             </button>
@@ -1366,14 +1489,14 @@ export function McpConnectModal({
                     ) : (
                       // Stdio Snippet
                       <div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', marginBottom: '4px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', minWidth: 0 }}>
                             claude_desktop_config.json (Local stdio command)
                           </span>
                           <button
                             type="button"
                             onClick={() => copyToClipboard(stdioJsonConfig, 'copy-stdio-json')}
-                            style={copyButtonStyle}
+                            style={{ ...copyButtonStyle, flexShrink: 0 }}
                           >
                             {copiedId === 'copy-stdio-json' ? '✓ Copied Stdio JSON' : 'Copy Stdio JSON'}
                           </button>
@@ -1388,7 +1511,7 @@ export function McpConnectModal({
 
                   {/* Active API Keys List */}
                   <div style={cardStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
                       <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f4f4f5' }}>
                         Active API Keys ({apiKeys.length})
                       </h3>
@@ -1402,6 +1525,7 @@ export function McpConnectModal({
                           color: '#60a5fa',
                           fontSize: '12px',
                           cursor: 'pointer',
+                          flexShrink: 0,
                         }}
                       >
                         {isLoadingKeys ? 'Refreshing...' : '↻ Refresh List'}
@@ -1421,15 +1545,19 @@ export function McpConnectModal({
                               display: 'flex',
                               alignItems: 'center',
                               justifyContent: 'space-between',
+                              flexWrap: 'wrap',
+                              gap: '10px',
                               padding: '10px 12px',
                               backgroundColor: '#101217',
                               border: '1px solid #232731',
                               borderRadius: '4px',
+                              boxSizing: 'border-box',
+                              minWidth: 0,
                             }}
                           >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0' }}>{k.name}</span>
-                              <div style={{ display: 'flex', gap: '12px', fontSize: '11px', color: '#64748b' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0, flex: '1 1 200px' }}>
+                              <span style={{ fontSize: '13px', fontWeight: 600, color: '#e2e8f0', wordBreak: 'break-word' }}>{k.name}</span>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', fontSize: '11px', color: '#64748b' }}>
                                 <span>Prefix: <code>{k.keyPrefix}</code></span>
                                 <span>Created: {new Date(k.createdAt).toLocaleDateString()}</span>
                                 {k.lastUsedAt && <span>Last used: {new Date(k.lastUsedAt).toLocaleDateString()}</span>}
@@ -1447,6 +1575,7 @@ export function McpConnectModal({
                                 color: '#f87171',
                                 fontSize: '11px',
                                 cursor: 'pointer',
+                                flexShrink: 0,
                               }}
                               onMouseEnter={(e) => {
                                 e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.25)';
@@ -1471,7 +1600,7 @@ export function McpConnectModal({
           {/* TAB 2: AI BUILD & SHAPE GENERATOR */}
           {/* ================================================================= */}
           {activeTab === 'builder' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', minWidth: 0 }}>
               <div
                 style={{
                   padding: '10px 14px',
@@ -1483,9 +1612,15 @@ export function McpConnectModal({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  flexShrink: 0,
+                  boxSizing: 'border-box',
+                  minWidth: 0,
+                  maxWidth: '100%',
                 }}
               >
-                <span>
+                <span style={{ minWidth: 0, flex: '1 1 300px' }}>
                   💡 <strong>On-Demand Procedural Builder:</strong> Generates complete Minecraft structures or 3D primitives directly into a new movable Placement in the active schematic!
                 </span>
                 {defaultPosition && (
@@ -1507,6 +1642,7 @@ export function McpConnectModal({
                       textDecoration: 'underline',
                       cursor: 'pointer',
                       whiteSpace: 'nowrap',
+                      flexShrink: 0,
                     }}
                   >
                     Use Cursor [{defaultPosition.join(', ')}]
@@ -1517,8 +1653,8 @@ export function McpConnectModal({
               {/* CARD 1: Structure Builder */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '18px' }}>🏰</span>
-                  <div>
+                  <span style={{ fontSize: '18px', flexShrink: 0 }}>🏰</span>
+                  <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#f4f4f5' }}>
                       Procedural Structure Generator
                     </h3>
@@ -1528,9 +1664,9 @@ export function McpConnectModal({
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '14px' }}>
                   {/* Structure Type */}
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Structure Type</label>
                     <select
                       value={structureType}
@@ -1552,7 +1688,7 @@ export function McpConnectModal({
                   </div>
 
                   {/* Style */}
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Architectural Style / Palette</label>
                     <select
                       value={structureStyle}
@@ -1571,8 +1707,8 @@ export function McpConnectModal({
                 </div>
 
                 {/* Coordinates & Name */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.5fr', gap: '10px', marginBottom: '14px' }}>
-                  <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position X</label>
                     <input
                       type="number"
@@ -1581,7 +1717,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position Y</label>
                     <input
                       type="number"
@@ -1590,7 +1726,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position Z</label>
                     <input
                       type="number"
@@ -1599,7 +1735,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Placement Name (Optional)</label>
                     <input
                       type="text"
@@ -1612,7 +1748,7 @@ export function McpConnectModal({
                 </div>
 
                 {/* Build Button */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                   <button
                     type="button"
                     onClick={handleRunStructureBuild}
@@ -1621,6 +1757,7 @@ export function McpConnectModal({
                       ...primaryButtonStyle,
                       padding: '10px 20px',
                       fontSize: '13px',
+                      flexShrink: 0,
                     }}
                   >
                     {isGeneratingStructure ? '🔨 Constructing Structure...' : '✨ Generate Build into Viewport'}
@@ -1631,6 +1768,8 @@ export function McpConnectModal({
                       style={{
                         fontSize: '12px',
                         color: structureFeedback.success ? '#4ade80' : '#f87171',
+                        wordBreak: 'break-word',
+                        minWidth: 0,
                       }}
                     >
                       {structureFeedback.message}
@@ -1642,8 +1781,8 @@ export function McpConnectModal({
               {/* CARD 2: 3D Shape Primitive Generator */}
               <div style={cardStyle}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
-                  <span style={{ fontSize: '18px' }}>📐</span>
-                  <div>
+                  <span style={{ fontSize: '18px', flexShrink: 0 }}>📐</span>
+                  <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#f4f4f5' }}>
                       3D Geometric Shape Generator
                     </h3>
@@ -1653,9 +1792,9 @@ export function McpConnectModal({
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 2fr', gap: '14px', marginBottom: '14px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '14px', marginBottom: '14px' }}>
                   {/* Shape Type */}
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Shape Primitive</label>
                     <select
                       value={shapeType}
@@ -1675,7 +1814,7 @@ export function McpConnectModal({
                   </div>
 
                   {/* Block State */}
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Block State</label>
                     <input
                       type="text"
@@ -1710,8 +1849,8 @@ export function McpConnectModal({
                 </div>
 
                 {/* Geometry Dimensions */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '14px' }}>
-                  <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Radius: {shapeRadius}</label>
                     <input
                       type="range"
@@ -1723,7 +1862,7 @@ export function McpConnectModal({
                     />
                   </div>
 
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Height / Length: {shapeHeight}</label>
                     <input
                       type="range"
@@ -1735,7 +1874,7 @@ export function McpConnectModal({
                     />
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingTop: '16px', minWidth: 0 }}>
                     <input
                       type="checkbox"
                       id="shape-hollow"
@@ -1750,8 +1889,8 @@ export function McpConnectModal({
                 </div>
 
                 {/* Shape Coordinates */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1.5fr', gap: '10px', marginBottom: '14px' }}>
-                  <div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px', marginBottom: '14px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position X</label>
                     <input
                       type="number"
@@ -1760,7 +1899,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position Y</label>
                     <input
                       type="number"
@@ -1769,7 +1908,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Position Z</label>
                     <input
                       type="number"
@@ -1778,7 +1917,7 @@ export function McpConnectModal({
                       style={inputStyle}
                     />
                   </div>
-                  <div>
+                  <div style={{ minWidth: 0 }}>
                     <label style={labelStyle}>Placement Name (Optional)</label>
                     <input
                       type="text"
@@ -1791,7 +1930,7 @@ export function McpConnectModal({
                 </div>
 
                 {/* Generate Shape Button */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
                   <button
                     type="button"
                     onClick={handleRunShapeBuild}
@@ -1800,6 +1939,7 @@ export function McpConnectModal({
                       ...primaryButtonStyle,
                       padding: '10px 20px',
                       fontSize: '13px',
+                      flexShrink: 0,
                     }}
                   >
                     {isGeneratingShape ? '📐 Calculating Geometry...' : '✨ Generate Shape into Viewport'}
@@ -1810,6 +1950,8 @@ export function McpConnectModal({
                       style={{
                         fontSize: '12px',
                         color: shapeFeedback.success ? '#4ade80' : '#f87171',
+                        wordBreak: 'break-word',
+                        minWidth: 0,
                       }}
                     >
                       {shapeFeedback.message}
@@ -1824,7 +1966,7 @@ export function McpConnectModal({
           {/* TAB 3: LIVE AI ACTIVITY & TOOLS REFERENCE */}
           {/* ================================================================= */}
           {activeTab === 'activity' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px', minWidth: 0 }}>
               {/* Real-time Viewport Sync Control */}
               <div
                 style={{
@@ -1832,12 +1974,14 @@ export function McpConnectModal({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '12px',
                   backgroundColor: '#161920',
                 }}
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '16px' }}>🔄</span>
+                <div style={{ minWidth: 0, flex: '1 1 280px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontSize: '16px', flexShrink: 0 }}>🔄</span>
                     <strong style={{ fontSize: '13px', color: '#ffffff' }}>
                       Real-Time Viewport Sync
                     </strong>
@@ -1849,6 +1993,7 @@ export function McpConnectModal({
                         fontWeight: 600,
                         backgroundColor: liveSyncEnabled ? 'rgba(34, 197, 94, 0.2)' : 'rgba(100, 116, 139, 0.2)',
                         color: liveSyncEnabled ? '#4ade80' : '#94a3b8',
+                        flexShrink: 0,
                       }}
                     >
                       {liveSyncEnabled ? 'ACTIVE' : 'PAUSED'}
@@ -1872,6 +2017,7 @@ export function McpConnectModal({
                     backgroundColor: liveSyncEnabled ? '#15803d' : '#2563eb',
                     color: '#ffffff',
                     transition: 'background-color 0.15s ease',
+                    flexShrink: 0,
                   }}
                 >
                   {liveSyncEnabled ? 'Disable Live Sync' : 'Enable Live Sync'}
@@ -1880,8 +2026,8 @@ export function McpConnectModal({
 
               {/* Recent AI Executions List */}
               <div style={cardStyle}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                  <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600, color: '#f4f4f5' }}>
                       Recent AI Tool Executions
                     </h3>
@@ -1899,6 +2045,7 @@ export function McpConnectModal({
                       color: '#60a5fa',
                       fontSize: '12px',
                       cursor: 'pointer',
+                      flexShrink: 0,
                     }}
                   >
                     {isLoadingSync ? 'Refreshing...' : '↻ Refresh Feed'}
@@ -1928,13 +2075,17 @@ export function McpConnectModal({
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
+                          flexWrap: 'wrap',
+                          gap: '8px',
                           padding: '8px 12px',
                           backgroundColor: '#101217',
                           border: '1px solid #232731',
                           borderRadius: '4px',
+                          minWidth: 0,
+                          boxSizing: 'border-box',
                         }}
                       >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', minWidth: 0, flex: '1 1 200px' }}>
                           <span
                             style={{
                               padding: '2px 8px',
@@ -1944,14 +2095,15 @@ export function McpConnectModal({
                               color: '#60a5fa',
                               fontSize: '11px',
                               fontFamily: 'monospace',
+                              flexShrink: 0,
                             }}
                           >
                             {act.tool}
                           </span>
-                          <span style={{ fontSize: '13px', color: '#e2e8f0' }}>{act.summary}</span>
+                          <span style={{ fontSize: '13px', color: '#e2e8f0', wordBreak: 'break-word' }}>{act.summary}</span>
                         </div>
 
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: '#64748b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px', fontSize: '11px', color: '#64748b', flexShrink: 0 }}>
                           {act.changedCells !== undefined && (
                             <span>{act.changedCells.toLocaleString()} voxels</span>
                           )}
@@ -2007,7 +2159,7 @@ export function McpConnectModal({
                 </div>
 
                 {/* Tool Items Accordion List */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', overflowY: 'auto' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '380px', minHeight: 0, overflowY: 'auto' }}>
                   {filteredTools.map((tool) => {
                     const isExpanded = expandedTool === tool.name;
                     return (
@@ -2027,25 +2179,28 @@ export function McpConnectModal({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '8px',
                             cursor: 'pointer',
                             userSelect: 'none',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '10px', minWidth: 0, flex: '1 1 240px' }}>
                             <code
                               style={{
                                 color: '#38bdf8',
                                 fontSize: '12px',
                                 fontWeight: 600,
                                 fontFamily: "'JetBrains Mono', Consolas, monospace",
+                                flexShrink: 0,
                               }}
                             >
                               {tool.name}
                             </code>
-                            <span style={{ fontSize: '12px', color: '#cbd5e1' }}>{tool.summary}</span>
+                            <span style={{ fontSize: '12px', color: '#cbd5e1', wordBreak: 'break-word', minWidth: 0 }}>{tool.summary}</span>
                           </div>
 
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
                             <span
                               style={{
                                 fontSize: '10px',
@@ -2053,11 +2208,12 @@ export function McpConnectModal({
                                 borderRadius: '3px',
                                 backgroundColor: '#1e2430',
                                 color: '#94a3b8',
+                                flexShrink: 0,
                               }}
                             >
                               {tool.category}
                             </span>
-                            <span style={{ color: '#64748b', fontSize: '12px' }}>{isExpanded ? '▲' : '▼'}</span>
+                            <span style={{ color: '#64748b', fontSize: '12px', flexShrink: 0 }}>{isExpanded ? '▲' : '▼'}</span>
                           </div>
                         </div>
 
@@ -2073,7 +2229,7 @@ export function McpConnectModal({
                               gap: '8px',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
                               <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 600 }}>
                                 Example MCP Request Payload:
                               </span>
@@ -2083,7 +2239,7 @@ export function McpConnectModal({
                                   e.stopPropagation();
                                   copyToClipboard(tool.exampleJson, `tool-example-${tool.name}`);
                                 }}
-                                style={copyButtonStyle}
+                                style={{ ...copyButtonStyle, flexShrink: 0 }}
                               >
                                 {copiedId === `tool-example-${tool.name}` ? '✓ Copied' : 'Copy JSON'}
                               </button>
@@ -2098,7 +2254,11 @@ export function McpConnectModal({
                                 fontSize: '11px',
                                 color: '#38bdf8',
                                 fontFamily: "'JetBrains Mono', Consolas, monospace",
+                                maxWidth: '100%',
+                                boxSizing: 'border-box',
                                 overflowX: 'auto',
+                                whiteSpace: 'pre-wrap',
+                                wordBreak: 'break-word',
                               }}
                             >
                               {tool.exampleJson}
@@ -2127,6 +2287,10 @@ const cardStyle: React.CSSProperties = {
   border: '1px solid #262b36',
   borderRadius: '6px',
   padding: '16px',
+  flexShrink: 0,
+  boxSizing: 'border-box',
+  minWidth: 0,
+  maxWidth: '100%',
 };
 
 const labelStyle: React.CSSProperties = {
@@ -2141,6 +2305,8 @@ const labelStyle: React.CSSProperties = {
 
 const inputStyle: React.CSSProperties = {
   width: '100%',
+  minWidth: 0,
+  maxWidth: '100%',
   padding: '8px 10px',
   backgroundColor: '#0c0d10',
   border: '1px solid #2a2e38',
@@ -2187,8 +2353,12 @@ const codeBlockStyle: React.CSSProperties = {
   fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
   fontSize: '12px',
   color: '#e2e8f0',
+  boxSizing: 'border-box',
+  maxWidth: '100%',
   overflowX: 'auto',
-  wordBreak: 'break-all',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  overflowWrap: 'anywhere',
 };
 
 function tabButtonStyle(isActive: boolean): React.CSSProperties {
@@ -2203,6 +2373,8 @@ function tabButtonStyle(isActive: boolean): React.CSSProperties {
     cursor: 'pointer',
     borderRadius: '4px 4px 0 0',
     transition: 'all 0.15s ease',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   };
 }
 
@@ -2216,6 +2388,7 @@ function subTabButtonStyle(isActive: boolean): React.CSSProperties {
     fontSize: '11px',
     fontWeight: isActive ? 600 : 400,
     cursor: 'pointer',
+    boxSizing: 'border-box',
   };
 }
 
@@ -2228,5 +2401,7 @@ function categoryPillStyle(isActive: boolean): React.CSSProperties {
     color: isActive ? '#ffffff' : '#94a3b8',
     fontSize: '11px',
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   };
 }
