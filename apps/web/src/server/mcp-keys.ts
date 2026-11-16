@@ -51,12 +51,47 @@ export interface McpSelectionSyncState {
   updatedAt: string;
 }
 
+export interface SerializedClipboardBlockData {
+  localPos: readonly [number, number, number];
+  state: {
+    id: string;
+    props?: Readonly<Record<string, string>>;
+    properties?: Record<string, string>;
+  };
+}
+
+export interface SerializedClipboardData {
+  blocks: SerializedClipboardBlockData[];
+  blockEntities: Array<[string, unknown]>;
+  entities: unknown[];
+  biomes: unknown;
+  anchor: readonly [number, number, number];
+  bounds: {
+    min: readonly [number, number, number];
+    maxExclusive: readonly [number, number, number];
+  };
+}
+
+export interface SerializedClipboardEntry {
+  id: string;
+  data: SerializedClipboardData;
+  createdAt: number;
+  sourceProjectId: string;
+  scope: 'effective-composite' | 'source-placement';
+}
+
+export interface McpClipboardSyncState {
+  entries: SerializedClipboardEntry[];
+  updatedAt: string;
+}
+
 export interface McpSyncSnapshot {
   activeProjectId: string | null;
   activeSchematicId: string | null;
   schematicRevision: number | null;
   schematicUpdatedAt: string | null;
   selectionState: McpSelectionSyncState | null;
+  clipboardState?: McpClipboardSyncState | null;
   recentLogs: McpActivityLogItem[];
 }
 
@@ -65,6 +100,7 @@ export interface UserMcpStateRecord {
   active_project_id: string | null;
   active_schematic_id: string | null;
   selection_state: McpSelectionSyncState | null;
+  clipboard_state: McpClipboardSyncState | null;
   updated_at: string;
 }
 
@@ -310,12 +346,22 @@ export async function getUserMcpState(
   userId: string
 ): Promise<UserMcpStateRecord | null> {
   try {
-    const rows = (await sql`
-      SELECT user_id, active_project_id, active_schematic_id, selection_state, updated_at
-      FROM mcp_user_state
-      WHERE user_id = ${userId}
-      LIMIT 1
-    `) as Record<string, any>[];
+    let rows: Record<string, any>[] = [];
+    try {
+      rows = (await sql`
+        SELECT user_id, active_project_id, active_schematic_id, selection_state, clipboard_state, updated_at
+        FROM mcp_user_state
+        WHERE user_id = ${userId}
+        LIMIT 1
+      `) as Record<string, any>[];
+    } catch {
+      rows = (await sql`
+        SELECT user_id, active_project_id, active_schematic_id, selection_state, updated_at
+        FROM mcp_user_state
+        WHERE user_id = ${userId}
+        LIMIT 1
+      `) as Record<string, any>[];
+    }
 
     if (!rows || rows.length === 0) {
       return null;
@@ -335,11 +381,36 @@ export async function getUserMcpState(
       }
     }
 
+    if (selectionState) {
+      const bySchematicId = (selectionState as any).bySchematicId;
+      const activeSchemId = row.active_schematic_id ? String(row.active_schematic_id) : null;
+      if (bySchematicId && activeSchemId && bySchematicId[activeSchemId]) {
+        selectionState = {
+          ...bySchematicId[activeSchemId],
+          bySchematicId,
+        };
+      }
+    }
+
+    let clipboardState: McpClipboardSyncState | null = null;
+    if (row.clipboard_state) {
+      if (typeof row.clipboard_state === 'object') {
+        clipboardState = row.clipboard_state as McpClipboardSyncState;
+      } else if (typeof row.clipboard_state === 'string') {
+        try {
+          clipboardState = JSON.parse(row.clipboard_state);
+        } catch {
+          // ignore invalid json
+        }
+      }
+    }
+
     return {
       user_id: String(row.user_id),
       active_project_id: row.active_project_id ? String(row.active_project_id) : null,
       active_schematic_id: row.active_schematic_id ? String(row.active_schematic_id) : null,
       selection_state: selectionState,
+      clipboard_state: clipboardState,
       updated_at:
         row.updated_at instanceof Date
           ? row.updated_at.toISOString()
@@ -351,7 +422,7 @@ export async function getUserMcpState(
 }
 
 /**
- * Inserts or updates MCP user state (active project, active schematic, and selection state).
+ * Inserts or updates MCP user state (active project, active schematic, selection state, and clipboard state).
  */
 export async function upsertUserMcpState(
   sql: SqlClient,
@@ -360,6 +431,7 @@ export async function upsertUserMcpState(
     activeProjectId?: string | null;
     activeSchematicId?: string | null;
     selectionState?: McpSelectionSyncState | null;
+    clipboardState?: McpClipboardSyncState | null;
   }
 ): Promise<UserMcpStateRecord> {
   const existing = await getUserMcpState(sql, userId);
@@ -374,23 +446,78 @@ export async function upsertUserMcpState(
       ? patch.activeSchematicId
       : existing?.active_schematic_id ?? null;
 
-  const nextSelectionState =
-    patch.selectionState !== undefined
-      ? patch.selectionState
-      : existing?.selection_state ?? null;
+  // Maintain per-schematic selection states in bySchematicId
+  const existingBySchem: Record<string, McpSelectionSyncState> =
+    (existing?.selection_state as any)?.bySchematicId
+      ? { ...(existing?.selection_state as any).bySchematicId }
+      : {};
 
-  const selectionStateJson = nextSelectionState ? JSON.stringify(nextSelectionState) : null;
+  if (existing?.selection_state && (existing.selection_state as any).schematicId) {
+    const sId = (existing.selection_state as any).schematicId;
+    if (!existingBySchem[sId]) {
+      existingBySchem[sId] = existing.selection_state;
+    }
+  }
+
+  let nextSelectionState: McpSelectionSyncState | null;
+  if (patch.selectionState !== undefined) {
+    nextSelectionState = patch.selectionState;
+    if (patch.selectionState) {
+      const sId = patch.selectionState.schematicId || nextSchemId;
+      if (sId) {
+        existingBySchem[sId] = patch.selectionState;
+      }
+    }
+  } else if (nextSchemId && existingBySchem[nextSchemId]) {
+    nextSelectionState = existingBySchem[nextSchemId];
+  } else {
+    nextSelectionState = existing?.selection_state ?? null;
+  }
+
+  let selectionToSave: any = nextSelectionState;
+  if (selectionToSave && typeof selectionToSave === 'object') {
+    selectionToSave = {
+      ...selectionToSave,
+      bySchematicId: existingBySchem,
+    };
+  } else if (Object.keys(existingBySchem).length > 0) {
+    selectionToSave = {
+      bySchematicId: existingBySchem,
+    };
+  }
+
+  const nextClipboardState =
+    patch.clipboardState !== undefined
+      ? patch.clipboardState
+      : existing?.clipboard_state ?? null;
+
+  const selectionStateJson = selectionToSave ? JSON.stringify(selectionToSave) : null;
+  const clipboardStateJson = nextClipboardState ? JSON.stringify(nextClipboardState) : null;
 
   if (existing) {
-    const rows = (await sql`
-      UPDATE mcp_user_state
-      SET active_project_id = ${nextProjectId},
-          active_schematic_id = ${nextSchemId},
-          selection_state = ${selectionStateJson},
-          updated_at = now()
-      WHERE user_id = ${userId}
-      RETURNING user_id, active_project_id, active_schematic_id, selection_state, updated_at
-    `) as Record<string, any>[];
+    let rows: Record<string, any>[] = [];
+    try {
+      rows = (await sql`
+        UPDATE mcp_user_state
+        SET active_project_id = ${nextProjectId},
+            active_schematic_id = ${nextSchemId},
+            selection_state = ${selectionStateJson},
+            clipboard_state = ${clipboardStateJson},
+            updated_at = now()
+        WHERE user_id = ${userId}
+        RETURNING user_id, active_project_id, active_schematic_id, selection_state, clipboard_state, updated_at
+      `) as Record<string, any>[];
+    } catch {
+      rows = (await sql`
+        UPDATE mcp_user_state
+        SET active_project_id = ${nextProjectId},
+            active_schematic_id = ${nextSchemId},
+            selection_state = ${selectionStateJson},
+            updated_at = now()
+        WHERE user_id = ${userId}
+        RETURNING user_id, active_project_id, active_schematic_id, selection_state, updated_at
+      `) as Record<string, any>[];
+    }
 
     const row = rows?.[0];
     return {
@@ -398,17 +525,27 @@ export async function upsertUserMcpState(
       active_project_id: nextProjectId,
       active_schematic_id: nextSchemId,
       selection_state: nextSelectionState,
+      clipboard_state: nextClipboardState,
       updated_at:
         row?.updated_at instanceof Date
           ? row.updated_at.toISOString()
           : String(row?.updated_at ?? new Date().toISOString()),
     };
   } else {
-    const rows = (await sql`
-      INSERT INTO mcp_user_state (user_id, active_project_id, active_schematic_id, selection_state, updated_at)
-      VALUES (${userId}, ${nextProjectId}, ${nextSchemId}, ${selectionStateJson}, now())
-      RETURNING user_id, active_project_id, active_schematic_id, selection_state, updated_at
-    `) as Record<string, any>[];
+    let rows: Record<string, any>[] = [];
+    try {
+      rows = (await sql`
+        INSERT INTO mcp_user_state (user_id, active_project_id, active_schematic_id, selection_state, clipboard_state, updated_at)
+        VALUES (${userId}, ${nextProjectId}, ${nextSchemId}, ${selectionStateJson}, ${clipboardStateJson}, now())
+        RETURNING user_id, active_project_id, active_schematic_id, selection_state, clipboard_state, updated_at
+      `) as Record<string, any>[];
+    } catch {
+      rows = (await sql`
+        INSERT INTO mcp_user_state (user_id, active_project_id, active_schematic_id, selection_state, updated_at)
+        VALUES (${userId}, ${nextProjectId}, ${nextSchemId}, ${selectionStateJson}, now())
+        RETURNING user_id, active_project_id, active_schematic_id, selection_state, updated_at
+      `) as Record<string, any>[];
+    }
 
     const row = rows?.[0];
     return {
@@ -416,6 +553,7 @@ export async function upsertUserMcpState(
       active_project_id: nextProjectId,
       active_schematic_id: nextSchemId,
       selection_state: nextSelectionState,
+      clipboard_state: nextClipboardState,
       updated_at:
         row?.updated_at instanceof Date
           ? row.updated_at.toISOString()
@@ -549,12 +687,25 @@ export async function handleGetMcpSyncState(
     // ignore
   }
 
+  let selectionStateForTarget: McpSelectionSyncState | null = null;
+  if (userState?.selection_state) {
+    const rawSel = userState.selection_state as any;
+    if (targetSchemId && rawSel.bySchematicId && rawSel.bySchematicId[targetSchemId]) {
+      selectionStateForTarget = rawSel.bySchematicId[targetSchemId];
+    } else if (targetSchemId && rawSel.schematicId === targetSchemId) {
+      selectionStateForTarget = userState.selection_state;
+    } else if (!targetSchemId) {
+      selectionStateForTarget = userState.selection_state;
+    }
+  }
+
   const snapshot: McpSyncSnapshot = {
     activeProjectId,
     activeSchematicId,
     schematicRevision,
     schematicUpdatedAt,
-    selectionState: userState?.selection_state ?? null,
+    selectionState: selectionStateForTarget,
+    clipboardState: userState?.clipboard_state ?? null,
     recentLogs,
   };
 
@@ -587,6 +738,7 @@ export async function handleUpdateMcpSyncState(
     activeProjectId?: string | null;
     activeSchematicId?: string | null;
     selectionState?: McpSelectionSyncState | null;
+    clipboardState?: McpClipboardSyncState | null;
   } = {};
 
   if ('activeProjectId' in body) {
@@ -597,6 +749,9 @@ export async function handleUpdateMcpSyncState(
   }
   if ('selectionState' in body) {
     patch.selectionState = body.selectionState ?? null;
+  }
+  if ('clipboardState' in body) {
+    patch.clipboardState = body.clipboardState ?? null;
   }
 
   const state = await upsertUserMcpState(sql, session.userId, patch);

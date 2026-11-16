@@ -31,7 +31,7 @@ import {
   handleGetMcpSyncState,
   handleUpdateMcpSyncState,
 } from './server/mcp-keys.ts';
-import { handleMcpRequest } from './server/mcp-server.ts';
+import { handleMcpRequest, handleMcpRenderRequest } from './server/mcp-server.ts';
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -186,6 +186,11 @@ export default {
     // MCP API and Streamable JSON-RPC Endpoints: /api/mcp and /mcp
     if (url.pathname === '/api/mcp' || url.pathname === '/mcp') {
       return handleMcpRequest(request, env, sqlOverride);
+    }
+
+    // Direct MCP Visual Render Preview: /api/mcp/render
+    if (url.pathname === '/api/mcp/render') {
+      return handleMcpRenderRequest(request, env, sqlOverride);
     }
 
     // MCP API Keys collection: /api/mcp/keys

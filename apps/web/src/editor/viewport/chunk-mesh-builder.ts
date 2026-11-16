@@ -333,6 +333,12 @@ if (uShowChunkGrid > 0.5) {
    * O(1) transform and visibility updates across all placements without touching chunk meshes.
    */
   public updatePlacementTransforms(project: Project): void {
+    const projectPlacementIds = new Set(project.placements.map((p) => p.id));
+    for (const [placementId] of this.placementGroups) {
+      if (!projectPlacementIds.has(placementId)) {
+        this.removePlacement(placementId);
+      }
+    }
     for (const placement of project.placements) {
       const groupEntry = this.placementGroups.get(placement.id);
       if (groupEntry) {

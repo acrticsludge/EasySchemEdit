@@ -156,8 +156,11 @@ export const CreatePlacementSchema = z.object({
 export const CreateSelectionSchema = z.object({
   bounds: WorldBounds.optional(),
   worldBounds: WorldBounds.optional(),
+  pos1: z.array(z.number()).length(3).optional(),
+  pos2: z.array(z.number()).length(3).optional(),
   name: z.string().optional(),
   id: z.string().optional(),
+  replaceExisting: z.boolean().optional(),
 }).merge(CommonArgs);
 
 export const ClearSelectionSchema = CommonArgs;
@@ -422,6 +425,31 @@ export const SetColorModeSchema = z.object({
   mode: z.enum(['conflicts', 'materials', 'height', 'none']),
 }).merge(CommonArgs);
 
+export const AnalyzeStructuresSchema = z.object({
+  bounds: WorldBounds.optional(),
+  worldBounds: WorldBounds.optional(),
+  maxStructures: z.number().int().positive().optional(),
+  saveRegions: z.boolean().optional(),
+  includeRender: z.boolean().optional(),
+  view: z.enum(['composite', 'top', 'isometric', 'front', 'side']).optional(),
+}).merge(CommonArgs);
+
+export const RenderSchematicViewSchema = z.object({
+  bounds: WorldBounds.optional(),
+  worldBounds: WorldBounds.optional(),
+  structureId: z.string().optional(),
+  view: z.enum(['composite', 'top', 'isometric', 'front', 'side']).optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  annotateStructures: z.boolean().optional(),
+}).merge(CommonArgs);
+
+export const SelectStructureSchema = z.object({
+  query: z.string(),
+  keepExistingRegions: z.boolean().optional(),
+  replaceExisting: z.boolean().optional(),
+}).merge(CommonArgs);
+
 // ============================================================================
 // Tool name registry
 // ============================================================================
@@ -471,6 +499,9 @@ export const TOOL_SCHEMAS = {
   set_blocks: SetBlocksSchema,
   get_block: GetBlockSchema,
   inspect_region: InspectRegionSchema,
+  analyze_structures: AnalyzeStructuresSchema,
+  render_schematic_view: RenderSchematicViewSchema,
+  select_structure: SelectStructureSchema,
   generate_shape: GenerateShapeSchema,
   generate_structure: GenerateStructureSchema,
   generate_build: GenerateStructureSchema,

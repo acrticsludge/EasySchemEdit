@@ -29,6 +29,7 @@ export class ViewportCameraController {
   private distance = 30;
   private targetDistance = 30;
   private zoomAnchor: [number, number, number] | null = null;
+  private cursorPivot: [number, number, number] | null = null;
   private pendingDollyPush = 0;
   private yaw = Math.PI / 4;
   private pitch = Math.PI / 6;
@@ -83,6 +84,7 @@ export class ViewportCameraController {
     this.targetDistance = this.distance;
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
     this.mode = mode;
   }
 
@@ -92,6 +94,7 @@ export class ViewportCameraController {
 
   public setTarget(target: [number, number, number]): void {
     this.target = [...target];
+    this.cursorPivot = null;
   }
 
   public getDistance(): number {
@@ -105,6 +108,7 @@ export class ViewportCameraController {
   public setDistance(dist: number): void {
     this.distance = Math.max(this.minDistance, Math.min(this.maxDistance, dist));
     this.targetDistance = this.distance;
+    this.cursorPivot = null;
   }
 
   public getYaw(): number {
@@ -180,9 +184,51 @@ export class ViewportCameraController {
   }
 
   /**
-   * Rotates orbit camera around look target.
+   * Rotates orbit camera around look target, or around cursorPivot when set.
    */
   public orbit(deltaYaw: number, deltaPitch: number): void {
+    if (this.mode === 'orbit' && this.cursorPivot) {
+      const camPos = this.getOrbitPosition();
+      const r0 = this.getRightVector();
+      const u0 = this.getUpVector();
+      const f0 = this.getForwardVector();
+
+      // Vector from cursorPivot to camera
+      const vx = camPos[0] - this.cursorPivot[0];
+      const vy = camPos[1] - this.cursorPivot[1];
+      const vz = camPos[2] - this.cursorPivot[2];
+
+      // Project v onto camera frame
+      const localRight = vx * r0[0] + vy * r0[1] + vz * r0[2];
+      const localUp = vx * u0[0] + vy * u0[1] + vz * u0[2];
+      const localFwd = vx * f0[0] + vy * f0[1] + vz * f0[2];
+
+      // Update orientation
+      this.yaw = (this.yaw + deltaYaw) % (Math.PI * 2);
+      const maxPitch = Math.PI / 2 - 0.005;
+      this.pitch = Math.max(-maxPitch, Math.min(maxPitch, this.pitch + deltaPitch));
+
+      // Post-orbit camera frame
+      const r1 = this.getRightVector();
+      const u1 = this.getUpVector();
+      const f1 = this.getForwardVector();
+
+      // New camera position in world space
+      const newCamPos: [number, number, number] = [
+        this.cursorPivot[0] + r1[0] * localRight + u1[0] * localUp + f1[0] * localFwd,
+        this.cursorPivot[1] + r1[1] * localRight + u1[1] * localUp + f1[1] * localFwd,
+        this.cursorPivot[2] + r1[2] * localRight + u1[2] * localUp + f1[2] * localFwd,
+      ];
+
+      // Recompute target such that getOrbitPosition() matches newCamPos
+      this.target = [
+        newCamPos[0] + f1[0] * this.distance,
+        newCamPos[1] + f1[1] * this.distance,
+        newCamPos[2] + f1[2] * this.distance,
+      ];
+      return;
+    }
+
     this.yaw = (this.yaw + deltaYaw) % (Math.PI * 2);
     // Clamp pitch to avoid gimbal flip (-89.9° to +89.9°)
     const maxPitch = Math.PI / 2 - 0.005;
@@ -199,6 +245,12 @@ export class ViewportCameraController {
     this.target[0] += right[0] * deltaRight + up[0] * deltaUp;
     this.target[1] += right[1] * deltaRight + up[1] * deltaUp;
     this.target[2] += right[2] * deltaRight + up[2] * deltaUp;
+
+    if (this.cursorPivot) {
+      this.cursorPivot[0] += right[0] * deltaRight + up[0] * deltaUp;
+      this.cursorPivot[1] += right[1] * deltaRight + up[1] * deltaUp;
+      this.cursorPivot[2] += right[2] * deltaRight + up[2] * deltaUp;
+    }
 
     if (this.mode === 'fly') {
       this.flyPosition[0] += right[0] * deltaRight + up[0] * deltaUp;
@@ -226,6 +278,7 @@ export class ViewportCameraController {
     this.targetDistance = this.distance;
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
   }
 
   /**
@@ -244,7 +297,11 @@ export class ViewportCameraController {
     } else {
       this.targetDistance = Math.max(this.minDistance, Math.min(this.maxDistance, rawNext));
     }
-    this.zoomAnchor = anchorPoint ? [...anchorPoint] : null;
+    // When zooming in (delta > 0), anchor zoom toward point under cursor.
+    // When zooming out (delta < 0), pull straight back along camera axis to prevent
+    // ratio expansion from teleporting camera hundreds of blocks away.
+    this.zoomAnchor = delta > 0 && anchorPoint ? [...anchorPoint] : null;
+    this.cursorPivot = null;
   }
 
   /**
@@ -309,10 +366,49 @@ export class ViewportCameraController {
     this.targetDistance = clampedDist;
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
 
     const maxPitch = Math.PI / 2 - 0.005;
     this.yaw = Math.atan2(dx, dz);
     this.pitch = Math.max(-maxPitch, Math.min(maxPitch, Math.asin(Math.max(-1, Math.min(1, dy / dist)))));
+  }
+
+  public getCursorPivot(): [number, number, number] | null {
+    return this.cursorPivot ? [...this.cursorPivot] : null;
+  }
+
+  /**
+   * Sets a 3D cursor pivot point to orbit around without changing the camera's
+   * position, yaw, pitch, or forward look direction.
+   * Passing null clears the cursor pivot and reverts to orbiting around look target.
+   */
+  public setCursorPivot(pivot: [number, number, number] | null): void {
+    if (!pivot) {
+      this.cursorPivot = null;
+      return;
+    }
+
+    const camPos = this.getOrbitPosition();
+    const fwd = this.getForwardVector();
+    const dx = camPos[0] - pivot[0];
+    const dy = camPos[1] - pivot[1];
+    const dz = camPos[2] - pivot[2];
+    const dist = Math.hypot(dx, dy, dz);
+    if (dist < 1e-4) return;
+
+    const clampedDist = Math.max(this.minDistance, Math.min(this.maxDistance, dist));
+    // Keep this.yaw and this.pitch completely untouched!
+    this.distance = clampedDist;
+    this.targetDistance = clampedDist;
+    this.pendingDollyPush = 0;
+    this.zoomAnchor = null;
+
+    this.target = [
+      camPos[0] + fwd[0] * clampedDist,
+      camPos[1] + fwd[1] * clampedDist,
+      camPos[2] + fwd[2] * clampedDist,
+    ];
+    this.cursorPivot = [...pivot];
   }
 
   /**
@@ -357,6 +453,7 @@ export class ViewportCameraController {
     this.setDistance(maxDim * 1.6 + 6);
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
 
     if (this.mode === 'fly') {
       const pos = this.getOrbitPosition();
@@ -394,6 +491,7 @@ export class ViewportCameraController {
     this.targetDistance = this.distance;
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
 
     if (this.mode === 'fly') {
       const pos = this.getOrbitPosition();
@@ -483,5 +581,6 @@ export class ViewportCameraController {
 
     this.pendingDollyPush = 0;
     this.zoomAnchor = null;
+    this.cursorPivot = null;
   }
 }

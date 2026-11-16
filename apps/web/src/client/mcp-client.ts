@@ -1,6 +1,8 @@
 // apps/web/src/client/mcp-client.ts
 // Typed browser client SDK for EasySchemEdit MCP API Keys, Live Sync State, and Cloud MCP Tools.
 
+import type { ClipboardEntry } from '@easyschemedit/operations';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -47,12 +49,47 @@ export interface McpSelectionSyncState {
   updatedAt: string;
 }
 
+export interface SerializedClipboardBlockData {
+  localPos: readonly [number, number, number];
+  state: {
+    id: string;
+    props?: Readonly<Record<string, string>>;
+    properties?: Record<string, string>;
+  };
+}
+
+export interface SerializedClipboardData {
+  blocks: SerializedClipboardBlockData[];
+  blockEntities: Array<[string, unknown]>;
+  entities: unknown[];
+  biomes: unknown;
+  anchor: readonly [number, number, number];
+  bounds: {
+    min: readonly [number, number, number];
+    maxExclusive: readonly [number, number, number];
+  };
+}
+
+export interface SerializedClipboardEntry {
+  id: string;
+  data: SerializedClipboardData;
+  createdAt: number;
+  sourceProjectId: string;
+  scope: 'effective-composite' | 'source-placement';
+}
+
+export interface McpClipboardSyncState {
+  entries: SerializedClipboardEntry[];
+  updatedAt: string;
+}
+
 export interface McpSyncSnapshot {
   activeProjectId: string | null;
   activeSchematicId: string | null;
   schematicRevision: number | null;
   schematicUpdatedAt: string | null;
   selectionState: McpSelectionSyncState | null;
+  clipboardState?: McpClipboardSyncState | null;
   recentLogs: McpActivityLogItem[];
 }
 
@@ -61,7 +98,38 @@ export interface UserMcpStateDto {
   active_project_id: string | null;
   active_schematic_id: string | null;
   selection_state: McpSelectionSyncState | null;
+  clipboard_state?: McpClipboardSyncState | null;
   updated_at: string;
+}
+
+export function serializeClipboardEntries(entries: ClipboardEntry[]): SerializedClipboardEntry[] {
+  return (entries || []).map((e) => ({
+    id: e.id,
+    data: {
+      blocks: (e.data.blocks || []).map((b) => ({
+        localPos: [b.localPos[0], b.localPos[1], b.localPos[2]] as const,
+        state: {
+          id: b.state.id,
+          props: b.state.props ?? {},
+        },
+      })),
+      blockEntities: e.data.blockEntities instanceof Map
+        ? Array.from(e.data.blockEntities.entries())
+        : Array.isArray(e.data.blockEntities)
+        ? (e.data.blockEntities as Array<[string, unknown]>)
+        : [],
+      entities: e.data.entities ?? [],
+      biomes: e.data.biomes,
+      anchor: [e.data.anchor[0], e.data.anchor[1], e.data.anchor[2]] as const,
+      bounds: {
+        min: [e.data.bounds.min[0], e.data.bounds.min[1], e.data.bounds.min[2]] as const,
+        maxExclusive: [e.data.bounds.maxExclusive[0], e.data.bounds.maxExclusive[1], e.data.bounds.maxExclusive[2]] as const,
+      },
+    },
+    createdAt: e.createdAt,
+    sourceProjectId: e.sourceProjectId,
+    scope: e.scope,
+  }));
 }
 
 // ============================================================================
@@ -207,6 +275,7 @@ export async function updateMcpSyncState(
     activeProjectId?: string | null;
     activeSchematicId?: string | null;
     selectionState?: McpSelectionSyncState | null;
+    clipboardState?: McpClipboardSyncState | null;
   },
   apiKey?: string
 ): Promise<{ ok: boolean; state: UserMcpStateDto }> {

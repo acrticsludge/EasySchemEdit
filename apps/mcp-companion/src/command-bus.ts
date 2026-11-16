@@ -34,6 +34,12 @@ import {
   type StructureGenerationSpec,
   type BlueprintSpec,
 } from '../../../packages/operations/src/build-generator.ts';
+import {
+  analyzeSchematicStructures,
+  renderSchematicPng,
+  selectStructureByQuery,
+  type DetectedStructure,
+} from '../../../packages/operations/src/structure-analyzer.ts';
 
 // ============================================================================
 // Types
@@ -399,7 +405,18 @@ export function mapToolToCommands(
       }];
     }
     case 'create_selection': {
-      const b = (args.bounds ?? args.worldBounds) as number[];
+      let b = (args.bounds ?? args.worldBounds) as number[] | undefined;
+      if (!b && Array.isArray(args.pos1) && Array.isArray(args.pos2) && args.pos1.length === 3 && args.pos2.length === 3) {
+        const p1 = args.pos1 as number[];
+        const p2 = args.pos2 as number[];
+        const minX = Math.min(p1[0], p2[0]);
+        const minY = Math.min(p1[1], p2[1]);
+        const minZ = Math.min(p1[2], p2[2]);
+        const maxX = Math.max(p1[0], p2[0]) + 1;
+        const maxY = Math.max(p1[1], p2[1]) + 1;
+        const maxZ = Math.max(p1[2], p2[2]) + 1;
+        b = [minX, minY, minZ, maxX, maxY, maxZ];
+      }
       if (!b || b.length !== 6) return [];
       return [{
         type: 'selection:edit',
@@ -909,15 +926,32 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
 
     // 2. Multi-region selection operations
     if (operation === 'create_selection') {
-      const rawBounds = (args.bounds ?? args.worldBounds) as number[] | undefined;
+      let rawBounds = (args.bounds ?? args.worldBounds) as number[] | undefined;
+      if (!rawBounds && Array.isArray(args.pos1) && Array.isArray(args.pos2) && args.pos1.length === 3 && args.pos2.length === 3) {
+        const p1 = args.pos1 as number[];
+        const p2 = args.pos2 as number[];
+        const minX = Math.min(p1[0], p2[0]);
+        const minY = Math.min(p1[1], p2[1]);
+        const minZ = Math.min(p1[2], p2[2]);
+        const maxX = Math.max(p1[0], p2[0]) + 1;
+        const maxY = Math.max(p1[1], p2[1]) + 1;
+        const maxZ = Math.max(p1[2], p2[2]) + 1;
+        rawBounds = [minX, minY, minZ, maxX, maxY, maxZ];
+      }
       if (rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6) {
         const id = (args.id as string) || (args.name as string) || `R${++regionSeq}`;
         const name = (args.name as string) || id;
-        const existingIndex = savedRegions.findIndex((r) => r.id === id);
-        if (existingIndex !== -1) {
-          savedRegions[existingIndex] = { id, name, bounds: rawBounds };
-        } else {
+        const replace = args.replaceExisting === true;
+        if (replace) {
+          savedRegions.length = 0;
           savedRegions.push({ id, name, bounds: rawBounds });
+        } else {
+          const existingIndex = savedRegions.findIndex((r) => r.id === id || r.name === name);
+          if (existingIndex !== -1) {
+            savedRegions[existingIndex] = { id: savedRegions[existingIndex].id, name, bounds: rawBounds };
+          } else {
+            savedRegions.push({ id, name, bounds: rawBounds });
+          }
         }
         activeRegionId = id;
       }
@@ -1298,6 +1332,123 @@ export function createCommandBus(options?: CommandBusOptions): CommandBus {
           includeAir: Boolean(args.includeAir),
           placementId: args.placementId as string | undefined,
         });
+      }
+      case 'analyze_structures': {
+        const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
+        const bounds = rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6 ? tupleToBounds(rawBounds) : undefined;
+        const maxStructures = typeof args.maxStructures === 'number' ? args.maxStructures : 36;
+        const analysis = analyzeSchematicStructures(session, { bounds, maxStructures });
+        let renderView: { width: number; height: number; view: string } | undefined;
+        let _mcpImages: Array<{ data: string; mimeType: string }> | undefined;
+        if (args.includeRender !== false) {
+          const png = renderSchematicPng(session, {
+            bounds,
+            view: (args.view as any) || 'composite',
+            analysis,
+          });
+          renderView = { width: png.width, height: png.height, view: png.view };
+          _mcpImages = [{ data: png.base64, mimeType: 'image/png' }];
+        }
+        return {
+          ok: true,
+          bounds: analysis.bounds,
+          groundLevelY: analysis.groundLevelY,
+          totalVoxels: analysis.totalVoxels,
+          structureCount: analysis.structures.length,
+          structures: analysis.structures,
+          environment: analysis.environment,
+          spatialMap: analysis.spatialMap,
+          renderView,
+          _mcpImages,
+        };
+      }
+      case 'render_schematic_view': {
+        const rawBounds = (args.worldBounds ?? args.bounds) as number[] | undefined;
+        let bounds = rawBounds && Array.isArray(rawBounds) && rawBounds.length === 6 ? tupleToBounds(rawBounds) : undefined;
+        const analysis = analyzeSchematicStructures(session, { bounds });
+        let matched: DetectedStructure | null = null;
+        if (args.structureId) {
+          matched = selectStructureByQuery(analysis, String(args.structureId));
+          if (matched) {
+            bounds = {
+              min: [matched.bounds.min[0] - 4, matched.bounds.min[1] - 2, matched.bounds.min[2] - 4],
+              maxExclusive: [matched.bounds.maxExclusive[0] + 4, matched.bounds.maxExclusive[1] + 2, matched.bounds.maxExclusive[2] + 4],
+            };
+          }
+        }
+        const view = (args.view as any) || 'composite';
+        const width = typeof args.width === 'number' ? args.width : 680;
+        const height = typeof args.height === 'number' ? args.height : 360;
+        const png = renderSchematicPng(session, {
+          bounds,
+          view,
+          width,
+          height,
+          annotateStructures: args.annotateStructures !== false,
+          analysis,
+        });
+        return {
+          ok: true,
+          view: png.view,
+          width: png.width,
+          height: png.height,
+          bounds,
+          structure: matched,
+          structures: analysis.structures,
+          _mcpImages: [{ data: png.base64, mimeType: 'image/png' }],
+        };
+      }
+      case 'select_structure': {
+        const query = String(args.query || '').trim();
+        const analysis = analyzeSchematicStructures(session);
+        const matched = selectStructureByQuery(analysis, query);
+        if (!matched) {
+          return { ok: false, error: `Structure matching "${query}" not found` };
+        }
+        session.execute({
+          type: 'selection:edit',
+          bounds: {
+            minX: matched.bounds.min[0],
+            minY: matched.bounds.min[1],
+            minZ: matched.bounds.min[2],
+            maxX: matched.bounds.maxExclusive[0],
+            maxY: matched.bounds.maxExclusive[1],
+            maxZ: matched.bounds.maxExclusive[2],
+          },
+        });
+        const matchedBounds = [
+          matched.bounds.min[0],
+          matched.bounds.min[1],
+          matched.bounds.min[2],
+          matched.bounds.maxExclusive[0],
+          matched.bounds.maxExclusive[1],
+          matched.bounds.maxExclusive[2],
+        ];
+        const newRegion: SavedRegion = {
+          id: matched.id,
+          name: `${matched.id}: ${matched.name}`,
+          bounds: matchedBounds,
+        };
+        const replace = args.keepExistingRegions === false || args.replaceExisting === true;
+        if (replace) {
+          savedRegions.length = 0;
+          savedRegions.push(newRegion);
+        } else {
+          const existingIndex = savedRegions.findIndex((r) => r.id === matched.id || r.name === newRegion.name);
+          if (existingIndex !== -1) {
+            savedRegions[existingIndex] = newRegion;
+          } else {
+            savedRegions.push(newRegion);
+          }
+        }
+        activeRegionId = matched.id;
+        return {
+          ok: true,
+          structure: matched,
+          bounds: matched.bounds,
+          savedRegions,
+          activeRegionId,
+        };
       }
       case 'get_account_info': {
         return {

@@ -34,6 +34,25 @@ export interface GhostPreviewSpec {
 
 const EMPTY_STRING_SET = new Set<string>();
 
+function isValidCameraSnapshot(snap: unknown): snap is {
+  mode: CameraMode;
+  target: [number, number, number];
+  distance: number;
+  yaw: number;
+  pitch: number;
+  fov?: number;
+} {
+  if (!snap || typeof snap !== 'object') return false;
+  const s = snap as any;
+  const dist = s.distance;
+  if (typeof dist !== 'number' || !Number.isFinite(dist) || dist < 1 || dist > 800) return false;
+  if (!Array.isArray(s.target) || s.target.length !== 3) return false;
+  const [tx, ty, tz] = s.target;
+  if (!Number.isFinite(tx) || !Number.isFinite(ty) || !Number.isFinite(tz)) return false;
+  if (Math.hypot(tx, ty, tz) > 4000) return false;
+  return true;
+}
+
 const TRANSFORM_OR_METADATA_EVENT_KINDS = new Set<string>([
   'transform',
   'move',
@@ -44,23 +63,43 @@ const TRANSFORM_OR_METADATA_EVENT_KINDS = new Set<string>([
   'select',
   'metadata',
   'placement:transform',
+  'placement:move',
+  'placement:rotate',
+  'placement:mirror',
+  'placement:setorigin',
+  'placement:set-origin',
+  'placement:sethidden',
+  'placement:set-hidden',
+  'placement:setvisibility',
   'placement:set-visible',
+  'placement:setlocked',
   'placement:set-locked',
+  'placement:rename',
+  'group:transform',
+  'selection:set',
+  'selection:clear',
 ]);
 
 function isTransformOrMetadataEvent(kind: string): boolean {
-  if (TRANSFORM_OR_METADATA_EVENT_KINDS.has(kind)) return true;
+  if (!kind) return false;
   const lower = kind.toLowerCase();
-  return (
-    lower.includes('transform') ||
-    lower.includes('move') ||
-    lower.includes('rotate') ||
-    lower.includes('mirror') ||
-    lower.includes('visible') ||
-    lower.includes('lock') ||
-    lower.includes('select') ||
-    lower.includes('metadata')
-  );
+  // Any event that adds, removes, duplicates, replaces, bakes, or pastes blocks must trigger full chunk sync
+  if (
+    lower.includes('remove') ||
+    lower.includes('delete') ||
+    lower.includes('add') ||
+    lower.includes('replace') ||
+    lower.includes('duplicate') ||
+    lower.includes('bake') ||
+    lower.includes('paste') ||
+    lower.includes('cut') ||
+    lower.includes('undo') ||
+    lower.includes('redo') ||
+    lower.includes('sync')
+  ) {
+    return false;
+  }
+  return TRANSFORM_OR_METADATA_EVENT_KINDS.has(lower);
 }
 
 function disposeGroupResources(obj: THREE.Object3D | null | undefined): void {
@@ -383,6 +422,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
   }, [dragSnapStep]);
   const prevPlacementCountRef = useRef<number>(0);
   const pointerDownPosRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const orbitPivotCandidateRef = useRef<[number, number, number] | null>(null);
+  const orbitPivotAppliedRef = useRef<boolean>(false);
 
   // UI state
   const [contextLost, setContextLost] = useState<boolean>(false);
@@ -934,7 +975,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         const raw = localStorage.getItem('ese_camera:' + activeSchematicId);
         if (raw) {
           const snap = JSON.parse(raw);
-          if (snap && typeof snap === 'object' && cameraCtrlRef.current) {
+          if (isValidCameraSnapshot(snap) && cameraCtrlRef.current) {
             cameraCtrlRef.current.restoreSnapshot(snap);
             if (cameraRef.current) {
               cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
@@ -948,6 +989,42 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         // Fallback
       }
       suppressAutoFrameForSchematicRef.current = null;
+      if (cameraCtrlRef.current) {
+        const placements = session.peekProject().placements;
+        if (placements.length === 0) {
+          cameraCtrlRef.current.restoreSnapshot({
+            mode: cameraCtrlRef.current.getMode(),
+            target: [0, 8, 0],
+            distance: 35,
+            yaw: Math.PI / 4,
+            pitch: Math.PI / 6,
+          });
+          if (cameraRef.current) {
+            cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+          }
+        } else {
+          let minX = Infinity, minY = Infinity, minZ = Infinity;
+          let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+          for (const p of placements) {
+            const wb = placementWorldBounds(p);
+            minX = Math.min(minX, wb.min[0]);
+            minY = Math.min(minY, wb.min[1]);
+            minZ = Math.min(minZ, wb.min[2]);
+            maxX = Math.max(maxX, wb.maxExclusive[0]);
+            maxY = Math.max(maxY, wb.maxExclusive[1]);
+            maxZ = Math.max(maxZ, wb.maxExclusive[2]);
+          }
+          if (Number.isFinite(minX)) {
+            cameraCtrlRef.current.frameBounds({
+              min: [minX, minY, minZ],
+              maxExclusive: [maxX, maxY, maxZ],
+            });
+            if (cameraRef.current) {
+              cameraCtrlRef.current.syncToThreeCamera(cameraRef.current);
+            }
+          }
+        }
+      }
     } else {
       suppressAutoFrameForSchematicRef.current = null;
     }
@@ -1586,7 +1663,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         const raw = localStorage.getItem('ese_camera:' + initSchemId);
         if (raw) {
           const snap = JSON.parse(raw);
-          if (snap && typeof snap === 'object') {
+          if (isValidCameraSnapshot(snap)) {
             cameraCtrl.restoreSnapshot(snap);
             cameraCtrl.syncToThreeCamera(camera);
             suppressAutoFrameForSchematicRef.current = initSchemId;
@@ -1627,7 +1704,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     // Subscribe to session changes
     const unsubscribeSession = session.subscribe((event: SessionChangeEvent) => {
       setSessionRevision(session.peekProject().revision);
-      if (isTransformOrMetadataEvent(event.kind)) {
+      if (event.kind === 'project:replace') {
+        if (chunkSyncRafRef.current !== null) {
+          cancelAnimationFrame(chunkSyncRafRef.current);
+          chunkSyncRafRef.current = null;
+        }
+        chunkManager.clear();
+        setHoveredVoxel(null);
+        lastHoveredVoxelRef.current = null;
+        if (hoverHighlightRef.current) hoverHighlightRef.current.visible = false;
+        transformCtrlRef.current?.detach();
+        prevPlacementCountRef.current = 0;
+        scheduleChunkSyncRef.current();
+        updateOverlays();
+      } else if (isTransformOrMetadataEvent(event.kind)) {
         chunkManager.updatePlacementTransforms(session.peekProject());
         updateOverlays();
       } else {
@@ -1979,14 +2069,27 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
 
     const cameraCtrl = cameraCtrlRef.current;
-    if (cameraCtrl && cameraCtrl.getMode() === 'orbit' && e.button === 1) {
+    if (cameraCtrl && cameraCtrl.getMode() === 'orbit') {
       const hit = performRaycast(e.clientX, e.clientY);
-      if (hit) {
-        cameraCtrl.setPivotPreservingCamera([
+      if (hit && (hit.placementId !== null || session.peekProject().placements.length === 0)) {
+        const pivot: [number, number, number] = [
           hit.position[0] + 0.5,
           hit.position[1] + 0.5,
           hit.position[2] + 0.5,
-        ]);
+        ];
+        orbitPivotCandidateRef.current = pivot;
+        orbitPivotAppliedRef.current = false;
+        if (e.button === 1) {
+          cameraCtrl.setCursorPivot(pivot);
+          orbitPivotAppliedRef.current = true;
+        }
+      } else {
+        orbitPivotCandidateRef.current = null;
+        orbitPivotAppliedRef.current = false;
+        if (e.button === 1) {
+          cameraCtrl.setCursorPivot(null);
+          orbitPivotAppliedRef.current = true;
+        }
       }
     }
   };
@@ -1995,6 +2098,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     const cameraCtrl = cameraCtrlRef.current;
 
     if (isDraggingRef.current && cameraCtrl) {
+      if (
+        !orbitPivotAppliedRef.current &&
+        Math.hypot(e.clientX - pointerDownPosRef.current.x, e.clientY - pointerDownPosRef.current.y) > 2
+      ) {
+        orbitPivotAppliedRef.current = true;
+        if (cameraCtrl.getMode() === 'orbit') {
+          if (orbitPivotCandidateRef.current) {
+            cameraCtrl.setCursorPivot(orbitPivotCandidateRef.current);
+          } else {
+            cameraCtrl.setCursorPivot(null);
+          }
+        }
+      }
+
       const dx = e.clientX - lastMousePosRef.current.x;
       const dy = e.clientY - lastMousePosRef.current.y;
       lastMousePosRef.current = { x: e.clientX, y: e.clientY };
@@ -2003,7 +2120,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
       if (cameraCtrl.getMode() === 'orbit') {
         if (isOrbitPan) {
-          const panScale = Math.max(0.05, cameraCtrl.getDistance() * 0.0022);
+          const panScale = Math.max(0.05, Math.min(cameraCtrl.getDistance(), 250) * 0.0018);
           cameraCtrl.pan(-dx * panScale, dy * panScale);
         } else {
           cameraCtrl.orbit(-dx * 0.008, dy * 0.008);
@@ -2164,28 +2281,14 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         cached.time = now;
       } else {
         const hit = performRaycast(e.clientX, e.clientY);
-        if (hit) {
+        if (
+          hit &&
+          (hit.placementId !== null ||
+            (session.peekProject().placements.length === 0 && hit.distance <= 150))
+        ) {
           anchor = [hit.position[0] + 0.5, hit.position[1] + 0.5, hit.position[2] + 0.5];
         } else {
-          const camera = cameraRef.current;
-          const canvas = canvasRef.current;
-          if (camera && canvas) {
-            const rect = canvas.getBoundingClientRect();
-            const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-            const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-            const raycaster = new THREE.Raycaster();
-            raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-            const target = cameraCtrl.getTarget();
-            const fwd = cameraCtrl.getForwardVector();
-            const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-              new THREE.Vector3(fwd[0], fwd[1], fwd[2]),
-              new THREE.Vector3(target[0], target[1], target[2])
-            );
-            const intersection = new THREE.Vector3();
-            if (raycaster.ray.intersectPlane(plane, intersection)) {
-              anchor = [intersection.x, intersection.y, intersection.z];
-            }
-          }
+          anchor = null;
         }
         lastWheelRaycastRef.current = {
           x: e.clientX,

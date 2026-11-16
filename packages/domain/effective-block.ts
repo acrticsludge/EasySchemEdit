@@ -1,6 +1,7 @@
 import type { BlockStateId, Vec3i } from './types.ts';
 import type { Placement, Project } from './placement.ts';
 import { CANONICAL_AIR, isAirLike, VANILLA_AIR_LIKE } from './block-state.ts';
+import { worldBlockToLocal } from './coordinates.ts';
 
 // ============================================================================
 // Slice 8.5: Effective-Block Resolver
@@ -112,14 +113,4 @@ export function resolveBlockAt(
 
 function euclideanMod(a: number, b: number): number {
   return ((a % b) + b) % b;
-}
-
-function worldBlockToLocal(placement: Placement, worldPos: Vec3i): Vec3i | null {
-  // Simplified inverse: assume no rotation/mirror for now
-  const [wx, wy, wz] = worldPos;
-  const [tx, ty, tz] = placement.transform.translation;
-  const lx = wx - tx;
-  const ly = wy - ty;
-  const lz = wz - tz;
-  return [lx, ly, lz];
 }

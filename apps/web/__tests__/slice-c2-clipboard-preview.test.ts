@@ -288,4 +288,55 @@ assertEqual(sampledFromVol[1]?.blockId, 'minecraft:dirt', 'Second voxel dirt');
 
 console.log('  ✓ extractSampledBlocks & performance striding passed\n');
 
+// ----------------------------------------------------------------------------
+// Test 7: Isometric interior culling and exposed face flags
+// ----------------------------------------------------------------------------
+console.log('--- Test 7: Isometric interior culling and exposed faces ---');
+
+// Build a 3x3x3 solid cube (27 blocks)
+const cubeBlocks = [];
+for (let x = 0; x < 3; x++) {
+  for (let y = 0; y < 3; y++) {
+    for (let z = 0; z < 3; z++) {
+      cubeBlocks.push({
+        localPos: [x, y, z] as [number, number, number],
+        state: { id: 'minecraft:stone', props: {} },
+      });
+    }
+  }
+}
+
+const cubeEntry: ClipboardEntry = {
+  id: 'clip-cube',
+  createdAt: 6000,
+  sourceProjectId: 'p',
+  scope: 'effective-composite',
+  data: {
+    blocks: cubeBlocks,
+    blockEntities: new Map(),
+    entities: [],
+    biomes: undefined,
+    anchor: [0, 0, 0],
+    bounds: { min: [0, 0, 0], maxExclusive: [3, 3, 3] },
+  },
+};
+
+const sampledCube = extractSampledBlocks(cubeEntry);
+// In a 3x3x3 cube, blocks with (+X, +Y, +Z) occupied are culled:
+// Center block (1, 1, 1) has (2,1,1), (1,2,1), (1,1,2) occupied -> MUST be culled.
+const centerBlock = sampledCube.find((b) => b.x === 1 && b.y === 1 && b.z === 1);
+assertEqual(centerBlock, undefined, 'Interior center block (1,1,1) is culled');
+
+// Corner block (2, 2, 2) has exposed +X, +Y, +Z faces -> MUST be present with all exposed
+const frontCorner = sampledCube.find((b) => b.x === 2 && b.y === 2 && b.z === 2);
+assert(frontCorner !== undefined, 'Corner block (2,2,2) is preserved');
+assertEqual(frontCorner?.topExposed, true, 'Corner top face exposed');
+assertEqual(frontCorner?.rightExposed, true, 'Corner right face exposed');
+assertEqual(frontCorner?.leftExposed, true, 'Corner left face exposed');
+
+// Total visible blocks in 3x3x3 is less than 27 due to culling
+assert(sampledCube.length < 27, `Interior blocks culled (${sampledCube.length} < 27)`);
+
+console.log('  ✓ Isometric interior culling verified\n');
+
 console.log('All Slice C2 Clipboard Preview and Helper tests passed successfully!');

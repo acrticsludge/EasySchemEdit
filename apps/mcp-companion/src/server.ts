@@ -33,6 +33,9 @@ import { createCommandBus, type CommandBus } from './command-bus.ts';
 export const EXTENDED_READ_TOOLS: ReadonlySet<string> = new Set([
   'get_block',
   'inspect_region',
+  'analyze_structures',
+  'render_schematic_view',
+  'select_structure',
   'list_selections',
   'get_account_info',
   'list_workspace',
@@ -111,6 +114,9 @@ export const TOOL_DESCRIPTIONS: Record<string, string> = {
   set_blocks: 'Set multiple blocks at world coordinates in one batch',
   get_block: 'Get effective block state at a world coordinate',
   inspect_region: 'Scan a region in world space and return block counts and voxel details',
+  analyze_structures: 'Analyze schematic structures, architectural classifications, spatial layout, and generate multi-view PNG renderings',
+  render_schematic_view: 'Render a 2D/3D software preview PNG of the schematic or a specific structure',
+  select_structure: 'Select a structure in the schematic by ID, name, category, or largest/tallest',
   generate_shape: 'Procedurally generate 3D geometric shapes (box, sphere, ellipsoid, cylinder, pyramid, cone, arch, line, roof, stairs, torus)',
   generate_structure: 'Procedurally generate Minecraft structures (house, tower, castle, temple, bridge, tree, fountain, island, modern_villa, pagoda, ship)',
   generate_build: 'Procedurally generate Minecraft structures (alias of generate_structure)',
@@ -425,7 +431,7 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
     // 1. Read tools
     if (READ_TOOLS.has(name) || EXTENDED_READ_TOOLS.has(name)) {
       try {
-        const result = commandBus.query(name, args);
+        const result = commandBus.query(name, args) as any;
         log.append({
           tool: name,
           projectId,
@@ -434,8 +440,21 @@ export function createMcpCompanionServer(deps?: McpCompanionServerDeps): Server 
           durationMs: Date.now() - startTime,
           inputs: args,
         });
+        const mcpImages = Array.isArray(result?._mcpImages) ? result._mcpImages : [];
+        let cleanResult = result;
+        if (mcpImages.length > 0) {
+          const { _mcpImages, ...rest } = result;
+          cleanResult = rest;
+        }
         return {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
+          content: [
+            { type: 'text', text: JSON.stringify(cleanResult) },
+            ...mcpImages.map((img: any) => ({
+              type: 'image',
+              data: img.data,
+              mimeType: img.mimeType || 'image/png',
+            })),
+          ],
         };
       } catch (err) {
         return {

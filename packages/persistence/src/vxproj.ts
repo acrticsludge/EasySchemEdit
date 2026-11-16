@@ -40,6 +40,9 @@ const CHUNK_VERSION = 1;
 const TYPE_CODE_UINT8 = 1;
 const TYPE_CODE_UINT16 = 2;
 
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
 function generatePrimes(count: number): number[] {
   const result: number[] = [];
   for (let candidate = 2; result.length < count; candidate++) {
@@ -129,67 +132,112 @@ export function sha256Bytes(data: Uint8Array): Uint8Array {
   return out;
 }
 
-function mergeUint8Arrays(arrays: Uint8Array[]): Uint8Array {
-  const total = arrays.reduce((sum, a) => sum + a.length, 0);
-  const result = new Uint8Array(total);
-  let pos = 0;
-  for (const a of arrays) {
-    result.set(a, pos);
-    pos += a.length;
+export async function sha256BytesAsync(data: Uint8Array | ArrayBuffer): Promise<Uint8Array> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle && typeof subtle.digest === 'function') {
+    try {
+      const cleanBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      const digestBuffer = await subtle.digest('SHA-256', cleanBuffer);
+      return new Uint8Array(digestBuffer);
+    } catch {
+      // Fallback
+    }
   }
-  return result;
+  return sha256Bytes(bytes);
+}
+
+export async function sha256HexAsync(data: Uint8Array | ArrayBuffer): Promise<string> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle && typeof subtle.digest === 'function') {
+    try {
+      const cleanBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+      const digestBuffer = await subtle.digest('SHA-256', cleanBuffer);
+      const digestBytes = new Uint8Array(digestBuffer);
+      let hex = '';
+      for (let i = 0; i < digestBytes.length; i++) {
+        hex += digestBytes[i].toString(16).padStart(2, '0');
+      }
+      return hex;
+    } catch {
+      // Fallback
+    }
+  }
+  return sha256Hex(bytes);
 }
 
 function encodePaletteEntry(entry: BlockStateId): Uint8Array {
-  const idBytes = new TextEncoder().encode(entry.id);
-  const idLenBuf = new ArrayBuffer(2);
-  new DataView(idLenBuf).setUint16(0, idBytes.length, true);
-
+  const idBytes = textEncoder.encode(entry.id);
   const propKeys = Object.keys(entry.props ?? {}).sort();
-  const propBufs: Uint8Array[] = [];
-  for (const key of propKeys) {
-    const keyBytes = new TextEncoder().encode(key);
-    const valBytes = new TextEncoder().encode(entry.props[key]);
-    const keyLenBuf = new ArrayBuffer(2);
-    new DataView(keyLenBuf).setUint16(0, keyBytes.length, true);
-    const valLenBuf = new ArrayBuffer(2);
-    new DataView(valLenBuf).setUint16(0, valBytes.length, true);
-    propBufs.push(
-      new Uint8Array(keyLenBuf),
-      keyBytes,
-      new Uint8Array(valLenBuf),
-      valBytes
-    );
-  }
-  const propCountBuf = new ArrayBuffer(2);
-  new DataView(propCountBuf).setUint16(0, propKeys.length, true);
+  const propCount = propKeys.length;
+  const keyBytesList: Uint8Array[] = new Array(propCount);
+  const valBytesList: Uint8Array[] = new Array(propCount);
 
-  return mergeUint8Arrays([
-    new Uint8Array(idLenBuf),
-    idBytes,
-    new Uint8Array(propCountBuf),
-    ...propBufs,
-  ]);
+  let propsByteLength = 0;
+  for (let i = 0; i < propCount; i++) {
+    const k = propKeys[i];
+    const kBytes = textEncoder.encode(k);
+    const vBytes = textEncoder.encode(entry.props[k]);
+    keyBytesList[i] = kBytes;
+    valBytesList[i] = vBytes;
+    propsByteLength += 2 + kBytes.length + 2 + vBytes.length;
+  }
+
+  const totalLength = 2 + idBytes.length + 2 + propsByteLength;
+  const out = new Uint8Array(totalLength);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+
+  let offset = 0;
+  view.setUint16(offset, idBytes.length, true);
+  offset += 2;
+  out.set(idBytes, offset);
+  offset += idBytes.length;
+
+  view.setUint16(offset, propCount, true);
+  offset += 2;
+
+  for (let i = 0; i < propCount; i++) {
+    const kBytes = keyBytesList[i];
+    const vBytes = valBytesList[i];
+
+    view.setUint16(offset, kBytes.length, true);
+    offset += 2;
+    out.set(kBytes, offset);
+    offset += kBytes.length;
+
+    view.setUint16(offset, vBytes.length, true);
+    offset += 2;
+    out.set(vBytes, offset);
+    offset += vBytes.length;
+  }
+
+  return out;
 }
 
-function decodePaletteEntry(bytes: Uint8Array, offset: number): { state: BlockStateId; nextOffset: number } {
-  const idLen = new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
+function decodePaletteEntry(
+  bytes: Uint8Array,
+  offset: number,
+  view?: DataView
+): { state: BlockStateId; nextOffset: number } {
+  const v = view ?? new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const idLen = v.getUint16(offset, true);
   offset += 2;
-  const id = new TextDecoder().decode(bytes.slice(offset, offset + idLen));
+  const id = textDecoder.decode(bytes.subarray(offset, offset + idLen));
   offset += idLen;
 
-  const propCount = new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
+  const propCount = v.getUint16(offset, true);
   offset += 2;
 
   const props: Record<string, string> = {};
   for (let i = 0; i < propCount; i++) {
-    const keyLen = new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
+    const keyLen = v.getUint16(offset, true);
     offset += 2;
-    const key = new TextDecoder().decode(bytes.slice(offset, offset + keyLen));
+    const key = textDecoder.decode(bytes.subarray(offset, offset + keyLen));
     offset += keyLen;
-    const valLen = new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
+    const valLen = v.getUint16(offset, true);
     offset += 2;
-    const val = new TextDecoder().decode(bytes.slice(offset, offset + valLen));
+    const val = textDecoder.decode(bytes.subarray(offset, offset + valLen));
     offset += valLen;
     props[key] = val;
   }
@@ -197,96 +245,108 @@ function decodePaletteEntry(bytes: Uint8Array, offset: number): { state: BlockSt
   return { state: { id, props }, nextOffset: offset };
 }
 
-function encodeVoxelChunk(chunk: VoxelChunk): Uint8Array {
-  const parts: Uint8Array[] = [];
-
-  parts.push(CHUNK_MAGIC);
-
-  const versionBuf = new ArrayBuffer(2);
-  new DataView(versionBuf).setUint16(0, CHUNK_VERSION, true);
-  parts.push(new Uint8Array(versionBuf));
+function buildChunkPayload(chunk: VoxelChunk): { payloadWithTrailingSpace: Uint8Array; payloadLength: number } {
+  const encodedPalette: Uint8Array[] = new Array(chunk.palette.length);
+  let paletteTotalBytes = 0;
+  for (let i = 0; i < chunk.palette.length; i++) {
+    const entryBytes = encodePaletteEntry(chunk.palette[i]);
+    encodedPalette[i] = entryBytes;
+    paletteTotalBytes += entryBytes.length;
+  }
 
   const [cx, cy, cz] = chunk.key.split('_').map(Number);
-  for (const c of [cx, cy, cz]) {
-    const buf = new ArrayBuffer(4);
-    new DataView(buf).setInt32(0, c, true);
-    parts.push(new Uint8Array(buf));
-  }
-
-  const paletteBuf = new ArrayBuffer(4);
-  new DataView(paletteBuf).setUint32(0, chunk.palette.length, true);
-  parts.push(new Uint8Array(paletteBuf));
-
-  for (const entry of chunk.palette) {
-    parts.push(encodePaletteEntry(entry));
-  }
-
   const typeCode = chunk.indices instanceof Uint8Array ? TYPE_CODE_UINT8 : TYPE_CODE_UINT16;
-  const typeBuf = new ArrayBuffer(4);
-  new DataView(typeBuf).setUint32(0, typeCode, true);
-  parts.push(new Uint8Array(typeBuf));
+  const indexByteLength = chunk.indices.byteLength;
+
+  const headerLength = 4 + 2 + 12 + 4;
+  const payloadLength = headerLength + paletteTotalBytes + 4 + indexByteLength;
+  const out = new Uint8Array(payloadLength + 32);
+  const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+
+  out.set(CHUNK_MAGIC, 0);
+
+  let offset = 4;
+  view.setUint16(offset, CHUNK_VERSION, true);
+  offset += 2;
+
+  view.setInt32(offset, cx, true);
+  offset += 4;
+  view.setInt32(offset, cy, true);
+  offset += 4;
+  view.setInt32(offset, cz, true);
+  offset += 4;
+
+  view.setUint32(offset, chunk.palette.length, true);
+  offset += 4;
+
+  for (let i = 0; i < encodedPalette.length; i++) {
+    out.set(encodedPalette[i], offset);
+    offset += encodedPalette[i].length;
+  }
+
+  view.setUint32(offset, typeCode, true);
+  offset += 4;
 
   const indexBytes = chunk.indices instanceof Uint8Array
     ? chunk.indices
     : new Uint8Array(chunk.indices.buffer, chunk.indices.byteOffset, chunk.indices.byteLength);
-  parts.push(indexBytes);
+  out.set(indexBytes, offset);
+  offset += indexBytes.length;
 
-  const payload = mergeUint8Arrays(parts);
-  const hash = sha256Bytes(payload);
-  return mergeUint8Arrays([payload, hash]);
+  return { payloadWithTrailingSpace: out, payloadLength };
 }
 
-function decodeVoxelChunk(bytes: Uint8Array): VoxelChunk {
-  if (bytes.length < 32 + 4 + 2 + 12 + 4 + 4) {
-    throw new Error('CHUNK_TRUNCATED: Binary chunk buffer too short');
-  }
+function encodeVoxelChunk(chunk: VoxelChunk): Uint8Array {
+  const { payloadWithTrailingSpace, payloadLength } = buildChunkPayload(chunk);
+  const payload = payloadWithTrailingSpace.subarray(0, payloadLength);
+  const hash = sha256Bytes(payload);
+  payloadWithTrailingSpace.set(hash, payloadLength);
+  return payloadWithTrailingSpace;
+}
 
-  const payload = bytes.slice(0, bytes.length - 32);
-  const providedHash = bytes.slice(bytes.length - 32);
-  const computedHash = sha256Bytes(payload);
+async function encodeVoxelChunkAsync(chunk: VoxelChunk): Promise<Uint8Array> {
+  const { payloadWithTrailingSpace, payloadLength } = buildChunkPayload(chunk);
+  const payload = payloadWithTrailingSpace.subarray(0, payloadLength);
+  const hash = await sha256BytesAsync(payload);
+  payloadWithTrailingSpace.set(hash, payloadLength);
+  return payloadWithTrailingSpace;
+}
 
-  for (let i = 0; i < 32; i++) {
-    if (providedHash[i] !== computedHash[i]) {
-      throw new Error('CHUNK_CHECKSUM_MISMATCH: Trailing hash does not match chunk payload');
-    }
-  }
-
-  for (let i = 0; i < 4; i++) {
-    if (bytes[i] !== CHUNK_MAGIC[i]) {
-      throw new Error('CHUNK_INVALID_MAGIC: Chunk magic header invalid');
-    }
-  }
-
+function parseChunkPayload(bytes: Uint8Array): VoxelChunk {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let offset = 4;
-  const _version = new DataView(bytes.buffer, bytes.byteOffset + offset, 2).getUint16(0, true);
+  const _version = view.getUint16(offset, true);
   offset += 2;
 
-  const cx = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getInt32(0, true);
+  const cx = view.getInt32(offset, true);
   offset += 4;
-  const cy = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getInt32(0, true);
+  const cy = view.getInt32(offset, true);
   offset += 4;
-  const cz = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getInt32(0, true);
+  const cz = view.getInt32(offset, true);
   offset += 4;
 
-  const paletteCount = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
+  const paletteCount = view.getUint32(offset, true);
   offset += 4;
 
   const palette: BlockStateId[] = [];
   for (let i = 0; i < paletteCount; i++) {
-    const decoded = decodePaletteEntry(bytes, offset);
+    const decoded = decodePaletteEntry(bytes, offset, view);
     palette.push(decoded.state);
     offset = decoded.nextOffset;
   }
 
-  const typeCode = new DataView(bytes.buffer, bytes.byteOffset + offset, 4).getUint32(0, true);
+  const typeCode = view.getUint32(offset, true);
   offset += 4;
 
   const indicesCount = 16 * 16 * 16;
   let indices: Uint8Array | Uint16Array;
   if (typeCode === TYPE_CODE_UINT8) {
-    indices = new Uint8Array(bytes.buffer.slice(bytes.byteOffset + offset, bytes.byteOffset + offset + indicesCount));
+    indices = bytes.slice(offset, offset + indicesCount);
   } else {
-    indices = new Uint16Array(bytes.buffer.slice(bytes.byteOffset + offset, bytes.byteOffset + offset + indicesCount * 2));
+    const indicesSlice = bytes.subarray(offset, offset + indicesCount * 2);
+    const u16 = new Uint16Array(indicesCount);
+    new Uint8Array(u16.buffer).set(indicesSlice);
+    indices = u16;
   }
 
   return {
@@ -297,9 +357,57 @@ function decodeVoxelChunk(bytes: Uint8Array): VoxelChunk {
   };
 }
 
+function decodeVoxelChunk(bytes: Uint8Array): VoxelChunk {
+  if (bytes.length < 32 + 4 + 2 + 12 + 4 + 4) {
+    throw new Error('CHUNK_TRUNCATED: Binary chunk buffer too short');
+  }
+
+  const payload = bytes.subarray(0, bytes.length - 32);
+  const computedHash = sha256Bytes(payload);
+  const hashOffset = bytes.length - 32;
+
+  for (let i = 0; i < 32; i++) {
+    if (bytes[hashOffset + i] !== computedHash[i]) {
+      throw new Error('CHUNK_CHECKSUM_MISMATCH: Trailing hash does not match chunk payload');
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    if (bytes[i] !== CHUNK_MAGIC[i]) {
+      throw new Error('CHUNK_INVALID_MAGIC: Chunk magic header invalid');
+    }
+  }
+
+  return parseChunkPayload(bytes);
+}
+
+async function decodeVoxelChunkAsync(bytes: Uint8Array): Promise<VoxelChunk> {
+  if (bytes.length < 32 + 4 + 2 + 12 + 4 + 4) {
+    throw new Error('CHUNK_TRUNCATED: Binary chunk buffer too short');
+  }
+
+  const payload = bytes.subarray(0, bytes.length - 32);
+  const computedHash = await sha256BytesAsync(payload);
+  const hashOffset = bytes.length - 32;
+
+  for (let i = 0; i < 32; i++) {
+    if (bytes[hashOffset + i] !== computedHash[i]) {
+      throw new Error('CHUNK_CHECKSUM_MISMATCH: Trailing hash does not match chunk payload');
+    }
+  }
+
+  for (let i = 0; i < 4; i++) {
+    if (bytes[i] !== CHUNK_MAGIC[i]) {
+      throw new Error('CHUNK_INVALID_MAGIC: Chunk magic header invalid');
+    }
+  }
+
+  return parseChunkPayload(bytes);
+}
+
 export function packVxprojArchive(
   project: Project,
-  opts?: { assetProfile?: string }
+  opts?: { assetProfile?: string; compressionLevel?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 }
 ): Uint8Array {
   const zipEntries: Record<string, Uint8Array> = {};
   const checksums: Record<string, string> = {};
@@ -321,7 +429,7 @@ export function packVxprojArchive(
     importGroups: project.importGroups ?? [],
     placementIds: project.placements.map((p) => p.id),
   };
-  addEntry('project.json', new TextEncoder().encode(JSON.stringify(projectMetadata, null, 2)));
+  addEntry('project.json', textEncoder.encode(JSON.stringify(projectMetadata, null, 2)));
 
   for (const p of project.placements) {
     const placementMeta = {
@@ -344,7 +452,7 @@ export function packVxprojArchive(
         chunkKeys: Array.from(p.volume.chunks.keys()),
       },
     };
-    addEntry(`placements/${p.id}/placement.json`, new TextEncoder().encode(JSON.stringify(placementMeta, null, 2)));
+    addEntry(`placements/${p.id}/placement.json`, textEncoder.encode(JSON.stringify(placementMeta, null, 2)));
 
     const ancillaryMeta = {
       blockEntities: Array.from(p.ancillary.blockEntities?.entries() ?? []),
@@ -354,7 +462,7 @@ export function packVxprojArchive(
       pendingFluidTicks: p.ancillary.pendingFluidTicks ?? [],
       unknownTags: Array.from(p.ancillary.unknownTags?.entries() ?? []),
     };
-    addEntry(`placements/${p.id}/ancillary.json`, new TextEncoder().encode(JSON.stringify(ancillaryMeta, null, 2)));
+    addEntry(`placements/${p.id}/ancillary.json`, textEncoder.encode(JSON.stringify(ancillaryMeta, null, 2)));
 
     for (const [chunkKey, chunk] of p.volume.chunks) {
       const chunkBytes = encodeVoxelChunk(chunk);
@@ -370,9 +478,141 @@ export function packVxprojArchive(
     chunks: {},
     ancillary: {},
   };
-  zipEntries[MANIFEST_NAME] = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+  zipEntries[MANIFEST_NAME] = textEncoder.encode(JSON.stringify(manifest, null, 2));
 
-  return zipSync(zipEntries, { level: 6 });
+  return zipSync(zipEntries, { level: opts?.compressionLevel ?? 6 });
+}
+
+async function mapInBatches<T, R>(
+  items: readonly T[],
+  batchSize: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const size = Math.max(1, batchSize);
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const batch = items.slice(i, i + size);
+    const batchResults = await Promise.all(batch.map((item) => fn(item)));
+    for (const res of batchResults) {
+      results.push(res);
+    }
+  }
+  return results;
+}
+
+export async function packVxprojArchiveAsync(
+  project: Project,
+  opts?: { assetProfile?: string; compressionLevel?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 }
+): Promise<Uint8Array> {
+  const zipEntries: Record<string, Uint8Array> = {};
+  const checksums: Record<string, string> = {};
+
+  const projectMetadata = {
+    schemaVersion: project.schemaVersion ?? 1,
+    id: project.id,
+    name: project.name,
+    overlapPolicy: project.overlapPolicy,
+    conflictOverlay: project.conflictOverlay,
+    metadata: project.metadata,
+    revision: project.revision,
+    importGroups: project.importGroups ?? [],
+    placementIds: project.placements.map((p) => p.id),
+  };
+  const projectBytes = textEncoder.encode(JSON.stringify(projectMetadata, null, 2));
+
+  interface RawEntry {
+    path: string;
+    data: Uint8Array;
+  }
+  const rawEntries: RawEntry[] = [
+    { path: 'project.json', data: projectBytes },
+  ];
+
+  interface ChunkTask {
+    path: string;
+    chunk: VoxelChunk;
+  }
+  const chunkTasks: ChunkTask[] = [];
+
+  for (const p of project.placements) {
+    const placementMeta = {
+      id: p.id,
+      name: p.name,
+      transform: p.transform,
+      origin: p.origin,
+      visible: p.visible,
+      locked: p.locked,
+      lockReason: p.lockReason,
+      color: p.color,
+      createdAt: p.createdAt,
+      source: p.source,
+      eraseTombstones: Array.from(p.eraseTombstones ?? []),
+      volume: {
+        bounds: p.volume.bounds,
+        chunkSize: p.volume.chunkSize,
+        nonAirCount: p.volume.nonAirCount,
+        paletteCardinality: p.volume.paletteCardinality,
+        chunkKeys: Array.from(p.volume.chunks.keys()),
+      },
+    };
+    rawEntries.push({
+      path: `placements/${p.id}/placement.json`,
+      data: textEncoder.encode(JSON.stringify(placementMeta, null, 2)),
+    });
+
+    const ancillaryMeta = {
+      blockEntities: Array.from(p.ancillary.blockEntities?.entries() ?? []),
+      entities: p.ancillary.entities ?? [],
+      biomes: p.ancillary.biomes,
+      pendingBlockTicks: p.ancillary.pendingBlockTicks ?? [],
+      pendingFluidTicks: p.ancillary.pendingFluidTicks ?? [],
+      unknownTags: Array.from(p.ancillary.unknownTags?.entries() ?? []),
+    };
+    rawEntries.push({
+      path: `placements/${p.id}/ancillary.json`,
+      data: textEncoder.encode(JSON.stringify(ancillaryMeta, null, 2)),
+    });
+
+    for (const [chunkKey, chunk] of p.volume.chunks) {
+      chunkTasks.push({
+        path: `placements/${p.id}/chunks/${chunkKey}.bin`,
+        chunk,
+      });
+    }
+  }
+
+  const encodedChunks = await mapInBatches(
+    chunkTasks,
+    64,
+    async (task) => {
+      const chunkBytes = await encodeVoxelChunkAsync(task.chunk);
+      return { path: task.path, data: chunkBytes };
+    }
+  );
+
+  const allEntries: RawEntry[] = rawEntries.concat(encodedChunks);
+
+  await mapInBatches(
+    allEntries,
+    64,
+    async (entry) => {
+      const hash = await sha256HexAsync(entry.data);
+      checksums[entry.path] = hash;
+      zipEntries[entry.path] = entry.data;
+    }
+  );
+
+  const manifest: VxprojManifest = {
+    version: 1,
+    projectId: project.id,
+    createdAt: project.metadata?.createdAt || new Date().toISOString(),
+    checksums,
+    chunks: {},
+    ancillary: {},
+  };
+  zipEntries[MANIFEST_NAME] = textEncoder.encode(JSON.stringify(manifest, null, 2));
+
+  return zipSync(zipEntries, { level: opts?.compressionLevel ?? 1 });
 }
 
 export function unpackVxprojArchive(zipBytes: Uint8Array): Project {
@@ -388,7 +628,8 @@ export function unpackVxprojArchive(zipBytes: Uint8Array): Project {
     throw new Error('VXPROJ_MISSING_MANIFEST: manifest.json not found in archive');
   }
 
-  const manifest: VxprojManifest = JSON.parse(new TextDecoder().decode(manifestBytes));
+  const manifest: VxprojManifest = JSON.parse(textDecoder.decode(manifestBytes));
+  delete unzipped[MANIFEST_NAME];
   if (!manifest.checksums || typeof manifest.checksums !== 'object') {
     throw new Error('VXPROJ_INVALID_MANIFEST: Manifest missing checksums object');
   }
@@ -420,7 +661,7 @@ export function unpackVxprojArchive(zipBytes: Uint8Array): Project {
   if (!projectJsonBytes) {
     throw new Error('VXPROJ_MISSING_PROJECT: project.json not found in archive');
   }
-  const projectDoc = JSON.parse(new TextDecoder().decode(projectJsonBytes));
+  const projectDoc = JSON.parse(textDecoder.decode(projectJsonBytes));
 
   const placements: Placement[] = [];
   const placementIds: string[] = projectDoc.placementIds || [];
@@ -432,9 +673,9 @@ export function unpackVxprojArchive(zipBytes: Uint8Array): Project {
     if (!unzipped[pPath]) {
       throw new Error(`VXPROJ_MISSING_PLACEMENT: ${pPath} not found`);
     }
-    const pMeta = JSON.parse(new TextDecoder().decode(unzipped[pPath]));
+    const pMeta = JSON.parse(textDecoder.decode(unzipped[pPath]));
     const ancMeta = unzipped[ancPath]
-      ? JSON.parse(new TextDecoder().decode(unzipped[ancPath]))
+      ? JSON.parse(textDecoder.decode(unzipped[ancPath]))
       : { blockEntities: [], entities: [], unknownTags: [] };
 
     const chunks = new Map<string, VoxelChunk>();
@@ -446,6 +687,153 @@ export function unpackVxprojArchive(zipBytes: Uint8Array): Project {
         throw new Error(`VXPROJ_MISSING_CHUNK: Chunk ${cPath} not found`);
       }
       const chunk = decodeVoxelChunk(cBytes);
+      chunks.set(chunkKey, chunk);
+    }
+
+    const volume: ChunkedVoxelVolume = {
+      bounds: pMeta.volume.bounds,
+      chunkSize: pMeta.volume.chunkSize || 16,
+      chunks,
+      nonAirCount: pMeta.volume.nonAirCount ?? 0,
+      paletteCardinality: pMeta.volume.paletteCardinality ?? 0,
+    };
+
+    const ancillary: PlacementAncillaryData = {
+      blockEntities: new Map(ancMeta.blockEntities ?? []),
+      entities: ancMeta.entities ?? [],
+      biomes: ancMeta.biomes,
+      pendingBlockTicks: ancMeta.pendingBlockTicks ?? [],
+      pendingFluidTicks: ancMeta.pendingFluidTicks ?? [],
+      unknownTags: new Map(ancMeta.unknownTags ?? []),
+    };
+
+    const placement: Placement = {
+      id: pMeta.id,
+      name: pMeta.name,
+      volume,
+      transform: pMeta.transform,
+      origin: pMeta.origin,
+      ancillary,
+      visible: pMeta.visible ?? true,
+      locked: pMeta.locked ?? false,
+      lockReason: pMeta.lockReason,
+      color: pMeta.color,
+      createdAt: pMeta.createdAt,
+      source: pMeta.source,
+      eraseTombstones: new Set(pMeta.eraseTombstones ?? []),
+    };
+
+    placements.push(placement);
+  }
+
+  return {
+    schemaVersion: projectDoc.schemaVersion ?? 1,
+    id: projectDoc.id,
+    name: projectDoc.name,
+    placements,
+    importGroups: projectDoc.importGroups ?? [],
+    overlapPolicy: projectDoc.overlapPolicy ?? 'top-wins',
+    conflictOverlay: projectDoc.conflictOverlay ?? 'off',
+    metadata: projectDoc.metadata ?? { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
+    revision: projectDoc.revision ?? 0,
+  };
+}
+
+export async function unpackVxprojArchiveAsync(zipBytes: Uint8Array): Promise<Project> {
+  let unzipped: Record<string, Uint8Array>;
+  try {
+    unzipped = unzipSync(zipBytes);
+  } catch (err) {
+    throw new Error(`VXPROJ_CORRUPT_ARCHIVE: Failed to unzip archive: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  const manifestBytes = unzipped[MANIFEST_NAME];
+  if (!manifestBytes) {
+    throw new Error('VXPROJ_MISSING_MANIFEST: manifest.json not found in archive');
+  }
+
+  const manifest: VxprojManifest = JSON.parse(textDecoder.decode(manifestBytes));
+  delete unzipped[MANIFEST_NAME];
+  if (!manifest.checksums || typeof manifest.checksums !== 'object') {
+    throw new Error('VXPROJ_INVALID_MANIFEST: Manifest missing checksums object');
+  }
+
+  for (const [path] of Object.entries(unzipped)) {
+    if (path.includes('..') || path.startsWith('/') || path.includes('\\')) {
+      throw new Error(`VXPROJ_PATH_TRAVERSAL: Illegal file path in archive: ${path}`);
+    }
+    if (path === MANIFEST_NAME) continue;
+
+    const expectedChecksum = manifest.checksums[path];
+    if (!expectedChecksum) {
+      throw new Error(`VXPROJ_UNEXPECTED_ENTRY: File ${path} present in archive but not in manifest`);
+    }
+  }
+
+  for (const path of Object.keys(manifest.checksums)) {
+    if (!unzipped[path]) {
+      throw new Error(`VXPROJ_MISSING_ENTRY: File ${path} listed in manifest but missing from archive`);
+    }
+  }
+
+  // Verify all entry checksums concurrently via mapInBatches + sha256HexAsync
+  const entriesToCheck = Object.entries(unzipped).filter(([path]) => path !== MANIFEST_NAME);
+  await mapInBatches(
+    entriesToCheck,
+    64,
+    async ([path, data]) => {
+      const expectedChecksum = manifest.checksums[path];
+      const actualChecksum = await sha256HexAsync(data);
+      if (actualChecksum !== expectedChecksum) {
+        throw new Error(`VXPROJ_CHECKSUM_MISMATCH: Checksum mismatch for ${path}: expected ${expectedChecksum}, got ${actualChecksum}`);
+      }
+    }
+  );
+
+  const projectJsonBytes = unzipped['project.json'];
+  if (!projectJsonBytes) {
+    throw new Error('VXPROJ_MISSING_PROJECT: project.json not found in archive');
+  }
+  const projectDoc = JSON.parse(textDecoder.decode(projectJsonBytes));
+  delete unzipped['project.json'];
+
+  const placements: Placement[] = [];
+  const placementIds: string[] = projectDoc.placementIds || [];
+
+  for (const pid of placementIds) {
+    const pPath = `placements/${pid}/placement.json`;
+    const ancPath = `placements/${pid}/ancillary.json`;
+
+    if (!unzipped[pPath]) {
+      throw new Error(`VXPROJ_MISSING_PLACEMENT: ${pPath} not found`);
+    }
+    const pMeta = JSON.parse(textDecoder.decode(unzipped[pPath]));
+    delete unzipped[pPath];
+    const ancMeta = unzipped[ancPath]
+      ? JSON.parse(textDecoder.decode(unzipped[ancPath]))
+      : { blockEntities: [], entities: [], unknownTags: [] };
+    delete unzipped[ancPath];
+
+    const chunkKeys: string[] = pMeta.volume?.chunkKeys || [];
+    for (const chunkKey of chunkKeys) {
+      const cPath = `placements/${pid}/chunks/${chunkKey}.bin`;
+      if (!unzipped[cPath]) {
+        throw new Error(`VXPROJ_MISSING_CHUNK: Chunk ${cPath} not found`);
+      }
+    }
+
+    const decodedChunks = await Promise.all(
+      chunkKeys.map(async (chunkKey) => {
+        const cPath = `placements/${pid}/chunks/${chunkKey}.bin`;
+        const cBytes = unzipped[cPath];
+        delete unzipped[cPath];
+        const chunk = await decodeVoxelChunkAsync(cBytes);
+        return { chunkKey, chunk };
+      })
+    );
+
+    const chunks = new Map<string, VoxelChunk>();
+    for (const { chunkKey, chunk } of decodedChunks) {
       chunks.set(chunkKey, chunk);
     }
 
@@ -527,7 +915,7 @@ export async function serializeVxproj(
     entries.push({ name: `ancillary/${ancillaryType}`, data });
   }
 
-  const manifestJson = new TextEncoder().encode(JSON.stringify(manifest, null, 2));
+  const manifestJson = textEncoder.encode(JSON.stringify(manifest, null, 2));
   entries.push({ name: MANIFEST_NAME, data: manifestJson.buffer });
 
   return services.zip(entries);
@@ -544,7 +932,7 @@ export async function deserializeVxproj(
     throw new Error('VXPROJ_MISSING_MANIFEST: manifest.json not found in archive');
   }
 
-  const manifestText = new TextDecoder().decode(manifestEntry.data);
+  const manifestText = textDecoder.decode(manifestEntry.data);
   const manifest: VxprojManifest = JSON.parse(manifestText);
 
   const entryMap = new Map<string, ArrayBuffer>();

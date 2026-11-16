@@ -36,6 +36,7 @@ export {
   isLatticeSafe,
   localBlockToWorld,
   worldBlockToLocal,
+  computeOriginForWorldBlock,
   placementWorldBounds,
   rotateAboutPoint,
   localPointToWorld,

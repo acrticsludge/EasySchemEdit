@@ -2,6 +2,7 @@
 import { SpongeV3Adapter } from '../sponge-v3.ts';
 import { encodeNbt } from '../nbts.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
+import { localBlockToWorld } from '../../domain/coordinates.ts';
 
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
@@ -139,16 +140,21 @@ const adapter = new SpongeV3Adapter();
     maxNbtNestingDepth: 512, maxNbtTagCount: 1_000_000,
   });
   const placement = result.placements[0];
-  check(placement.transform.translation[0] === -5, 'Offset X=-5 → translation X=-5');
-  check(placement.transform.translation[1] === 10, 'Offset Y=10 → translation Y=10');
-  check(placement.transform.translation[2] === -3, 'Offset Z=-3 → translation Z=-3');
+  check(
+    placement.transform.translation[0] === 0 &&
+    placement.transform.translation[1] === 0 &&
+    placement.transform.translation[2] === 0,
+    'translation is [0, 0, 0]',
+  );
+  check(placement.origin[0] === 10, 'origin X = -2 * -5 = 10');
+  check(placement.origin[1] === -20, 'origin Y = -2 * 10 = -20');
+  check(placement.origin[2] === 6, 'origin Z = -2 * -3 = 6');
 
-  // Worked example: pasteTarget + Offset = min corner (relative coordinates only)
-  // pasteTarget at local (100, 64, 100), Offset = [-5, 10, -3]
-  // min corner = (100 + -5, 64 + 10, 100 + -3) = (95, 74, 97) — relative, no world coords
-  check(placement.origin[0] === -10, 'origin X = 2 * -5 = -10');
-  check(placement.origin[1] === 20, 'origin Y = 2 * 10 = 20');
-  check(placement.origin[2] === -6, 'origin Z = 2 * -3 = -6');
+  const world0 = localBlockToWorld(placement, [0, 0, 0]);
+  check(
+    world0[0] === -5 && world0[1] === 10 && world0[2] === -3,
+    'localBlockToWorld(placement, [0, 0, 0]) equals Offset [-5, 10, -3]',
+  );
 }
 
 console.log(failures === 0 ? 'All slice b-8 sponge v3 tests passed.' : failures + ' failure(s)');

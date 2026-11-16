@@ -59,7 +59,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
     for (const entry of entries) {
       if (!entry?.id) continue;
       if (!(entry.id in previewCache)) {
-        additions[entry.id] = renderClipboardPreviewDataUrl(entry, 48);
+        additions[entry.id] = renderClipboardPreviewDataUrl(entry, 160);
         hasNew = true;
       }
     }
@@ -298,8 +298,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                     {/* Isometric Thumbnail */}
                     <div
                       style={{
-                        width: '46px',
-                        height: '46px',
+                        width: '52px',
+                        height: '52px',
                         flexShrink: 0,
                         backgroundColor: '#0e1015',
                         border: '1px solid #252a36',
@@ -315,10 +315,10 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                           src={preview}
                           alt="Block preview"
                           style={{
-                            width: '42px',
-                            height: '42px',
+                            width: '48px',
+                            height: '48px',
                             objectFit: 'contain',
-                            imageRendering: 'pixelated',
+                            imageRendering: 'auto',
                           }}
                         />
                       ) : (

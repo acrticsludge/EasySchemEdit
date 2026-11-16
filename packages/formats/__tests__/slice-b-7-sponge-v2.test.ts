@@ -2,6 +2,7 @@
 import { SpongeV2Adapter } from '../sponge-v2.ts';
 import { encodeNbt } from '../nbts.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
+import { localBlockToWorld } from '../../domain/coordinates.ts';
 
 const passthrough = {
   gzipCompress: (b: Uint8Array) => b,
@@ -126,9 +127,18 @@ const adapter = new SpongeV2Adapter();
     maxNbtNestingDepth: 512, maxNbtTagCount: 1_000_000,
   });
   const placement = result.placements[0];
-  check(placement.transform.translation[0] === 5, 'Offset X=5 → translation X=5');
-  check(placement.transform.translation[1] === -3, 'Offset Y=-3 → translation Y=-3');
-  check(placement.transform.translation[2] === 10, 'Offset Z=10 → translation Z=10');
+  check(
+    placement.transform.translation[0] === 0 &&
+    placement.transform.translation[1] === 0 &&
+    placement.transform.translation[2] === 0,
+    'translation is [0, 0, 0]',
+  );
+  check(placement.origin[0] === -10, 'origin X = -2 * 5 = -10');
+  check(placement.origin[1] === 6, 'origin Y = -2 * -3 = 6');
+  check(placement.origin[2] === -20, 'origin Z = -2 * 10 = -20');
+
+  const world0 = localBlockToWorld(placement, [0, 0, 0]);
+  check(world0[0] === 5 && world0[1] === -3 && world0[2] === 10, 'localBlockToWorld(placement, [0, 0, 0]) equals Offset [5, -3, 10]');
 }
 
 console.log(failures === 0 ? 'All slice b-7 sponge v2 tests passed.' : failures + ' failure(s)');

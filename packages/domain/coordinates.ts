@@ -175,6 +175,25 @@ export function worldBlockToLocal(
   ] as Vec3i;
 }
 
+export function computeOriginForWorldBlock(
+  placement: { transform: Transform; origin: Vec3Half },
+  worldBlock: Vec3i,
+): Vec3Half {
+  const dx = worldBlock[0] - placement.transform.translation[0];
+  const dy = worldBlock[1] - placement.transform.translation[1];
+  const dz = worldBlock[2] - placement.transform.translation[2];
+
+  const invRot = ((360 - placement.transform.rotationY) % 360) as 0 | 90 | 180 | 270;
+  const [rx, ry, rz] = applyRotation(dx, dy, dz, invRot);
+  const [mx, my, mz] = applyMirror(rx, ry, rz, placement.transform.mirror);
+
+  return [
+    placement.origin[0] + 2 * mx,
+    placement.origin[1] + 2 * my,
+    placement.origin[2] + 2 * mz,
+  ] as Vec3Half;
+}
+
 export function placementWorldBounds(
   placement: { transform: Transform; origin: Vec3Half; volume: { bounds: Bounds3i } },
 ): Bounds3i {

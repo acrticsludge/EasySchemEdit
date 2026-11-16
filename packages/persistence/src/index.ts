@@ -85,6 +85,12 @@ export {
   deserializeVxproj,
   packVxprojArchive,
   unpackVxprojArchive,
+  packVxprojArchiveAsync,
+  unpackVxprojArchiveAsync,
+  sha256Hex,
+  sha256Bytes,
+  sha256HexAsync,
+  sha256BytesAsync,
 } from './vxproj.ts';
 
 export {

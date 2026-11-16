@@ -16,7 +16,7 @@ import { inspect } from '../inspect.ts';
 import { blockStateId, CANONICAL_AIR } from '../../domain/block-state.ts';
 import type { NbtTag } from '../../domain/nbt.ts';
 import type { Bounds3i, Vec3i } from '../../domain/types.ts';
-import type { Transform } from '../../domain/coordinates.ts';
+import { localBlockToWorld, type Transform } from '../../domain/coordinates.ts';
 import type { Placement } from '../../domain/placement.ts';
 
 let failures = 0;
@@ -225,10 +225,21 @@ console.log('--- TEST SUITE: slice E1.1 API & Codecs ---');
 
   const imp = imported.placements[0];
   check(
-    imp.transform.translation[0] === -2 &&
+    imp.transform.translation[0] === 0 &&
     imp.transform.translation[1] === 0 &&
-    imp.transform.translation[2] === -4,
-    'Offset [-2, 0, -4] preserved exactly in imported translation',
+    imp.transform.translation[2] === 0,
+    'imported translation is [0, 0, 0]',
+  );
+  check(
+    imp.origin[0] === 4 &&
+    imp.origin[1] === 0 &&
+    imp.origin[2] === 8,
+    'imported origin is [4, 0, 8] (-2 * Offset [-2, 0, -4])',
+  );
+  const w0 = localBlockToWorld(imp, [0, 0, 0]);
+  check(
+    w0[0] === -2 && w0[1] === 0 && w0[2] === -4,
+    'localBlockToWorld(imp, [0, 0, 0]) matches Offset [-2, 0, -4]',
   );
 
   // Check block states
@@ -270,10 +281,21 @@ console.log('--- TEST SUITE: slice E1.1 API & Codecs ---');
   const imported2 = await importSchematic(exported2.bytes, exported2.filename);
   const imp2 = imported2.placements[0]!;
   check(
-    imp2.transform.translation[0] === -2 &&
+    imp2.transform.translation[0] === 0 &&
     imp2.transform.translation[1] === 0 &&
-    imp2.transform.translation[2] === -4,
-    'Offset [-2, 0, -4] preserved on 2nd import -> export -> import cycle',
+    imp2.transform.translation[2] === 0,
+    'translation [0, 0, 0] preserved on 2nd cycle',
+  );
+  check(
+    imp2.origin[0] === 4 &&
+    imp2.origin[1] === 0 &&
+    imp2.origin[2] === 8,
+    'origin [4, 0, 8] preserved on 2nd cycle',
+  );
+  const w0_2 = localBlockToWorld(imp2, [0, 0, 0]);
+  check(
+    w0_2[0] === -2 && w0_2[1] === 0 && w0_2[2] === -4,
+    'Offset [-2, 0, -4] preserved across import -> export -> import round-trip',
   );
 }
 
@@ -627,10 +649,21 @@ console.log('--- TEST SUITE: slice E1.1 API & Codecs ---');
   check(importedV2.placements.length === 1, 'Test 6a: importSchematic returns 1 placement');
   check(importedV2.placements[0].volume.nonAirCount === 1, 'Test 6a: nonAirBlockCount === 1');
   check(
-    importedV2.placements[0].transform.translation[0] === 1 &&
-    importedV2.placements[0].transform.translation[1] === 2 &&
-    importedV2.placements[0].transform.translation[2] === 3,
-    'Test 6a: translation matches Offset [1, 2, 3]'
+    importedV2.placements[0].transform.translation[0] === 0 &&
+    importedV2.placements[0].transform.translation[1] === 0 &&
+    importedV2.placements[0].transform.translation[2] === 0,
+    'Test 6a: translation is [0, 0, 0]'
+  );
+  check(
+    importedV2.placements[0].origin[0] === -2 &&
+    importedV2.placements[0].origin[1] === -4 &&
+    importedV2.placements[0].origin[2] === -6,
+    'Test 6a: origin is -2 * Offset = [-2, -4, -6]'
+  );
+  const w0V2 = localBlockToWorld(importedV2.placements[0], [0, 0, 0]);
+  check(
+    w0V2[0] === 1 && w0V2[1] === 2 && w0V2[2] === 3,
+    'Test 6a: localBlockToWorld(placement, [0, 0, 0]) matches Offset [1, 2, 3]'
   );
 
   const chunkV2 = importedV2.placements[0].volume.chunks.get('0_0_0');

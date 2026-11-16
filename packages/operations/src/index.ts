@@ -231,6 +231,7 @@ export type {
 
 export {
   EditorSession,
+  chunksEqual,
 } from './session.ts';
 
 export type {
@@ -256,5 +257,34 @@ export {
   generateStructure,
   executeBlueprint,
 } from './build-generator.ts';
+
+export type {
+  SemanticRole,
+  StructureCategory,
+  CompassZone,
+  DominantBlockInfo,
+  ArchitecturalFeatures,
+  StructureInfo,
+  DetectedStructure,
+  EnvironmentSummary,
+  SpatialMapLegendItem,
+  SpatialAsciiMap,
+  StructureAnalysisOptions,
+  SchematicVisualAnalysis,
+  RenderSchematicPngOptions,
+  RenderSchematicPngResult,
+  ClassifiedBlock,
+} from './structure-analyzer.ts';
+
+export {
+  classifyBlock,
+  analyzeSchematicStructures,
+  selectStructureByQuery,
+  generateSpatialAsciiMap,
+  renderSchematicPng,
+  encodeRgbaToPng,
+  uint8ArrayToBase64,
+} from './structure-analyzer.ts';
+
 
 

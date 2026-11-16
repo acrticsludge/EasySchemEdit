@@ -69,6 +69,7 @@ interface MockUserState {
   active_project_id: string | null;
   active_schematic_id: string | null;
   selection_state: any;
+  clipboard_state?: any;
   updated_at: Date;
 }
 
@@ -370,16 +371,28 @@ class TestMockDb {
         const userId = values[0];
         const found = self.userStates.find((u) => u.user_id === userId);
         if (!found) return [];
-        return [{ ...found }];
+        return [{
+          user_id: found.user_id,
+          active_project_id: found.active_project_id,
+          active_schematic_id: found.active_schematic_id,
+          selection_state: found.selection_state,
+          clipboard_state: found.clipboard_state ?? null,
+          updated_at: found.updated_at,
+        }];
       }
       if (q.startsWith('INSERT INTO mcp_user_state')) {
-        const [userId, projId, schemId, selJson] = values;
+        const userId = values[0];
+        const projId = values[1];
+        const schemId = values[2];
+        const selJson = values[3];
+        const clipJson = values.length >= 5 ? values[4] : null;
         const now = new Date();
         const newState: MockUserState = {
           user_id: userId,
           active_project_id: projId,
           active_schematic_id: schemId,
           selection_state: selJson ? (typeof selJson === 'string' ? JSON.parse(selJson) : selJson) : null,
+          clipboard_state: clipJson ? (typeof clipJson === 'string' ? JSON.parse(clipJson) : clipJson) : null,
           updated_at: now,
         };
         self.userStates = self.userStates.filter((u) => u.user_id !== userId);
@@ -387,13 +400,26 @@ class TestMockDb {
         return [{ ...newState }];
       }
       if (q.startsWith('UPDATE mcp_user_state')) {
-        const [projId, schemId, selJson, userId] = values;
+        const projId = values[0];
+        const schemId = values[1];
+        const selJson = values[2];
+        let clipJson: any = null;
+        let userId: string;
+        if (values.length >= 5) {
+          clipJson = values[3];
+          userId = values[4];
+        } else {
+          userId = values[3];
+        }
         let found = self.userStates.find((u) => u.user_id === userId);
         const now = new Date();
         if (found) {
           found.active_project_id = projId;
           found.active_schematic_id = schemId;
           found.selection_state = selJson ? (typeof selJson === 'string' ? JSON.parse(selJson) : selJson) : null;
+          if (values.length >= 5) {
+            found.clipboard_state = clipJson ? (typeof clipJson === 'string' ? JSON.parse(clipJson) : clipJson) : null;
+          }
           found.updated_at = now;
         } else {
           found = {
@@ -401,6 +427,7 @@ class TestMockDb {
             active_project_id: projId,
             active_schematic_id: schemId,
             selection_state: selJson ? (typeof selJson === 'string' ? JSON.parse(selJson) : selJson) : null,
+            clipboard_state: clipJson ? (typeof clipJson === 'string' ? JSON.parse(clipJson) : clipJson) : null,
             updated_at: now,
           };
           self.userStates.push(found);
@@ -619,18 +646,25 @@ console.log('Testing 2: CORS Preflight & Streamable SSE Transport...');
   assert(res.headers.get('Access-Control-Allow-Methods')?.includes('POST') === true, 'CORS Allow-Methods should include POST');
 }
 
-// 2b. Streamable SSE GET /api/mcp
+// 2b. Streamable SSE GET /api/mcp returns 405 & info GET returns 200
 {
   const req = new Request('http://localhost/api/mcp?apiKey=' + apiKeyRaw, {
     method: 'GET',
     headers: { Accept: 'text/event-stream' },
   });
   const res = await worker.fetch(req, testEnv, {} as any);
-  assert(res.status === 200, 'SSE GET /api/mcp should return 200');
-  assert(res.headers.get('Content-Type')?.includes('text/event-stream') === true, 'Content-Type should be text/event-stream');
-  const text = await res.text();
-  assert(text.includes('event: endpoint'), 'SSE stream should emit endpoint event');
-  assert(text.includes('/api/mcp'), 'SSE stream should point to /api/mcp endpoint');
+  assert(res.status === 405, 'SSE GET /api/mcp should return 405');
+  assert(res.headers.get('Allow')?.includes('POST') === true, 'Allow header should include POST');
+  const body = (await res.json()) as any;
+  assert(body.error?.code === -32000, 'SSE GET /api/mcp error code should be -32000');
+
+  const infoReq = new Request('http://localhost/api/mcp?apiKey=' + apiKeyRaw, {
+    method: 'GET',
+  });
+  const infoRes = await worker.fetch(infoReq, testEnv, {} as any);
+  assert(infoRes.status === 200, 'Standard GET /api/mcp should return 200');
+  const infoBody = (await infoRes.json()) as any;
+  assert(infoBody.ok === true, 'Standard GET /api/mcp should return ok === true');
 }
 
 // ============================================================================
@@ -1184,6 +1218,95 @@ let region1Id = '';
   assert(toolResult.remainingCount === 1, 'Should have 1 remaining saved region');
 }
 
+// 7h. create_selection preserves previously saved regions by default and updates in place when matching existing name
+{
+  // 1 remaining region from 7g (BarracksZone)
+  // Add a 2nd region without replaceExisting
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 46,
+      method: 'tools/call',
+      params: {
+        name: 'create_selection',
+        arguments: {
+          bounds: [40, 64, 40, 50, 75, 50],
+          name: 'WatchtowerZone',
+        },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'create_selection should succeed');
+  assert(toolResult.savedRegions?.length === 2, 'Should preserve previous regions and now have 2 saved regions');
+  const names = toolResult.savedRegions.map((r: any) => r.name);
+  assert(names.includes('BarracksZone'), 'Should still include BarracksZone');
+  assert(names.includes('WatchtowerZone'), 'Should include WatchtowerZone');
+
+  // Updating existing region by exact name updates it in-place without duplicating
+  const reqUpdate = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 47,
+      method: 'tools/call',
+      params: {
+        name: 'create_selection',
+        arguments: {
+          pos1: [40, 64, 40],
+          pos2: [55, 80, 55],
+          name: 'WatchtowerZone',
+        },
+      },
+    }),
+  });
+  const resUpdate = await worker.fetch(reqUpdate, testEnv, {} as any);
+  const bodyUpdate = (await resUpdate.json()) as any;
+  const toolResultUpdate = JSON.parse(bodyUpdate.result.content[0].text);
+  assert(toolResultUpdate.ok === true, 'update existing selection should succeed');
+  assert(toolResultUpdate.savedRegions?.length === 2, 'Updating existing region name should preserve count at 2');
+}
+
+// 7i. transform_placement automatically translates/transforms selection state and saved regions
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 48,
+      method: 'tools/call',
+      params: {
+        name: 'transform_placement',
+        arguments: {
+          placementId: towerPlacementId,
+          offset: [10, 5, -10],
+        },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'transform_placement should succeed');
+  assert(toolResult.selectionState, 'transform_placement should return transformed selectionState');
+  assert(Array.isArray(toolResult.selectionState.savedRegions), 'selectionState should have savedRegions');
+  assert(toolResult.selectionState.savedRegions.length === 2, 'Should preserve 2 saved regions');
+
+  // Verify that the saved regions were shifted by the placement transform
+  const watchtower = toolResult.selectionState.savedRegions.find((r: any) => r.name === 'WatchtowerZone');
+  assert(watchtower !== undefined, 'WatchtowerZone region should exist');
+  // Originally pos1: [40, 64, 40], pos2: [55, 80, 55], offset: [10, 5, -10]
+  assert(watchtower.pos1[0] === 50, `pos1.x shifted by 10: expected 50, got ${watchtower.pos1[0]}`);
+  assert(watchtower.pos1[1] === 69, `pos1.y shifted by 5: expected 69, got ${watchtower.pos1[1]}`);
+  assert(watchtower.pos1[2] === 30, `pos1.z shifted by -10: expected 30, got ${watchtower.pos1[2]}`);
+}
+
 // ============================================================================
 // 8. Direct REST-style Tool Call Support
 // ============================================================================
@@ -1207,6 +1330,416 @@ console.log('Testing 8: Direct REST-style Tool Calls & API Key Revocation...');
   const data = await res.json() as any;
   assert(data.ok === true, 'Direct tool result should have ok: true');
   assert(data.projectCount >= 1, 'Project count should be >= 1');
+}
+
+// ============================================================================
+// 9. Cloud MCP Clipboard Persistence & Live Sync Round-Trip
+// ============================================================================
+console.log('Testing 9: Cloud MCP Clipboard Persistence & Live Sync...');
+
+// 9a. cut_selection cuts voxels and persists clipboardState
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 50,
+      method: 'tools/call',
+      params: {
+        name: 'cut_selection',
+        arguments: { bounds: [0, 64, 0, 5, 68, 5] },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = await res.json() as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'cut_selection should succeed');
+  assert(toolResult.cut === true, 'cut_selection cut flag should be true');
+  assert(toolResult.revision > 1, 'Schematic revision should increment on cut');
+}
+
+// 9b. GET /api/mcp/sync returns persisted clipboardState
+{
+  const req = new Request('http://localhost/api/mcp/sync', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  assert(res.status === 200, 'GET /api/mcp/sync should return 200');
+  const syncSnap = await res.json() as any;
+  assert(syncSnap.clipboardState, 'Snapshot should include clipboardState');
+  assert(Array.isArray(syncSnap.clipboardState.entries), 'clipboardState should have entries array');
+  assert(syncSnap.clipboardState.entries.length > 0, 'clipboardState entries should not be empty');
+  assert(typeof syncSnap.clipboardState.updatedAt === 'string', 'clipboardState should have updatedAt ISO string');
+}
+
+// 9c. paste_clipboard pastes from persisted clipboard state at targetOrigin
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 51,
+      method: 'tools/call',
+      params: {
+        name: 'paste_clipboard',
+        arguments: { targetOrigin: [0, 64, 0] },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = await res.json() as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'paste_clipboard should succeed');
+  assert(toolResult.pasted === true, 'paste_clipboard pasted flag should be true');
+  assert(toolResult.changedCells > 0, 'paste_clipboard should change cells');
+  assert(toolResult.revision > 1, 'Schematic revision should increment on paste');
+}
+
+// 9d. copy_selection updates clipboardState without mutating schematic volume
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 52,
+      method: 'tools/call',
+      params: {
+        name: 'copy_selection',
+        arguments: { bounds: [0, 64, 0, 5, 68, 5] },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = await res.json() as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'copy_selection should succeed');
+  assert(toolResult.copied === true, 'copy_selection copied flag should be true');
+
+  // Verify GET /api/mcp/sync returns newly updated clipboardState
+  const syncReq = new Request('http://localhost/api/mcp/sync', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const syncRes = await worker.fetch(syncReq, testEnv, {} as any);
+  const syncSnap = await syncRes.json() as any;
+  assert(syncSnap.clipboardState?.entries?.length >= 2, 'clipboardState should have accumulated entries from cut_selection and copy_selection');
+}
+
+// 9e. multiple copy_selection calls across separate requests preserve and accumulate entries
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 53,
+      method: 'tools/call',
+      params: {
+        name: 'copy_selection',
+        arguments: { bounds: [10, 64, 10, 15, 68, 15] },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'second copy_selection should succeed');
+
+  const syncReq = new Request('http://localhost/api/mcp/sync', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const syncRes = await worker.fetch(syncReq, testEnv, {} as any);
+  const syncSnap = (await syncRes.json()) as any;
+  assert(
+    syncSnap.clipboardState?.entries?.length >= 3,
+    `clipboardState should accumulate previous clipboard entries across requests, got ${syncSnap.clipboardState?.entries?.length}`
+  );
+}
+
+// ============================================================================
+// 10. Visual & Structural Intelligence Engine & Multimodal MCP Tests
+// ============================================================================
+console.log('Testing 10: Visual & Structural Intelligence Engine & Multimodal MCP...');
+
+// 10a. Catalog includes analyze_structures, render_schematic_view, select_structure
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 60,
+      method: 'tools/list',
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolNames = new Set(body.result.tools.map((t: any) => t.name));
+  assert(toolNames.has('analyze_structures'), 'tools/list must include analyze_structures');
+  assert(toolNames.has('render_schematic_view'), 'tools/list must include render_schematic_view');
+  assert(toolNames.has('select_structure'), 'tools/list must include select_structure');
+}
+
+// 10b. get_schematic_info returns visual/structural intelligence fields
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 61,
+      method: 'tools/call',
+      params: {
+        name: 'get_schematic_info',
+        arguments: {},
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'get_schematic_info should succeed');
+  assert(typeof toolResult.groundLevelY === 'number', 'Should include groundLevelY');
+  assert(typeof toolResult.structureCount === 'number', 'Should include structureCount');
+  assert(Array.isArray(toolResult.structures), 'Should include structures array');
+  assert(toolResult.environment && typeof toolResult.environment === 'object', 'Should include environment summary');
+  assert(toolResult.spatialMap && Array.isArray(toolResult.spatialMap.grid), 'Should include spatialMap grid');
+  assert(toolResult.placements && toolResult.placements.length > 0, 'Should preserve placements');
+}
+
+// 10c. inspect_region returns structures, spatialMap, and multimodal MCP ImageContent
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 62,
+      method: 'tools/call',
+      params: {
+        name: 'inspect_region',
+        arguments: { bounds: [0, 60, 0, 40, 95, 40], view: 'composite' },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  assert(Array.isArray(body.result.content), 'Content should be array');
+  assert(body.result.content.length >= 2, 'Content should include text + image elements');
+
+  const textElem = body.result.content.find((c: any) => c.type === 'text');
+  assert(textElem, 'Content must have text element');
+  const toolResult = JSON.parse(textElem.text);
+  assert(toolResult.ok === true, 'inspect_region should succeed');
+  assert(typeof toolResult.nonAirCount === 'number', 'Should preserve nonAirCount');
+  assert(typeof toolResult.groundLevelY === 'number', 'Should include groundLevelY');
+  assert(toolResult.renderView && toolResult.renderView.view === 'composite', 'Should include renderView');
+
+  const imageElem = body.result.content.find((c: any) => c.type === 'image');
+  assert(imageElem, 'Content must have image element');
+  assert(imageElem.mimeType === 'image/png', 'Image mimeType should be image/png');
+  assert(typeof imageElem.data === 'string' && imageElem.data.startsWith('iVBORw0KGgo'), 'Image data should be valid PNG base64');
+}
+
+// 10c-2. Oversized work-size args are clamped to the Cloudflare Worker budget
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 68,
+      method: 'tools/call',
+      params: {
+        name: 'inspect_region',
+        arguments: {
+          bounds: [0, 60, 0, 40, 95, 40],
+          maxBlocks: 200000,
+          maxStructures: 200000,
+          width: 200000,
+          height: 200000,
+        },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const textElem = body.result.content.find((c: any) => c.type === 'text');
+  const toolResult = JSON.parse(textElem.text);
+  assert(toolResult.ok === true, 'inspect_region with oversized args should succeed');
+  assert(Array.isArray(toolResult.blocks) && toolResult.blocks.length <= 4096, 'blocks must be capped at 4096');
+  assert(typeof toolResult.structureCount === 'number' && toolResult.structureCount <= 100, 'structureCount must be capped at 100');
+  assert(toolResult.renderView && toolResult.renderView.width <= 1280 && toolResult.renderView.height <= 1280, 'render dimensions must be capped at 1280');
+  assert(toolResult.renderView.width * toolResult.renderView.height <= 1280 * 720, 'render pixel budget must be respected');
+  assert(toolResult.countsByBlock && typeof toolResult.countsByBlock === 'object', 'countsByBlock must be preserved');
+  assert(toolResult.environment && typeof toolResult.environment === 'object', 'environment must be preserved');
+  assert(Array.isArray(toolResult.structures), 'structures must be preserved');
+}
+
+// 10d. analyze_structures segments structures, renders PNG, and saves regions
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 63,
+      method: 'tools/call',
+      params: {
+        name: 'analyze_structures',
+        arguments: { saveRegions: true, includeRender: true, view: 'composite' },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const textElem = body.result.content.find((c: any) => c.type === 'text');
+  const toolResult = JSON.parse(textElem.text);
+  assert(toolResult.ok === true, 'analyze_structures should succeed');
+  assert(toolResult.structureCount > 0, 'Should detect at least 1 structure');
+  assert(Array.isArray(toolResult.structures), 'Should return structures');
+  assert(toolResult.renderView?.view === 'composite', 'renderView should be composite');
+
+  const imageElem = body.result.content.find((c: any) => c.type === 'image');
+  assert(imageElem && imageElem.data.startsWith('iVBORw0KGgo'), 'analyze_structures should return PNG image content');
+
+  // Verify regions were saved to user sync state
+  const syncReq = new Request('http://localhost/api/mcp/sync', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const syncRes = await worker.fetch(syncReq, testEnv, {} as any);
+  const syncSnap = (await syncRes.json()) as any;
+  assert(Array.isArray(syncSnap.selectionState?.savedRegions), 'Should have savedRegions in sync state');
+  assert(syncSnap.selectionState.savedRegions.length > 0, 'savedRegions should contain detected structures');
+}
+
+// 10e. render_schematic_view renders perspective view zoomed to matched structure
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 64,
+      method: 'tools/call',
+      params: {
+        name: 'render_schematic_view',
+        arguments: { structureId: 'S1', view: 'isometric', width: 600, height: 400 },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const textElem = body.result.content.find((c: any) => c.type === 'text');
+  const toolResult = JSON.parse(textElem.text);
+  assert(toolResult.ok === true, 'render_schematic_view should succeed');
+  assert(toolResult.view === 'isometric', 'View should be isometric');
+  assert(toolResult.width === 600 && toolResult.height === 400, 'Dimensions should match requested');
+
+  const imageElem = body.result.content.find((c: any) => c.type === 'image');
+  assert(imageElem && imageElem.data.startsWith('iVBORw0KGgo'), 'render_schematic_view should return PNG base64');
+}
+
+// 10f. select_structure selects structure by ID, name, or query
+{
+  const req = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 65,
+      method: 'tools/call',
+      params: {
+        name: 'select_structure',
+        arguments: { query: 'S1' },
+      },
+    }),
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  const body = (await res.json()) as any;
+  const toolResult = JSON.parse(body.result.content[0].text);
+  assert(toolResult.ok === true, 'select_structure with S1 should succeed');
+  assert(toolResult.structure?.id === 'S1', 'Should match structure S1');
+  assert(toolResult.selectionState?.activeRegionId === 'S1', 'activeRegionId should be S1');
+  assert(
+    toolResult.selectionState?.savedRegions && toolResult.selectionState.savedRegions.length > 1,
+    'select_structure should preserve existing user regions in savedRegions by default'
+  );
+  assert(
+    toolResult.selectionState.savedRegions.some((r: any) => r.id === 'S1'),
+    'select_structure should include newly selected structure S1 in savedRegions'
+  );
+
+  // Query "largest"
+  const reqLargest = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 66,
+      method: 'tools/call',
+      params: {
+        name: 'select_structure',
+        arguments: { query: 'largest' },
+      },
+    }),
+  });
+  const resLargest = await worker.fetch(reqLargest, testEnv, {} as any);
+  const bodyLargest = (await resLargest.json()) as any;
+  const resultLargest = JSON.parse(bodyLargest.result.content[0].text);
+  assert(resultLargest.ok === true, 'select_structure largest should succeed');
+  assert(resultLargest.structure && resultLargest.structure.voxelCount > 0, 'Largest structure should have voxels');
+
+  // Query non-existent structure
+  const reqMissing = new Request('http://localhost/api/mcp', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKeyRaw}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 67,
+      method: 'tools/call',
+      params: {
+        name: 'select_structure',
+        arguments: { query: 'non_existent_fortress_xyz' },
+      },
+    }),
+  });
+  const resMissing = await worker.fetch(reqMissing, testEnv, {} as any);
+  const bodyMissing = (await resMissing.json()) as any;
+  const resultMissing = JSON.parse(bodyMissing.result.content[0].text);
+  assert(resultMissing.ok === false, 'Non-existent structure should return ok: false');
+}
+
+// 10g. GET /api/mcp/render returns raw PNG image with Content-Type: image/png
+{
+  const req = new Request('http://localhost/api/mcp/render?view=composite', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const res = await worker.fetch(req, testEnv, {} as any);
+  assert(res.status === 200, 'GET /api/mcp/render should return 200');
+  assert(res.headers.get('content-type') === 'image/png', 'Content-Type must be image/png');
+  const buffer = await res.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  assert(bytes.length > 50, 'PNG response should be non-empty');
+  // Check PNG magic header: 137, 80, 78, 71, 13, 10, 26, 10
+  assert(bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71, 'Valid PNG header');
+
+  // Test with structureId and top view
+  const reqSt = new Request('http://localhost/api/mcp/render?view=top&structureId=S1', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${apiKeyRaw}` },
+  });
+  const resSt = await worker.fetch(reqSt, testEnv, {} as any);
+  assert(resSt.status === 200, 'GET /api/mcp/render with structureId should return 200');
+  assert(resSt.headers.get('content-type') === 'image/png', 'Content-Type must be image/png');
 }
 
 // 8b. Revoke API Key: DELETE /api/mcp/keys/:id

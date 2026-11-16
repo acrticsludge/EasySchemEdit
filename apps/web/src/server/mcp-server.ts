@@ -8,6 +8,8 @@ import {
   appendMcpActivityLog,
   type UserMcpStateRecord,
   type McpSelectionSyncState,
+  type McpClipboardSyncState,
+  type SerializedClipboardEntry,
 } from './mcp-keys.ts';
 import {
   formatProjectSummary,
@@ -28,16 +30,22 @@ import {
   setVoxelBlocksBatch,
   parseVoxelBlockState,
   detectConflicts,
+  analyzeSchematicStructures,
+  renderSchematicPng,
+  selectStructureByQuery,
   type BlockStateMatcher,
   type ShapeGenerationSpec,
   type StructureGenerationSpec,
   type BlueprintSpec,
   type HistoryQueryResult,
+  type ClipboardEntry,
+  type SchematicVisualAnalysis,
+  type DetectedStructure,
 } from '@easyschemedit/operations';
 import { MoveStackEngine } from '../../../../packages/operations/src/move-stack.ts';
 import {
-  packVxprojArchive,
-  unpackVxprojArchive,
+  packVxprojArchiveAsync,
+  unpackVxprojArchiveAsync,
 } from '@easyschemedit/persistence';
 import {
   importSchematic,
@@ -45,6 +53,8 @@ import {
 } from '@easyschemedit/formats';
 import {
   placementWorldBounds,
+  localBlockToWorld,
+  worldBlockToLocal,
   type Bounds3i,
   type Vec3i,
   type Vec3Half,
@@ -62,6 +72,175 @@ export const MCP_CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key, Mcp-Session-Id, Accept',
   'Access-Control-Expose-Headers': 'Mcp-Session-Id',
 };
+
+// ============================================================================
+// Request Size Limits (Cloudflare Workers CPU/memory budget)
+// ============================================================================
+
+const MAX_BLOCKS = 4096;
+const MAX_STRUCTURES = 100;
+const MAX_RENDER_DIMENSION = 1280;
+const MAX_RENDER_PIXELS = 1280 * 720;
+
+export function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+export function clampRenderSize(widthValue: unknown, heightValue: unknown): { width: number; height: number } {
+  let width = clampInt(widthValue, 680, 1, MAX_RENDER_DIMENSION);
+  let height = clampInt(heightValue, 360, 1, MAX_RENDER_DIMENSION);
+  if (width * height > MAX_RENDER_PIXELS) {
+    const scale = Math.sqrt(MAX_RENDER_PIXELS / (width * height));
+    width = Math.max(1, Math.floor(width * scale));
+    height = Math.max(1, Math.floor(height * scale));
+  }
+  return { width, height };
+}
+
+// ============================================================================
+// Clipboard Serialization Helpers
+// ============================================================================
+
+export function serializeClipboardEntries(entries: ClipboardEntry[]): SerializedClipboardEntry[] {
+  return entries.map((e) => ({
+    id: e.id,
+    data: {
+      blocks: e.data.blocks.map((b) => ({
+        localPos: b.localPos,
+        state: {
+          id: b.state.id,
+          props: b.state.props ?? {},
+        },
+      })),
+      blockEntities: e.data.blockEntities instanceof Map
+        ? Array.from(e.data.blockEntities.entries())
+        : Array.isArray(e.data.blockEntities)
+        ? (e.data.blockEntities as Array<[string, unknown]>)
+        : [],
+      entities: e.data.entities ?? [],
+      biomes: e.data.biomes,
+      anchor: e.data.anchor,
+      bounds: e.data.bounds,
+    },
+    createdAt: e.createdAt,
+    sourceProjectId: e.sourceProjectId,
+    scope: e.scope,
+  }));
+}
+
+export function deserializeClipboardEntries(raw: SerializedClipboardEntry[]): ClipboardEntry[] {
+  return (raw || []).map((e) => ({
+    id: e.id,
+    data: {
+      blocks: (e.data.blocks ?? []).map((b) => ({
+        localPos: b.localPos as Vec3i,
+        state: {
+          id: b.state.id,
+          props: b.state.props ?? (b.state as any).properties ?? {},
+        },
+      })),
+      blockEntities: new Map<string, unknown>(
+        Array.isArray(e.data.blockEntities) ? e.data.blockEntities : []
+      ),
+      entities: e.data.entities ?? [],
+      biomes: e.data.biomes,
+      anchor: e.data.anchor as Vec3i,
+      bounds: {
+        min: e.data.bounds.min as Vec3i,
+        maxExclusive: e.data.bounds.maxExclusive as Vec3i,
+      },
+    },
+    createdAt: e.createdAt,
+    sourceProjectId: e.sourceProjectId,
+    scope: e.scope,
+  }));
+}
+
+function toSyncBounds(b: Bounds3i): { min: [number, number, number]; maxExclusive: [number, number, number] } {
+  return {
+    min: [b.min[0], b.min[1], b.min[2]],
+    maxExclusive: [b.maxExclusive[0], b.maxExclusive[1], b.maxExclusive[2]],
+  };
+}
+
+function toSyncPos(v: readonly [number, number, number] | [number, number, number]): [number, number, number] {
+  return [v[0], v[1], v[2]];
+}
+
+export function transformSelectionStateForPlacement(
+  selectionState: McpSelectionSyncState | null | undefined,
+  oldPlacement: Placement,
+  newPlacement: Placement
+): McpSelectionSyncState | undefined {
+  if (!selectionState) return undefined;
+
+  const transformPt = (pt: readonly [number, number, number] | [number, number, number]): [number, number, number] => {
+    const local = worldBlockToLocal(oldPlacement, [pt[0], pt[1], pt[2]] as Vec3i);
+    const world = localBlockToWorld(newPlacement, local);
+    return [world[0], world[1], world[2]];
+  };
+
+  const transformCorners = (p1: [number, number, number], p2: [number, number, number]) => {
+    const np1 = transformPt(p1);
+    const np2 = transformPt(p2);
+    const min: [number, number, number] = [
+      Math.min(np1[0], np2[0]),
+      Math.min(np1[1], np2[1]),
+      Math.min(np1[2], np2[2]),
+    ];
+    const maxExclusive: [number, number, number] = [
+      Math.max(np1[0], np2[0]) + 1,
+      Math.max(np1[1], np2[1]) + 1,
+      Math.max(np1[2], np2[2]) + 1,
+    ];
+    return { pos1: np1, pos2: np2, bounds: { min, maxExclusive } };
+  };
+
+  const newRegions = (selectionState.savedRegions ?? []).map((r) => {
+    const transformed = transformCorners(r.pos1, r.pos2);
+    return {
+      id: r.id,
+      name: r.name,
+      pos1: transformed.pos1,
+      pos2: transformed.pos2,
+      bounds: transformed.bounds,
+    };
+  });
+
+  let newBounds = selectionState.bounds;
+  let newPos1 = selectionState.pos1;
+  let newPos2 = selectionState.pos2;
+
+  if (selectionState.pos1 && selectionState.pos2) {
+    const tc = transformCorners(selectionState.pos1, selectionState.pos2);
+    newPos1 = tc.pos1;
+    newPos2 = tc.pos2;
+    newBounds = tc.bounds;
+  } else if (selectionState.bounds) {
+    const p1: [number, number, number] = [
+      selectionState.bounds.min[0],
+      selectionState.bounds.min[1],
+      selectionState.bounds.min[2],
+    ];
+    const p2: [number, number, number] = [
+      selectionState.bounds.maxExclusive[0] - 1,
+      selectionState.bounds.maxExclusive[1] - 1,
+      selectionState.bounds.maxExclusive[2] - 1,
+    ];
+    const tc = transformCorners(p1, p2);
+    newBounds = tc.bounds;
+  }
+
+  return {
+    ...selectionState,
+    savedRegions: newRegions,
+    bounds: newBounds,
+    pos1: newPos1,
+    pos2: newPos2,
+    updatedAt: new Date().toISOString(),
+  };
+}
 
 // ============================================================================
 // Types
@@ -263,7 +442,8 @@ export async function loadTargetSchematicSession(
   env: Env,
   sql: SqlClient,
   sessionUser: SessionUser,
-  args?: Record<string, unknown>
+  args?: Record<string, unknown>,
+  options?: { skipR2?: boolean }
 ): Promise<TargetSchematicContext> {
   const userMcpState = await getUserMcpState(sql, sessionUser.userId);
   let row: any = null;
@@ -335,7 +515,7 @@ export async function loadTargetSchematicSession(
       metadata: { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
       revision: 1,
     };
-    const bytes = packVxprojArchive(defaultProject);
+    const bytes = await packVxprojArchiveAsync(defaultProject);
 
     if (env.PROJECTS_BUCKET) {
       await env.PROJECTS_BUCKET.put(
@@ -362,18 +542,20 @@ export async function loadTargetSchematicSession(
 
   // 5. Load project from R2 or fallback to empty project
   let project: Project | undefined = undefined;
-  try {
-    if (env.PROJECTS_BUCKET && row.r2_key) {
-      const obj = await env.PROJECTS_BUCKET.get(row.r2_key);
-      if (obj && obj.body) {
-        const bytes = new Uint8Array(await obj.arrayBuffer());
-        if (bytes.byteLength > 0) {
-          project = unpackVxprojArchive(bytes);
+  if (!options?.skipR2) {
+    try {
+      if (env.PROJECTS_BUCKET && row.r2_key) {
+        const obj = await env.PROJECTS_BUCKET.get(row.r2_key);
+        if (obj && obj.body) {
+          const bytes = new Uint8Array(await obj.arrayBuffer());
+          if (bytes.byteLength > 0) {
+            project = await unpackVxprojArchiveAsync(bytes);
+          }
         }
       }
+    } catch (err) {
+      console.error('Error unpacking in loadTargetSchematicSession:', err);
     }
-  } catch (err) {
-    console.error('Error unpacking in loadTargetSchematicSession:', err);
   }
 
   if (!project) {
@@ -391,6 +573,11 @@ export async function loadTargetSchematicSession(
   }
 
   const editorSession = new EditorSession(project);
+  if (!options?.skipR2 && userMcpState?.clipboard_state?.entries?.length) {
+    editorSession.replaceClipboardEntries(
+      deserializeClipboardEntries(userMcpState.clipboard_state.entries)
+    );
+  }
 
   return {
     schematicRow: {
@@ -419,9 +606,21 @@ export async function saveTargetSchematicSession(
     summary: string;
     args?: Record<string, unknown>;
     selectionState?: McpSelectionSyncState | null;
+    clipboardState?: McpClipboardSyncState | null;
   }
 ): Promise<{ revision: number; sizeBytes: number }> {
-  const bytes = packVxprojArchive(session.snapshot());
+  const newRevision = Number(schematicRow.revision || 0) + 1;
+  if ((session as any).project) {
+    (session as any).project.revision = newRevision;
+  }
+  const snap = session.snapshot();
+  let totalNonAir = 0;
+  for (const p of snap.placements) {
+    totalNonAir += p.volume?.nonAirCount ?? 0;
+  }
+  const bytes = await packVxprojArchiveAsync(snap, {
+    compressionLevel: totalNonAir > 200_000 ? 0 : 1,
+  });
 
   if (env.PROJECTS_BUCKET) {
     await env.PROJECTS_BUCKET.put(
@@ -433,8 +632,7 @@ export async function saveTargetSchematicSession(
     );
   }
 
-  const newRevision = Number(schematicRow.revision || 0) + 1;
-  const newPlacementCount = session.snapshot().placements.length;
+  const newPlacementCount = snap.placements.length;
 
   await sql`
     UPDATE schematics
@@ -455,6 +653,7 @@ export async function saveTargetSchematicSession(
     activeProjectId: schematicRow.project_id,
     activeSchematicId: schematicRow.id,
     selectionState: meta.selectionState !== undefined ? meta.selectionState : undefined,
+    clipboardState: meta.clipboardState !== undefined ? meta.clipboardState : undefined,
   });
 
   await appendMcpActivityLog(sql, {
@@ -576,7 +775,7 @@ export async function executeCloudTool(
         metadata: { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
         revision: 1,
       };
-      const bytes = packVxprojArchive(emptyProject);
+      const bytes = await packVxprojArchiveAsync(emptyProject);
       if (env.PROJECTS_BUCKET) {
         await env.PROJECTS_BUCKET.put(
           schematicR2Key,
@@ -739,7 +938,7 @@ export async function executeCloudTool(
         metadata: { createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString() },
         revision: 1,
       };
-      const bytes = packVxprojArchive(emptyProject);
+      const bytes = await packVxprojArchiveAsync(emptyProject);
       if (env.PROJECTS_BUCKET) {
         await env.PROJECTS_BUCKET.put(
           r2Key,
@@ -887,6 +1086,7 @@ export async function executeCloudTool(
       for (const p of snap.placements) {
         totalNonAir += p.volume.nonAirCount;
       }
+      const analysis = analyzeSchematicStructures(ctx.editorSession, { maxStructures: 20 });
       return {
         ok: true,
         id: ctx.schematicRow.id,
@@ -910,6 +1110,11 @@ export async function executeCloudTool(
           locked: p.locked,
         })),
         selection: ctx.userMcpState?.selection_state ?? null,
+        groundLevelY: analysis.groundLevelY,
+        environment: analysis.environment,
+        structureCount: analysis.structures.length,
+        structures: analysis.structures,
+        spatialMap: analysis.spatialMap,
       };
     }
 
@@ -979,7 +1184,7 @@ export async function executeCloudTool(
         pos2 = [maxExclusive[0] - 1, maxExclusive[1] - 1, maxExclusive[2] - 1];
       }
 
-      const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
+      const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args, { skipR2: true });
       const currentRegions = ctx.userMcpState?.selection_state?.savedRegions ?? [];
       const regionId = crypto.randomUUID();
       const regionName =
@@ -994,12 +1199,39 @@ export async function executeCloudTool(
         bounds: { min, maxExclusive },
       };
 
-      const replace = Boolean(args.replaceExisting);
-      const nextRegions = replace ? [newRegion] : [...currentRegions, newRegion];
+      const replace = args.replaceExisting === true;
+      let nextRegions = currentRegions;
+      let targetActiveRegionId: string = regionId;
+
+      if (replace) {
+        nextRegions = [newRegion];
+      } else {
+        const hasExplicitName = typeof args.name === 'string' && args.name.trim().length > 0;
+        const existingIndex = hasExplicitName
+          ? currentRegions.findIndex((r) => r.name === regionName)
+          : -1;
+        if (existingIndex >= 0) {
+          const existing = currentRegions[existingIndex]!;
+          targetActiveRegionId = existing.id;
+          const updated = {
+            ...existing,
+            pos1,
+            pos2,
+            bounds: { min, maxExclusive },
+          };
+          nextRegions = [...currentRegions];
+          nextRegions[existingIndex] = updated;
+        } else {
+          nextRegions = [...currentRegions, newRegion];
+        }
+      }
+
+      const activeRegion = nextRegions.find((r) => r.id === targetActiveRegionId) ?? newRegion;
+
       const nextSelectionState: McpSelectionSyncState = {
         schematicId: ctx.schematicRow.id,
         savedRegions: nextRegions,
-        activeRegionId: regionId,
+        activeRegionId: targetActiveRegionId,
         bounds: { min, maxExclusive },
         pos1,
         pos2,
@@ -1037,8 +1269,8 @@ export async function executeCloudTool(
 
       return {
         ok: true,
-        region: newRegion,
-        activeRegionId: regionId,
+        region: activeRegion,
+        activeRegionId: targetActiveRegionId,
         bounds: { min, maxExclusive },
         pos1,
         pos2,
@@ -1156,15 +1388,179 @@ export async function executeCloudTool(
         parseBoundsArg(args.bounds ?? args.worldBounds) ??
         ctx.userMcpState?.selection_state?.bounds ??
         getProjectBounds(ctx.editorSession.peekProject());
-      const maxBlocks = typeof args.maxBlocks === 'number' ? args.maxBlocks : 512;
-      const includeAir = Boolean(args.includeAir);
       const placementId = args.placementId ? String(args.placementId) : undefined;
-      const res = inspectRegionVoxels(ctx.editorSession, bounds, {
-        maxBlocks,
-        includeAir,
+      const includeAir = Boolean(args.includeAir);
+
+      const volX = Math.max(0, bounds.maxExclusive[0] - bounds.min[0]);
+      const volY = Math.max(0, bounds.maxExclusive[1] - bounds.min[1]);
+      const volZ = Math.max(0, bounds.maxExclusive[2] - bounds.min[2]);
+      const volume = volX * volY * volZ;
+
+      const maxBlocks = clampInt(args.maxBlocks, volume > 8192 ? 256 : 512, 1, MAX_BLOCKS);
+      const maxStructures = clampInt(args.maxStructures, 25, 1, MAX_STRUCTURES);
+      const analysis = analyzeSchematicStructures(ctx.editorSession, {
+        bounds,
+        maxStructures,
         placementId,
       });
-      return { ok: true, ...res };
+
+      let res: {
+        bounds: Bounds3i;
+        nonAirCount: number;
+        countsByBlock: Record<string, number>;
+        blocks: Array<{ pos: Vec3i; block: string }>;
+        truncated: boolean;
+      };
+
+      if (volume > 65536 && args.fullVoxelScan !== true) {
+        const countsByBlock: Record<string, number> = {};
+        for (const st of analysis.structures) {
+          for (const db of st.dominantBlocks) {
+            countsByBlock[db.block] = (countsByBlock[db.block] ?? 0) + db.count;
+          }
+        }
+        if (analysis.environment.waterVoxelCount > 0) {
+          countsByBlock['minecraft:water'] = (countsByBlock['minecraft:water'] ?? 0) + analysis.environment.waterVoxelCount;
+        }
+        const sampleCenter = analysis.structures[0]?.centroid ?? [
+          Math.floor((bounds.min[0] + bounds.maxExclusive[0]) / 2),
+          analysis.groundLevelY,
+          Math.floor((bounds.min[2] + bounds.maxExclusive[2]) / 2),
+        ];
+        const sampleBounds: Bounds3i = {
+          min: [sampleCenter[0] - 8, sampleCenter[1], sampleCenter[2] - 8],
+          maxExclusive: [sampleCenter[0] + 8, sampleCenter[1] + 16, sampleCenter[2] + 8],
+        };
+        const sample = inspectRegionVoxels(ctx.editorSession, sampleBounds, {
+          maxBlocks: Math.min(maxBlocks, 128),
+          includeAir: false,
+          placementId,
+        });
+        res = {
+          bounds,
+          nonAirCount: analysis.totalVoxels,
+          countsByBlock,
+          blocks: sample.blocks,
+          truncated: true,
+        };
+      } else {
+        res = inspectRegionVoxels(ctx.editorSession, bounds, {
+          maxBlocks,
+          includeAir,
+          placementId,
+        });
+      }
+
+      let nextSelectionState: McpSelectionSyncState | undefined = ctx.userMcpState?.selection_state ?? undefined;
+      if (typeof args.selectStructure === 'string' && args.selectStructure.trim()) {
+        const matched = selectStructureByQuery(analysis, args.selectStructure.trim());
+        if (matched) {
+          const regionId = matched.id;
+          const regionName = `${matched.id}: ${matched.name}`;
+          const newRegion = {
+            id: regionId,
+            name: regionName,
+            pos1: toSyncPos(matched.bounds.min),
+            pos2: toSyncPos([matched.bounds.maxExclusive[0] - 1, matched.bounds.maxExclusive[1] - 1, matched.bounds.maxExclusive[2] - 1]),
+            bounds: toSyncBounds(matched.bounds),
+          };
+          const existing = (ctx.userMcpState?.selection_state?.savedRegions ?? []).filter((r) => r.name !== regionName);
+          nextSelectionState = {
+            schematicId: ctx.schematicRow.id,
+            savedRegions: [...existing, newRegion],
+            activeRegionId: regionId,
+            bounds: toSyncBounds(matched.bounds),
+            pos1: newRegion.pos1,
+            pos2: newRegion.pos2,
+            updatedAt: new Date().toISOString(),
+          };
+          ctx.editorSession.execute({
+            type: 'selection:edit',
+            bounds: {
+              minX: matched.bounds.min[0],
+              minY: matched.bounds.min[1],
+              minZ: matched.bounds.min[2],
+              maxX: matched.bounds.maxExclusive[0],
+              maxY: matched.bounds.maxExclusive[1],
+              maxZ: matched.bounds.maxExclusive[2],
+            },
+          });
+          await upsertUserMcpState(sql, sessionUser.userId, {
+            activeSchematicId: ctx.schematicRow.id,
+            selectionState: nextSelectionState,
+          });
+        }
+      } else if (args.saveStructureRegions === true && analysis.structures.length > 0) {
+        const existingRegions = args.replaceExisting === true
+          ? []
+          : (ctx.userMcpState?.selection_state?.savedRegions ?? []);
+        const newRegions = analysis.structures.map((st) => ({
+          id: st.id,
+          name: `${st.id}: ${st.name}`,
+          pos1: toSyncPos(st.bounds.min),
+          pos2: toSyncPos([st.bounds.maxExclusive[0] - 1, st.bounds.maxExclusive[1] - 1, st.bounds.maxExclusive[2] - 1]),
+          bounds: toSyncBounds(st.bounds),
+        }));
+        const newNames = new Set(newRegions.map((r) => r.name));
+        const mergedRegions = [
+          ...existingRegions.filter((r) => !newNames.has(r.name) && !newRegions.some((nr) => nr.id === r.id)),
+          ...newRegions,
+        ];
+        const active = newRegions[0]!;
+        nextSelectionState = {
+          schematicId: ctx.schematicRow.id,
+          savedRegions: mergedRegions,
+          activeRegionId: active.id,
+          bounds: active.bounds,
+          pos1: active.pos1,
+          pos2: active.pos2,
+          updatedAt: new Date().toISOString(),
+        };
+        ctx.editorSession.execute({
+          type: 'selection:edit',
+          bounds: {
+            minX: active.bounds.min[0],
+            minY: active.bounds.min[1],
+            minZ: active.bounds.min[2],
+            maxX: active.bounds.maxExclusive[0],
+            maxY: active.bounds.maxExclusive[1],
+            maxZ: active.bounds.maxExclusive[2],
+          },
+        });
+        await upsertUserMcpState(sql, sessionUser.userId, {
+          activeSchematicId: ctx.schematicRow.id,
+          selectionState: nextSelectionState,
+        });
+      }
+
+      let renderView: { width: number; height: number; view: string } | undefined;
+      let _mcpImages: Array<{ data: string; mimeType: string }> | undefined;
+
+      if (args.render !== false) {
+        const { width, height } = clampRenderSize(args.width, args.height);
+        const png = renderSchematicPng(ctx.editorSession, {
+          bounds,
+          view: (args.view as any) || 'composite',
+          width,
+          height,
+          analysis,
+          highlightRegions: nextSelectionState?.savedRegions ?? ctx.userMcpState?.selection_state?.savedRegions,
+        });
+        renderView = { width: png.width, height: png.height, view: png.view };
+        _mcpImages = [{ data: png.base64, mimeType: 'image/png' }];
+      }
+
+      return {
+        ok: true,
+        ...res,
+        groundLevelY: analysis.groundLevelY,
+        environment: analysis.environment,
+        structureCount: analysis.structures.length,
+        structures: analysis.structures,
+        spatialMap: analysis.spatialMap,
+        renderView,
+        _mcpImages,
+      };
     }
 
     case 'set_block': {
@@ -1270,18 +1666,43 @@ export async function executeCloudTool(
       }
       const matcherStr = String(args.blockType ?? args.matcher ?? 'minecraft:stone');
       const repStr = String(args.replacementBlock ?? args.replacement ?? 'minecraft:air');
-      const matcher = parseMatcher(args.blockType ?? args.matcher);
       const replacement = parseVoxelBlockState(repStr);
       ensureDefaultPlacementIfNeeded(ctx.editorSession, bounds);
-      const res = ctx.editorSession.execute({
-        type: 'region:replace',
-        bounds,
-        matcher,
-        replacement,
-        preserveProperties: Boolean(args.preserveProperties),
-        placementId: args.placementId ? String(args.placementId) : undefined,
-      });
-      if (!res.ok) return { ok: false, error: res.error.message };
+
+      let totalChanged = 0;
+      if (Array.isArray(args.matchers) && args.matchers.length > 0) {
+        for (const m of args.matchers) {
+          const matcher = parseMatcher(m);
+          const res = ctx.editorSession.execute({
+            type: 'region:replace',
+            bounds,
+            matcher,
+            replacement,
+            preserveProperties: Boolean(args.preserveProperties),
+            placementId: args.placementId ? String(args.placementId) : undefined,
+          });
+          if (!res.ok) return { ok: false, error: res.error.message };
+          totalChanged += res.changed.cells;
+        }
+      } else {
+        const matcher = parseMatcher(args.blockType ?? args.matcher);
+        const res = ctx.editorSession.execute({
+          type: 'region:replace',
+          bounds,
+          matcher,
+          replacement,
+          preserveProperties: Boolean(args.preserveProperties),
+          placementId: args.placementId ? String(args.placementId) : undefined,
+        });
+        if (!res.ok) return { ok: false, error: res.error.message };
+        totalChanged = res.changed.cells;
+      }
+
+      const summary =
+        Array.isArray(args.matchers) && args.matchers.length > 0
+          ? `Replaced ${args.matchers.length} block types with ${repStr} (${totalChanged} cells)`
+          : `Replaced ${matcherStr} with ${repStr} (${totalChanged} cells)`;
+
       const saved = await saveTargetSchematicSession(
         env,
         sql,
@@ -1290,12 +1711,12 @@ export async function executeCloudTool(
         ctx.editorSession,
         {
           toolName: 'replace_selection',
-          changedCells: res.changed.cells,
-          summary: `Replaced ${matcherStr} with ${repStr} (${res.changed.cells} cells)`,
+          changedCells: totalChanged,
+          summary,
           args,
         }
       );
-      return { ok: true, changedCells: res.changed.cells, bounds, revision: saved.revision };
+      return { ok: true, changedCells: totalChanged, bounds, revision: saved.revision };
     }
 
     case 'walls_selection':
@@ -1502,6 +1923,14 @@ export async function executeCloudTool(
         type: 'clipboard:copy',
         selection: { kind: 'cuboid', bounds },
       });
+      await upsertUserMcpState(sql, sessionUser.userId, {
+        activeProjectId: ctx.schematicRow.project_id,
+        activeSchematicId: ctx.schematicRow.id,
+        clipboardState: {
+          entries: serializeClipboardEntries(ctx.editorSession.getClipboardEntries()),
+          updatedAt: new Date().toISOString(),
+        },
+      });
       return { ok: true, copied: true, bounds };
     }
 
@@ -1528,6 +1957,10 @@ export async function executeCloudTool(
           changedCells: res.changed.cells,
           summary: `Cut selection to clipboard`,
           args,
+          clipboardState: {
+            entries: serializeClipboardEntries(ctx.editorSession.getClipboardEntries()),
+            updatedAt: new Date().toISOString(),
+          },
         }
       );
       return { ok: true, cut: true, bounds, revision: saved.revision };
@@ -1535,6 +1968,11 @@ export async function executeCloudTool(
 
     case 'paste_clipboard': {
       const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
+      if (ctx.userMcpState?.clipboard_state?.entries?.length) {
+        ctx.editorSession.replaceClipboardEntries(
+          deserializeClipboardEntries(ctx.userMcpState.clipboard_state.entries)
+        );
+      }
       const targetPos =
         Array.isArray(args.targetOrigin) && args.targetOrigin.length === 3
           ? ([Number(args.targetOrigin[0]), Number(args.targetOrigin[1]), Number(args.targetOrigin[2])] as Vec3i)
@@ -1822,6 +2260,12 @@ export async function executeCloudTool(
       const p = ctx.editorSession.peekProject().placements.find((pl) => pl.id === pid);
       if (!p) return { ok: false, error: `Placement ${pid} not found` };
 
+      const oldPlacement: Placement = {
+        ...p,
+        transform: { ...p.transform, translation: [...p.transform.translation] as Vec3i },
+        origin: [...p.origin] as Vec3Half,
+      };
+
       let translation = p.transform.translation;
       if (Array.isArray(args.translation) && args.translation.length === 3) {
         translation = [
@@ -1848,6 +2292,14 @@ export async function executeCloudTool(
         mirror,
       });
       if (!res.ok) return { ok: false, error: res.error.message };
+
+      const newPlacement = ctx.editorSession.peekProject().placements.find((pl) => pl.id === pid) ?? p;
+      const nextSelectionState = transformSelectionStateForPlacement(
+        ctx.userMcpState?.selection_state,
+        oldPlacement,
+        newPlacement
+      );
+
       const saved = await saveTargetSchematicSession(
         env,
         sql,
@@ -1859,14 +2311,32 @@ export async function executeCloudTool(
           changedCells: 0,
           summary: `Transformed placement ${pid}`,
           args,
+          selectionState: nextSelectionState,
         }
       );
-      return { ok: true, placementId: pid, transform: p.transform, revision: saved.revision };
+      return {
+        ok: true,
+        placementId: pid,
+        transform: newPlacement.transform,
+        selectionState: nextSelectionState,
+        revision: saved.revision,
+      };
     }
 
     case 'transform_placements': {
       const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
       const pids = Array.isArray(args.placementIds) ? args.placementIds.map(String) : [];
+      const primaryPlacement = pids.length > 0
+        ? ctx.editorSession.peekProject().placements.find((pl) => pl.id === pids[0])
+        : undefined;
+      const oldPrimaryPlacement: Placement | undefined = primaryPlacement
+        ? {
+            ...primaryPlacement,
+            transform: { ...primaryPlacement.transform, translation: [...primaryPlacement.transform.translation] as Vec3i },
+            origin: [...primaryPlacement.origin] as Vec3Half,
+          }
+        : undefined;
+
       const translation =
         Array.isArray(args.translation) && args.translation.length === 3
           ? ([Number(args.translation[0]), Number(args.translation[1]), Number(args.translation[2])] as Vec3i)
@@ -1883,6 +2353,18 @@ export async function executeCloudTool(
         mirror,
       });
       if (!res.ok) return { ok: false, error: res.error.message };
+
+      const newPrimaryPlacement = oldPrimaryPlacement
+        ? ctx.editorSession.peekProject().placements.find((pl) => pl.id === oldPrimaryPlacement.id)
+        : undefined;
+      const nextSelectionState = (oldPrimaryPlacement && newPrimaryPlacement)
+        ? transformSelectionStateForPlacement(
+            ctx.userMcpState?.selection_state,
+            oldPrimaryPlacement,
+            newPrimaryPlacement
+          )
+        : undefined;
+
       const saved = await saveTargetSchematicSession(
         env,
         sql,
@@ -1894,9 +2376,10 @@ export async function executeCloudTool(
           changedCells: 0,
           summary: `Batch transformed ${pids.length} placements`,
           args,
+          selectionState: nextSelectionState,
         }
       );
-      return { ok: true, placementIds: pids, revision: saved.revision };
+      return { ok: true, placementIds: pids, selectionState: nextSelectionState, revision: saved.revision };
     }
 
     case 'duplicate_placement': {
@@ -2219,7 +2702,7 @@ export async function executeCloudTool(
       let actualFormat = fmt;
 
       if (fmt === 'vxproj' || fmt === 'project') {
-        bytes = packVxprojArchive(ctx.editorSession.snapshot());
+        bytes = await packVxprojArchiveAsync(ctx.editorSession.snapshot());
         mimeType = 'application/zip';
         actualFormat = 'vxproj';
       } else if (fmt === 'litematic' || fmt === 'litematica') {
@@ -2259,7 +2742,7 @@ export async function executeCloudTool(
         (bytes.length > 4 && bytes[0] === 0x50 && bytes[1] === 0x4b)
       ) {
         try {
-          const unpacked = unpackVxprojArchive(bytes);
+          const unpacked = await unpackVxprojArchiveAsync(bytes);
           for (const p of unpacked.placements) {
             p.id = `${p.id}-${Date.now().toString(36)}`;
             ctx.editorSession.execute({ type: 'placement:add', placement: p });
@@ -2304,6 +2787,208 @@ export async function executeCloudTool(
         ok: true,
         placementId: addedPlacementId,
         revision: saved.revision,
+      };
+    }
+
+    // ── 12. Visual & Structural Intelligence Engine ──
+    case 'analyze_structures': {
+      const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
+      const bounds = parseBoundsArg(args.bounds ?? args.worldBounds) ?? undefined;
+      const maxStructures = clampInt(args.maxStructures, 36, 1, MAX_STRUCTURES);
+      const analysis = analyzeSchematicStructures(ctx.editorSession, {
+        bounds,
+        maxStructures,
+      });
+
+      let nextSelectionState: McpSelectionSyncState | undefined = ctx.userMcpState?.selection_state ?? undefined;
+      if (args.saveRegions === true && analysis.structures.length > 0) {
+        const existingRegions = args.replaceExisting === true
+          ? []
+          : (ctx.userMcpState?.selection_state?.savedRegions ?? []);
+        const newRegions = analysis.structures.map((st) => ({
+          id: st.id,
+          name: `${st.id}: ${st.name}`,
+          pos1: toSyncPos(st.bounds.min),
+          pos2: toSyncPos([st.bounds.maxExclusive[0] - 1, st.bounds.maxExclusive[1] - 1, st.bounds.maxExclusive[2] - 1]),
+          bounds: toSyncBounds(st.bounds),
+        }));
+        const newNames = new Set(newRegions.map((r) => r.name));
+        const mergedRegions = [
+          ...existingRegions.filter((r) => !newNames.has(r.name) && !newRegions.some((nr) => nr.id === r.id)),
+          ...newRegions,
+        ];
+        const active = newRegions[0]!;
+        nextSelectionState = {
+          schematicId: ctx.schematicRow.id,
+          savedRegions: mergedRegions,
+          activeRegionId: active.id,
+          bounds: active.bounds,
+          pos1: active.pos1,
+          pos2: active.pos2,
+          updatedAt: new Date().toISOString(),
+        };
+        ctx.editorSession.execute({
+          type: 'selection:edit',
+          bounds: {
+            minX: active.bounds.min[0],
+            minY: active.bounds.min[1],
+            minZ: active.bounds.min[2],
+            maxX: active.bounds.maxExclusive[0],
+            maxY: active.bounds.maxExclusive[1],
+            maxZ: active.bounds.maxExclusive[2],
+          },
+        });
+        await upsertUserMcpState(sql, sessionUser.userId, {
+          activeSchematicId: ctx.schematicRow.id,
+          selectionState: nextSelectionState,
+        });
+      }
+
+      let renderView: { width: number; height: number; view: string } | undefined;
+      let _mcpImages: Array<{ data: string; mimeType: string }> | undefined;
+
+      if (args.includeRender !== false) {
+        const { width, height } = clampRenderSize(args.width, args.height);
+        const png = renderSchematicPng(ctx.editorSession, {
+          bounds,
+          view: (args.view as any) || 'composite',
+          width,
+          height,
+          analysis,
+          highlightRegions: nextSelectionState?.savedRegions ?? ctx.userMcpState?.selection_state?.savedRegions,
+        });
+        renderView = { width: png.width, height: png.height, view: png.view };
+        _mcpImages = [{ data: png.base64, mimeType: 'image/png' }];
+      }
+
+      return {
+        ok: true,
+        bounds: analysis.bounds,
+        groundLevelY: analysis.groundLevelY,
+        totalVoxels: analysis.totalVoxels,
+        structureCount: analysis.structures.length,
+        structures: analysis.structures,
+        environment: analysis.environment,
+        spatialMap: analysis.spatialMap,
+        renderView,
+        _mcpImages,
+      };
+    }
+
+    case 'render_schematic_view': {
+      const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
+      let bounds = parseBoundsArg(args.bounds ?? args.worldBounds) ?? undefined;
+      const analysis = analyzeSchematicStructures(ctx.editorSession, { bounds });
+      let matchedStructure: DetectedStructure | null = null;
+
+      if (args.structureId) {
+        matchedStructure = selectStructureByQuery(analysis, String(args.structureId));
+        if (matchedStructure) {
+          bounds = {
+            min: [
+              matchedStructure.bounds.min[0] - 4,
+              matchedStructure.bounds.min[1] - 2,
+              matchedStructure.bounds.min[2] - 4,
+            ],
+            maxExclusive: [
+              matchedStructure.bounds.maxExclusive[0] + 4,
+              matchedStructure.bounds.maxExclusive[1] + 2,
+              matchedStructure.bounds.maxExclusive[2] + 4,
+            ],
+          };
+        }
+      }
+
+      const view = (args.view as any) || 'composite';
+      const { width, height } = clampRenderSize(args.width, args.height);
+      const annotateStructures = args.annotateStructures !== false;
+
+      const png = renderSchematicPng(ctx.editorSession, {
+        bounds,
+        view,
+        width,
+        height,
+        annotateStructures,
+        analysis,
+        highlightRegions: ctx.userMcpState?.selection_state?.savedRegions,
+      });
+
+      return {
+        ok: true,
+        view: png.view,
+        width: png.width,
+        height: png.height,
+        bounds: bounds ?? analysis.bounds,
+        structure: matchedStructure,
+        structures: analysis.structures,
+        _mcpImages: [{ data: png.base64, mimeType: 'image/png' }],
+      };
+    }
+
+    case 'select_structure': {
+      const ctx = await loadTargetSchematicSession(env, sql, sessionUser, args);
+      const query = String(args.query || '').trim();
+      if (!query) {
+        return { ok: false, error: 'Query is required for select_structure' };
+      }
+      const analysis = analyzeSchematicStructures(ctx.editorSession);
+      const matched = selectStructureByQuery(analysis, query);
+      if (!matched) {
+        return {
+          ok: false,
+          error: `Structure matching "${query}" not found`,
+          availableStructures: analysis.structures.map((s) => ({ id: s.id, name: s.name })),
+        };
+      }
+
+      const regionId = matched.id;
+      const regionName = `${matched.id}: ${matched.name}`;
+      const newRegion = {
+        id: regionId,
+        name: regionName,
+        pos1: toSyncPos(matched.bounds.min),
+        pos2: toSyncPos([matched.bounds.maxExclusive[0] - 1, matched.bounds.maxExclusive[1] - 1, matched.bounds.maxExclusive[2] - 1]),
+        bounds: toSyncBounds(matched.bounds),
+      };
+
+      const keepExisting = args.keepExistingRegions !== false && args.replaceExisting !== true;
+      const currentRegions = keepExisting
+        ? (ctx.userMcpState?.selection_state?.savedRegions ?? []).filter((r) => r.id !== regionId && r.name !== regionName)
+        : [];
+      const nextRegions = [...currentRegions, newRegion];
+
+      const nextSelectionState: McpSelectionSyncState = {
+        schematicId: ctx.schematicRow.id,
+        savedRegions: nextRegions,
+        activeRegionId: regionId,
+        bounds: toSyncBounds(matched.bounds),
+        pos1: newRegion.pos1,
+        pos2: newRegion.pos2,
+        updatedAt: new Date().toISOString(),
+      };
+
+      ctx.editorSession.execute({
+        type: 'selection:edit',
+        bounds: {
+          minX: matched.bounds.min[0],
+          minY: matched.bounds.min[1],
+          minZ: matched.bounds.min[2],
+          maxX: matched.bounds.maxExclusive[0],
+          maxY: matched.bounds.maxExclusive[1],
+          maxZ: matched.bounds.maxExclusive[2],
+        },
+      });
+
+      await upsertUserMcpState(sql, sessionUser.userId, {
+        activeSchematicId: ctx.schematicRow.id,
+        selectionState: nextSelectionState,
+      });
+
+      return {
+        ok: true,
+        structure: matched,
+        bounds: matched.bounds,
+        selectionState: nextSelectionState,
       };
     }
 
@@ -2378,11 +3063,25 @@ async function handleJsonRpcMessage(
       try {
         const toolResult = await executeCloudTool(session, env, sql, name, toolArgs);
         const isError = Boolean(toolResult?.ok === false || toolResult?.error);
+        const mcpImages = Array.isArray(toolResult?._mcpImages) ? toolResult._mcpImages : [];
+        let cleanResult = toolResult;
+        if (mcpImages.length > 0) {
+          const { _mcpImages, ...rest } = toolResult;
+          cleanResult = rest;
+        }
+        const content: Array<{ type: string; text?: string; data?: string; mimeType?: string }> = [
+          { type: 'text', text: JSON.stringify(cleanResult, null, 2) },
+          ...mcpImages.map((img: any) => ({
+            type: 'image',
+            data: img.data,
+            mimeType: img.mimeType || 'image/png',
+          })),
+        ];
         return {
           jsonrpc: '2.0',
           id,
           result: {
-            content: [{ type: 'text', text: JSON.stringify(toolResult, null, 2) }],
+            content,
             isError,
           },
         };
@@ -2576,17 +3275,24 @@ export async function handleMcpRequest(
     const url = new URL(request.url);
 
     if (accept.includes('text/event-stream')) {
-      const endpoint = `/api/mcp${url.search}`;
-      const sseBody = `event: endpoint\ndata: ${endpoint}\n\n: ready\n\n`;
-      return new Response(sseBody, {
-        status: 200,
-        headers: {
-          'Content-Type': 'text/event-stream; charset=utf-8',
-          'Cache-Control': 'no-cache, no-transform',
-          Connection: 'keep-alive',
-          ...MCP_CORS_HEADERS,
-        },
-      });
+      return new Response(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: null,
+          error: {
+            code: -32000,
+            message: 'Method Not Allowed: standalone GET SSE stream is not supported; use POST',
+          },
+        }),
+        {
+          status: 405,
+          headers: {
+            'Content-Type': 'application/json',
+            Allow: 'POST, OPTIONS',
+            ...MCP_CORS_HEADERS,
+          },
+        }
+      );
     }
 
     return new Response(
@@ -2906,7 +3612,7 @@ export const CLOUD_MCP_TOOLS: McpToolDefinition[] = [
         pos1: { type: 'array', items: { type: 'number' }, description: '[x,y,z]' },
         pos2: { type: 'array', items: { type: 'number' }, description: '[x,y,z]' },
         name: { type: 'string', description: 'Region name (e.g. R1, TowerRoof)' },
-        replaceExisting: { type: 'boolean', description: 'Replace existing regions instead of appending' },
+        replaceExisting: { type: 'boolean', description: 'Default false. Leave false/omitted to preserve and append to existing regions; only set true if the user explicitly asks to clear/replace all existing regions.' },
       },
     },
   },
@@ -3629,4 +4335,119 @@ export const CLOUD_MCP_TOOLS: McpToolDefinition[] = [
       required: ['bytesBase64'],
     },
   },
+
+  // ── 12. Visual & Structural Intelligence Engine ──
+  {
+    name: 'analyze_structures',
+    description: 'Analyze schematic structures, architectural classifications, spatial layout, ground level, and environmental features with multi-view PNG rendering',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        schematicId: { type: 'string', description: 'Optional schematic ID' },
+        bounds: { type: 'array', items: { type: 'number' }, description: '6-tuple [minX,minY,minZ,maxX,maxY,maxZ]' },
+        maxStructures: { type: 'number', description: 'Max structures to segment (default: 36)' },
+        saveRegions: { type: 'boolean', description: 'Save detected structures as browser editor selection regions' },
+        includeRender: { type: 'boolean', description: 'Include software-rendered PNG preview image (default: true)' },
+        view: { type: 'string', enum: ['composite', 'top', 'isometric', 'front', 'side'], description: 'Render projection view' },
+      },
+    },
+  },
+  {
+    name: 'render_schematic_view',
+    description: 'Render a high-resolution 2D/3D software preview PNG of the schematic or a specific structure',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        schematicId: { type: 'string', description: 'Optional schematic ID' },
+        bounds: { type: 'array', items: { type: 'number' }, description: '6-tuple [minX,minY,minZ,maxX,maxY,maxZ]' },
+        structureId: { type: 'string', description: 'Structure ID, symbol, or query (e.g. S1, tower, largest) to zoom into and highlight' },
+        view: { type: 'string', enum: ['composite', 'top', 'isometric', 'front', 'side'], description: 'Camera perspective (default: composite)' },
+        width: { type: 'number', description: 'Render pixel width (default: 680)' },
+        height: { type: 'number', description: 'Render pixel height (default: 360)' },
+        annotateStructures: { type: 'boolean', description: 'Draw bounding boxes and structure labels (default: true)' },
+      },
+    },
+  },
+  {
+    name: 'select_structure',
+    description: 'Find a structure by ID (e.g. S1, 1), name, category, or largest/tallest query, and select it in the 3D viewport and selection state',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        schematicId: { type: 'string', description: 'Optional schematic ID' },
+        query: { type: 'string', description: 'Structure ID (e.g. S1, 1), name, category, or "largest"/"tallest"' },
+        keepExistingRegions: { type: 'boolean', description: 'Keep existing saved regions instead of replacing them' },
+      },
+      required: ['query'],
+    },
+  },
 ];
+
+// ============================================================================
+// Direct Render Endpoint: GET /api/mcp/render
+// ============================================================================
+
+export async function handleMcpRenderRequest(
+  request: Request,
+  env: Env,
+  sqlOverride?: SqlClient,
+): Promise<Response> {
+  if (request.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: MCP_CORS_HEADERS });
+  }
+
+  const sql = sqlOverride ?? getDb(env);
+  const sessionUser = await requireMcpAuth(request, env, sql);
+  if (!sessionUser) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...MCP_CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const url = new URL(request.url);
+  const schematicId = url.searchParams.get('schematicId') || undefined;
+  const structureId = url.searchParams.get('structureId') || undefined;
+  const view = (url.searchParams.get('view') as any) || 'composite';
+  const width = url.searchParams.has('width') ? parseInt(url.searchParams.get('width')!, 10) : undefined;
+  const height = url.searchParams.has('height') ? parseInt(url.searchParams.get('height')!, 10) : undefined;
+
+  try {
+    const ctx = await loadTargetSchematicSession(env, sql, sessionUser, { schematicId });
+    const analysis = analyzeSchematicStructures(ctx.editorSession);
+    let bounds: Bounds3i | undefined;
+
+    if (structureId) {
+      const matched = selectStructureByQuery(analysis, structureId);
+      if (matched) {
+        bounds = {
+          min: [matched.bounds.min[0] - 4, matched.bounds.min[1] - 2, matched.bounds.min[2] - 4],
+          maxExclusive: [matched.bounds.maxExclusive[0] + 4, matched.bounds.maxExclusive[1] + 2, matched.bounds.maxExclusive[2] + 4],
+        };
+      }
+    }
+
+    const png = renderSchematicPng(ctx.editorSession, {
+      bounds,
+      view,
+      width,
+      height,
+      analysis,
+      highlightRegions: ctx.userMcpState?.selection_state?.savedRegions,
+    });
+
+    return new Response(png.pngBytes as any, {
+      status: 200,
+      headers: {
+        ...MCP_CORS_HEADERS,
+        'Content-Type': 'image/png',
+        'Cache-Control': 'no-cache',
+      },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
+      status: 500,
+      headers: { ...MCP_CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+}

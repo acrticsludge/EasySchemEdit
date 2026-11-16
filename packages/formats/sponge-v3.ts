@@ -351,11 +351,11 @@ export class SpongeV3Adapter implements FormatAdapter {
     };
 
     // Offset: pasteTarget + Offset = min corner (relative, not absolute world coords)
-    const transform: Transform = { translation: offset as Vec3i, rotationY: 0, mirror: 'none' };
+    const transform: Transform = { translation: [0, 0, 0], rotationY: 0, mirror: 'none' };
     const origin: Vec3Half = [
-      (offset[0] * 2) as number,
-      (offset[1] * 2) as number,
-      (offset[2] * 2) as number,
+      ((-offset[0] * 2) || 0) as number,
+      ((-offset[1] * 2) || 0) as number,
+      ((-offset[2] * 2) || 0) as number,
     ] as Vec3Half;
 
     const ancillary = {

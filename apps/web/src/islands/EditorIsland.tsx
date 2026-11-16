@@ -8,8 +8,11 @@ import * as THREE from 'three';
 import '../editor/design-tokens.css';
 import {
   placementWorldBounds,
+  localBlockToWorld,
   worldBlockToLocal,
+  computeOriginForWorldBlock,
   type Bounds3i,
+  type Placement,
   type Project,
   type Vec3Half,
   type Vec3i,
@@ -20,7 +23,7 @@ import {
   generateShape,
   type ClipboardEntry,
 } from '@easyschemedit/operations';
-import { packVxprojArchive, unpackVxprojArchive } from '@easyschemedit/persistence';
+import { packVxprojArchive, packVxprojArchiveAsync, unpackVxprojArchive, unpackVxprojArchiveAsync } from '@easyschemedit/persistence';
 import { toBlockStateId } from '../editor/viewport/region-hit.ts';
 import {
   saveSchematicSelection,
@@ -63,7 +66,7 @@ import {
   deleteSchematic,
   loadSchematicArchive as getSchematicArchive,
 } from '../client/projects-client.ts';
-import { getMcpSyncState, updateMcpSyncState } from '../client/mcp-client.ts';
+import { getMcpSyncState, updateMcpSyncState, serializeClipboardEntries } from '../client/mcp-client.ts';
 import { LoginModal } from '../components/LoginModal.tsx';
 import { FirstProjectModal } from '../components/FirstProjectModal.tsx';
 import { McpConnectModal } from '../components/McpConnectModal.tsx';
@@ -137,6 +140,45 @@ function createEmptyProjectDocument(name: string): Project {
   };
 }
 
+interface RegionUndoSnapshot {
+  savedRegions: SavedRegion[];
+  activeRegionId: string | null;
+  regionBounds: Bounds3i | null;
+  regionPos1: Vec3i | null;
+  regionPos2: Vec3i | null;
+}
+
+function cloneVec3i(v: Vec3i | null): Vec3i | null {
+  return v ? [v[0], v[1], v[2]] : null;
+}
+
+function cloneBounds(b: Bounds3i | null): Bounds3i | null {
+  if (!b) return null;
+  return {
+    min: [b.min[0], b.min[1], b.min[2]],
+    maxExclusive: [b.maxExclusive[0], b.maxExclusive[1], b.maxExclusive[2]],
+  };
+}
+
+function cloneRegionSnapshot(snap: RegionUndoSnapshot): RegionUndoSnapshot {
+  return {
+    savedRegions: snap.savedRegions.map((r) => ({
+      id: r.id,
+      name: r.name,
+      pos1: [r.pos1[0], r.pos1[1], r.pos1[2]],
+      pos2: [r.pos2[0], r.pos2[1], r.pos2[2]],
+      bounds: {
+        min: [r.bounds.min[0], r.bounds.min[1], r.bounds.min[2]],
+        maxExclusive: [r.bounds.maxExclusive[0], r.bounds.maxExclusive[1], r.bounds.maxExclusive[2]],
+      },
+    })),
+    activeRegionId: snap.activeRegionId,
+    regionBounds: cloneBounds(snap.regionBounds),
+    regionPos1: cloneVec3i(snap.regionPos1),
+    regionPos2: cloneVec3i(snap.regionPos2),
+  };
+}
+
 export default function EditorIsland() {
   const runtime = useMemo(() => createEditorRuntime(), []);
 
@@ -161,6 +203,8 @@ export default function EditorIsland() {
     Array<{ id: string; tool: string; revision: number; changedCells: number; summary: string; createdAt: string }>
   >([]);
   const lastSyncedSelectionTimestampRef = useRef<string>('');
+  const lastSyncedRevisionRef = useRef<number | null>(null);
+  const lastSyncedClipboardTimestampRef = useRef<string | null>(null);
   const selectionSyncDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pendingAuthAction, setPendingAuthAction] = useState<'save' | 'projects' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -192,6 +236,62 @@ export default function EditorIsland() {
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const addingNewRegionRef = useRef<boolean>(false);
 
+  const regionStateRef = useRef<RegionUndoSnapshot>({
+    savedRegions: [],
+    activeRegionId: null,
+    regionBounds: null,
+    regionPos1: null,
+    regionPos2: null,
+  });
+
+  useEffect(() => {
+    regionStateRef.current = {
+      savedRegions,
+      activeRegionId,
+      regionBounds,
+      regionPos1,
+      regionPos2,
+    };
+  }, [savedRegions, activeRegionId, regionBounds, regionPos1, regionPos2]);
+
+  const applyRegionSnapshot = useCallback(
+    (snap: RegionUndoSnapshot) => {
+      const cloned = cloneRegionSnapshot(snap);
+      regionStateRef.current = cloned;
+      setSavedRegions(cloned.savedRegions);
+      setActiveRegionId(cloned.activeRegionId);
+      setRegionBounds(cloned.regionBounds);
+      setRegionPos1(cloned.regionPos1);
+      setRegionPos2(cloned.regionPos2);
+      setRegionPickMode(null);
+      addingNewRegionRef.current = false;
+
+      if (cloned.regionBounds) {
+        const activeReg = cloned.activeRegionId
+          ? cloned.savedRegions.find((r) => r.id === cloned.activeRegionId)
+          : null;
+        const p1 = activeReg ? activeReg.pos1 : cloned.regionPos1;
+        const minX = Math.min(cloned.regionBounds.min[0], cloned.regionBounds.maxExclusive[0] - 1);
+        const minY = Math.min(cloned.regionBounds.min[1], cloned.regionBounds.maxExclusive[1] - 1);
+        const minZ = Math.min(cloned.regionBounds.min[2], cloned.regionBounds.maxExclusive[2] - 1);
+        const maxX = Math.max(cloned.regionBounds.min[0], cloned.regionBounds.maxExclusive[0] - 1);
+        const maxY = Math.max(cloned.regionBounds.min[1], cloned.regionBounds.maxExclusive[1] - 1);
+        const maxZ = Math.max(cloned.regionBounds.min[2], cloned.regionBounds.maxExclusive[2] - 1);
+        const anchor = p1
+          ? { x: p1[0], y: p1[1], z: p1[2] }
+          : { x: minX, y: minY, z: minZ };
+
+        runtime.store.session.setSelectionQuiet(
+          createCuboidSelection({ minX, minY, minZ, maxX, maxY, maxZ }, anchor),
+          anchor
+        );
+      } else {
+        runtime.store.session.setSelectionQuiet(null);
+      }
+    },
+    [runtime]
+  );
+
   const [nudgeStep, setNudgeStep] = useState<1 | 16>(() => {
     const prefs = loadUiPrefs();
     return prefs?.nudgeStep === 16 ? 16 : 1;
@@ -207,13 +307,37 @@ export default function EditorIsland() {
     };
   });
 
-  const isRestoringSelectionRef = useRef(false);
+  const skipNextLocalSelectionSaveRef = useRef(false);
+  const suppressCloudSelectionPushRef = useRef(false);
+  const suppressCloudClipboardPushRef = useRef(false);
+  const clipboardSyncDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentSchematicForSelectionRef = useRef<string | null>(null);
+  const lastKnownCloudSchematicIdRef = useRef<string | null>(null);
+
+  const prevPlacementTransformsRef = useRef<Map<string, Placement>>(new Map());
+
+  const syncPlacementTransformsRef = useCallback((placements: readonly Placement[]) => {
+    const map = new Map<string, Placement>();
+    for (const p of placements) {
+      map.set(p.id, {
+        ...p,
+        transform: {
+          translation: [...p.transform.translation] as Vec3i,
+          rotationY: p.transform.rotationY,
+          mirror: p.transform.mirror,
+        },
+        origin: [...p.origin] as Vec3Half,
+      });
+    }
+    prevPlacementTransformsRef.current = map;
+  }, []);
 
   const restoreSelectionForSchematic = useCallback(
     (schemId: string | null) => {
-      isRestoringSelectionRef.current = true;
+      skipNextLocalSelectionSaveRef.current = true;
       currentSchematicForSelectionRef.current = schemId;
+      syncPlacementTransformsRef(runtime.store.getSnapshot().project.placements);
+      runtime.store.clearCustomUndoHistory();
 
       if (!schemId) {
         setSavedRegions([]);
@@ -225,7 +349,8 @@ export default function EditorIsland() {
         setSelectedVoxel(null);
         setSelectedPlacementId(null);
         runtime.workspace.selectPlacement(null);
-        void runtime.store.execute({ type: 'selection:clear' });
+        runtime.store.session.setSelectionQuiet(null);
+        runtime.persistence.markClean();
         return;
       }
 
@@ -281,12 +406,12 @@ export default function EditorIsland() {
             ? { x: p1[0], y: p1[1], z: p1[2] }
             : { x: minX, y: minY, z: minZ };
 
-          void runtime.store.execute({
-            type: 'selection:set',
-            selection: createCuboidSelection({ minX, minY, minZ, maxX, maxY, maxZ }, anchor),
-          });
+          runtime.store.session.setSelectionQuiet(
+            createCuboidSelection({ minX, minY, minZ, maxX, maxY, maxZ }, anchor),
+            anchor
+          );
         } else {
-          void runtime.store.execute({ type: 'selection:clear' });
+          runtime.store.session.setSelectionQuiet(null);
         }
       } else {
         setSavedRegions([]);
@@ -298,11 +423,133 @@ export default function EditorIsland() {
         setSelectedVoxel(null);
         setSelectedPlacementId(null);
         runtime.workspace.selectPlacement(null);
-        void runtime.store.execute({ type: 'selection:clear' });
+        runtime.store.session.setSelectionQuiet(null);
       }
+      runtime.persistence.markClean();
     },
-    [runtime]
+    [runtime, syncPlacementTransformsRef]
   );
+
+  // Auto-translate / transform region selections when placement moves
+  useEffect(() => {
+    const placements = sessionState.project.placements;
+    if (placements.length === 0) {
+      syncPlacementTransformsRef(placements);
+      return;
+    }
+
+    let transformedPlacement: Placement | null = null;
+    let oldPlacementState: Placement | null = null;
+
+    for (const p of placements) {
+      const oldP = prevPlacementTransformsRef.current.get(p.id);
+      if (!oldP) continue;
+
+      const originWorldOld = localBlockToWorld(oldP, [0, 0, 0]);
+      const originWorldNew = localBlockToWorld(p, [0, 0, 0]);
+      const axisXWorldOld = localBlockToWorld(oldP, [1, 0, 0]);
+      const axisXWorldNew = localBlockToWorld(p, [1, 0, 0]);
+      const axisZWorldOld = localBlockToWorld(oldP, [0, 0, 1]);
+      const axisZWorldNew = localBlockToWorld(p, [0, 0, 1]);
+
+      const didTransform =
+        originWorldOld[0] !== originWorldNew[0] ||
+        originWorldOld[1] !== originWorldNew[1] ||
+        originWorldOld[2] !== originWorldNew[2] ||
+        axisXWorldOld[0] !== axisXWorldNew[0] ||
+        axisXWorldOld[1] !== axisXWorldNew[1] ||
+        axisXWorldOld[2] !== axisXWorldNew[2] ||
+        axisZWorldOld[0] !== axisZWorldNew[0] ||
+        axisZWorldOld[1] !== axisZWorldNew[1] ||
+        axisZWorldOld[2] !== axisZWorldNew[2];
+
+      if (didTransform) {
+        transformedPlacement = p;
+        oldPlacementState = oldP;
+        break;
+      }
+    }
+
+    if (transformedPlacement && oldPlacementState) {
+      const p = transformedPlacement;
+      const oldP = oldPlacementState;
+
+      const transformPt = (pt: Vec3i): Vec3i => {
+        const local = worldBlockToLocal(oldP, pt);
+        return localBlockToWorld(p, local);
+      };
+
+      const transformCorners = (p1: Vec3i, p2: Vec3i) => {
+        const np1 = transformPt(p1);
+        const np2 = transformPt(p2);
+        const min: Vec3i = [
+          Math.min(np1[0], np2[0]),
+          Math.min(np1[1], np2[1]),
+          Math.min(np1[2], np2[2]),
+        ];
+        const maxExclusive: Vec3i = [
+          Math.max(np1[0], np2[0]) + 1,
+          Math.max(np1[1], np2[1]) + 1,
+          Math.max(np1[2], np2[2]) + 1,
+        ];
+        return { pos1: np1, pos2: np2, bounds: { min, maxExclusive } };
+      };
+
+      if (savedRegions.length > 0) {
+        const nextSaved = savedRegions.map((reg) => {
+          const tc = transformCorners(reg.pos1, reg.pos2);
+          return {
+            ...reg,
+            pos1: tc.pos1,
+            pos2: tc.pos2,
+            bounds: tc.bounds,
+          };
+        });
+        setSavedRegions(nextSaved);
+
+        const activeReg = nextSaved.find((r) => r.id === activeRegionId) ?? nextSaved[0];
+        if (activeReg) {
+          setRegionBounds(activeReg.bounds);
+        }
+        if (regionPos1) setRegionPos1(transformPt(regionPos1));
+        if (regionPos2) setRegionPos2(transformPt(regionPos2));
+      } else if (regionPos1 && regionPos2) {
+        const tc = transformCorners(regionPos1, regionPos2);
+        setRegionPos1(tc.pos1);
+        setRegionPos2(tc.pos2);
+        setRegionBounds(tc.bounds);
+      } else if (regionBounds) {
+        const p1 = regionBounds.min;
+        const p2: Vec3i = [
+          regionBounds.maxExclusive[0] - 1,
+          regionBounds.maxExclusive[1] - 1,
+          regionBounds.maxExclusive[2] - 1,
+        ];
+        const tc = transformCorners(p1, p2);
+        setRegionBounds(tc.bounds);
+        if (regionPos1) setRegionPos1(transformPt(regionPos1));
+        if (regionPos2) setRegionPos2(transformPt(regionPos2));
+      }
+
+      if (selectedVoxel) {
+        const newPos = transformPt(selectedVoxel.position);
+        setSelectedVoxel({ ...selectedVoxel, position: newPos });
+      }
+    }
+
+    syncPlacementTransformsRef(placements);
+  }, [
+    sessionState.project.placements,
+    sessionState.revision,
+    savedRegions,
+    activeRegionId,
+    regionPos1,
+    regionPos2,
+    regionBounds,
+    selectedVoxel,
+    runtime,
+    syncPlacementTransformsRef,
+  ]);
 
   // Save UI preferences on change
   useEffect(() => {
@@ -325,8 +572,8 @@ export default function EditorIsland() {
       return;
     }
 
-    if (isRestoringSelectionRef.current) {
-      isRestoringSelectionRef.current = false;
+    if (skipNextLocalSelectionSaveRef.current) {
+      skipNextLocalSelectionSaveRef.current = false;
       return;
     }
 
@@ -353,8 +600,11 @@ export default function EditorIsland() {
   // Browser -> Cloud Selection & Active Schematic Reporting (Slice M4b)
   useEffect(() => {
     if (!authUser) return;
-    if (!activeSchematicId || activeSchematicId.startsWith('guest-')) return;
-    if (isRestoringSelectionRef.current) return;
+    if (!activeSchematicId || activeSchematicId.startsWith('guest-') || activeSchematicId.startsWith('temp-')) return;
+    if (suppressCloudSelectionPushRef.current) {
+      suppressCloudSelectionPushRef.current = false;
+      return;
+    }
 
     if (selectionSyncDebounceTimerRef.current) {
       clearTimeout(selectionSyncDebounceTimerRef.current);
@@ -457,9 +707,11 @@ export default function EditorIsland() {
               if (schemToOpen) {
                 await runtime.persistence.openSchematicFromCloud(schemToOpen.id);
                 if (active) {
+                  lastKnownCloudSchematicIdRef.current = schemToOpen.id;
                   setActiveSchematicId(schemToOpen.id);
                   runtime.persistence.setActiveCloudSchematicId(schemToOpen.id);
                   restoreSelectionForSchematic(schemToOpen.id);
+                  void syncFromCloudMcp();
                 }
               }
             }
@@ -935,6 +1187,7 @@ export default function EditorIsland() {
             activeRegionId,
           });
         }
+        currentSchematicForSelectionRef.current = null;
 
         if (!authUser) {
           if (activeSchematicId) {
@@ -963,6 +1216,7 @@ export default function EditorIsland() {
             guestBuffersRef.current.set(schematicId, packVxprojArchive(nextProj));
           }
           await runtime.persistence.replaceProjectInSession(nextProj);
+          lastKnownCloudSchematicIdRef.current = schematicId;
           setActiveProjectId(projectId);
           setActiveSchematicId(schematicId);
           restoreSelectionForSchematic(schematicId);
@@ -974,6 +1228,9 @@ export default function EditorIsland() {
             }
           }
           await runtime.persistence.openSchematicFromCloud(schematicId);
+          lastSyncedRevisionRef.current = null;
+          lastKnownCloudSchematicIdRef.current = schematicId;
+          updateMcpSyncState({ activeProjectId: projectId, activeSchematicId: schematicId }).catch(() => {});
           setActiveProjectId(projectId);
           setActiveSchematicId(schematicId);
           runtime.persistence.setActiveCloudProjectId(projectId);
@@ -1004,6 +1261,7 @@ export default function EditorIsland() {
   const syncFromCloudMcp = useCallback(
     async (forceReloadSchematic = false) => {
       if (!authUser && !forceReloadSchematic) return;
+      if (isSwitchingSchematicRef.current || isSaving || activeSchematicId?.startsWith('temp-')) return;
       try {
         const sync = await getMcpSyncState(activeSchematicId);
         if (sync.recentLogs) {
@@ -1020,27 +1278,32 @@ export default function EditorIsland() {
         }
 
         // Case A: AI switched active schematic or created a new project/schematic
-        if (
-          sync.activeSchematicId &&
-          sync.activeSchematicId !== activeSchematicId &&
-          !isSwitchingSchematicRef.current &&
-          !isSaving
-        ) {
-          const tree = await listWorkspaceTree();
-          setWorkspaceProjects(tree);
-          let targetProjId = sync.activeProjectId;
-          if (!targetProjId) {
-            for (const p of tree) {
-              if (p.schematics.some((s) => s.id === sync.activeSchematicId)) {
-                targetProjId = p.id;
-                break;
+        if (sync.activeSchematicId) {
+          if (lastKnownCloudSchematicIdRef.current === null) {
+            lastKnownCloudSchematicIdRef.current = sync.activeSchematicId;
+          } else if (
+            sync.activeSchematicId !== lastKnownCloudSchematicIdRef.current &&
+            sync.activeSchematicId !== activeSchematicId &&
+            !isSwitchingSchematicRef.current &&
+            !isSaving
+          ) {
+            lastKnownCloudSchematicIdRef.current = sync.activeSchematicId;
+            const tree = await listWorkspaceTree();
+            setWorkspaceProjects(tree);
+            let targetProjId = sync.activeProjectId;
+            if (!targetProjId) {
+              for (const p of tree) {
+                if (p.schematics.some((s) => s.id === sync.activeSchematicId)) {
+                  targetProjId = p.id;
+                  break;
+                }
               }
             }
+            if (targetProjId) {
+              await handleSelectSchematic(targetProjId, sync.activeSchematicId);
+            }
+            return;
           }
-          if (targetProjId) {
-            await handleSelectSchematic(targetProjId, sync.activeSchematicId);
-          }
-          return;
         }
 
         // Case B: AI modified the currently open schematic (sync.schematicRevision > currentRevision or forceReloadSchematic)
@@ -1054,18 +1317,17 @@ export default function EditorIsland() {
           const needsReload =
             forceReloadSchematic ||
             (typeof sync.schematicRevision === 'number' &&
-              sync.schematicRevision > currentRev &&
+              sync.schematicRevision > Math.max(currentRev, lastSyncedRevisionRef.current ?? 0) &&
               !runtime.persistence.isDirty());
 
           if (needsReload) {
             const buf = await getSchematicArchive(activeSchematicId);
-            const unpacked = unpackVxprojArchive(new Uint8Array(buf));
-            if (typeof (runtime.store as any).loadProject === 'function') {
-              (runtime.store as any).loadProject(unpacked);
-            } else {
-              await runtime.persistence.replaceProjectInSession(unpacked);
-            }
+            const unpacked = await unpackVxprojArchiveAsync(new Uint8Array(buf));
+            const summary = sync.recentLogs?.[0]?.summary ?? 'AI Agent Edit';
+            runtime.store.session.applyRemoteProjectUpdate(unpacked, summary);
+            syncPlacementTransformsRef(unpacked.placements);
             runtime.persistence.markClean();
+            lastSyncedRevisionRef.current = sync.schematicRevision ?? unpacked.revision ?? null;
             const tree = await listWorkspaceTree();
             setWorkspaceProjects(tree);
           }
@@ -1079,15 +1341,67 @@ export default function EditorIsland() {
           sync.selectionState.updatedAt !== lastSyncedSelectionTimestampRef.current
         ) {
           lastSyncedSelectionTimestampRef.current = sync.selectionState.updatedAt;
-          isRestoringSelectionRef.current = true;
+          suppressCloudSelectionPushRef.current = true;
           setSavedRegions(sync.selectionState.savedRegions ?? []);
           setActiveRegionId(sync.selectionState.activeRegionId ?? null);
           setRegionBounds(sync.selectionState.bounds ?? null);
           setRegionPos1(null);
           setRegionPos2(null);
+
+          if (sync.selectionState.bounds) {
+            const b = sync.selectionState.bounds;
+            const minX = Math.min(b.min[0], b.maxExclusive[0] - 1);
+            const minY = Math.min(b.min[1], b.maxExclusive[1] - 1);
+            const minZ = Math.min(b.min[2], b.maxExclusive[2] - 1);
+            const maxX = Math.max(b.min[0], b.maxExclusive[0] - 1);
+            const maxY = Math.max(b.min[1], b.maxExclusive[1] - 1);
+            const maxZ = Math.max(b.min[2], b.maxExclusive[2] - 1);
+            runtime.store.session.setSelectionQuiet(
+              createCuboidSelection({ minX, minY, minZ, maxX, maxY, maxZ }, { x: minX, y: minY, z: minZ }),
+              { x: minX, y: minY, z: minZ }
+            );
+          } else {
+            runtime.store.session.setSelectionQuiet(null);
+          }
         }
-      } catch (_err) {
-        // Silently catch sync poll errors
+
+        // Case D: AI updated clipboard entries (sync.clipboardState)
+        if (
+          sync.clipboardState &&
+          sync.clipboardState.updatedAt &&
+          sync.clipboardState.updatedAt !== lastSyncedClipboardTimestampRef.current
+        ) {
+          lastSyncedClipboardTimestampRef.current = sync.clipboardState.updatedAt;
+          const entries: ClipboardEntry[] = (sync.clipboardState.entries ?? []).map((e: any) => ({
+            id: e.id,
+            data: {
+              blocks: (e.data?.blocks ?? []).map((b: any) => ({
+                localPos: b.localPos as Vec3i,
+                state: {
+                  id: b.state?.id ?? 'minecraft:air',
+                  props: b.state?.props ?? b.state?.properties ?? {},
+                },
+              })),
+              blockEntities: new Map<string, unknown>(
+                Array.isArray(e.data?.blockEntities) ? e.data.blockEntities : []
+              ),
+              entities: e.data?.entities ?? [],
+              biomes: e.data?.biomes,
+              anchor: (e.data?.anchor ?? [0, 0, 0]) as Vec3i,
+              bounds: {
+                min: (e.data?.bounds?.min ?? [0, 0, 0]) as Vec3i,
+                maxExclusive: (e.data?.bounds?.maxExclusive ?? [0, 0, 0]) as Vec3i,
+              },
+            },
+            createdAt: e.createdAt ?? Date.now(),
+            sourceProjectId: e.sourceProjectId ?? '',
+            scope: e.scope ?? 'effective-composite',
+          }));
+          suppressCloudClipboardPushRef.current = true;
+          runtime.store.session.replaceClipboardEntries(entries);
+        }
+      } catch (err) {
+        console.warn('MCP sync poll error:', err);
       }
     },
     [authUser, activeSchematicId, isSaving, runtime, handleSelectSchematic]
@@ -1258,6 +1572,19 @@ export default function EditorIsland() {
 
   const handleCreateSchematic = useCallback(
     async (projectId: string, name: string) => {
+      if (activeSchematicId && currentSchematicForSelectionRef.current === activeSchematicId) {
+        saveSchematicSelection(activeSchematicId, {
+          pos1: regionPos1,
+          pos2: regionPos2,
+          bounds: regionBounds,
+          selectedVoxel,
+          selectedPlacementId,
+          savedRegions,
+          activeRegionId,
+        });
+      }
+      currentSchematicForSelectionRef.current = null;
+
       if (!authUser) {
         if (activeSchematicId) {
           guestBuffersRef.current.set(
@@ -1282,80 +1609,103 @@ export default function EditorIsland() {
           ),
         );
         const emptyProject = createEmptyProjectDocument(name);
-        guestBuffersRef.current.set(newId, packVxprojArchive(emptyProject));
-        await runtime.persistence.replaceProjectInSession(emptyProject);
+        const archiveBytes = await packVxprojArchiveAsync(emptyProject);
+        guestBuffersRef.current.set(newId, archiveBytes);
+        await runtime.persistence.replaceProjectInSession(emptyProject, true);
+        lastKnownCloudSchematicIdRef.current = newId;
         setActiveProjectId(projectId);
         setActiveSchematicId(newId);
         restoreSelectionForSchematic(newId);
       } else {
-        if (runtime.persistence.isDirty() && activeSchematicId) {
-          const shouldSave = confirm(
-            'You have unsaved changes. Save current schematic before creating a new one?',
-          );
-          if (shouldSave) {
-            await runtime.persistence.saveSchematicToCloud(activeSchematicId);
-          }
-        }
-        const tempId = `temp-schem-${Date.now()}`;
-        const tempSchem: CloudSchematicSummary = {
-          id: tempId,
-          projectId,
-          name,
-          revision: 1,
-          placementCount: 0,
-          sizeBytes: 0,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        const prevProjects = workspaceProjects;
-        const prevActiveSchemId = activeSchematicId;
-        const prevActiveProjId = activeProjectId;
-
-        setWorkspaceProjects((prev) =>
-          prev.map((p) =>
-            p.id === projectId ? { ...p, schematics: [...p.schematics, tempSchem] } : p,
-          ),
-        );
-        const emptyProject = createEmptyProjectDocument(name);
-        await runtime.persistence.replaceProjectInSession(emptyProject);
-        setActiveProjectId(projectId);
-        setActiveSchematicId(tempId);
-        restoreSelectionForSchematic(tempId);
-        runtime.persistence.setActiveCloudProjectId(projectId);
-        runtime.persistence.setActiveCloudSchematicId(tempId);
-
+        isSwitchingSchematicRef.current = true;
         try {
-          const archiveBytes = packVxprojArchive(emptyProject);
-          const newSchem = await createSchematic(projectId, name, archiveBytes, {
+          if (runtime.persistence.isDirty() && activeSchematicId) {
+            const shouldSave = confirm(
+              'You have unsaved changes. Save current schematic before creating a new one?',
+            );
+            if (shouldSave) {
+              await runtime.persistence.saveSchematicToCloud(activeSchematicId);
+            }
+          }
+          const tempId = `temp-schem-${Date.now()}`;
+          const tempSchem: CloudSchematicSummary = {
+            id: tempId,
+            projectId,
+            name,
             revision: 1,
             placementCount: 0,
-          });
-          copySchematicState(tempId, newSchem.id);
-          deleteSchematicState(tempId);
+            sizeBytes: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          const prevProjects = workspaceProjects;
+          const prevActiveSchemId = activeSchematicId;
+          const prevActiveProjId = activeProjectId;
+
           setWorkspaceProjects((prev) =>
             prev.map((p) =>
-              p.id === projectId
-                ? {
-                    ...p,
-                    schematics: p.schematics.map((s) => (s.id === tempId ? newSchem : s)),
-                  }
-                : p,
+              p.id === projectId ? { ...p, schematics: [...p.schematics, tempSchem] } : p,
             ),
           );
-          setActiveSchematicId((prev) => (prev === tempId ? newSchem.id : prev));
-          runtime.persistence.setActiveCloudSchematicId(newSchem.id);
-          restoreSelectionForSchematic(newSchem.id);
-        } catch (err) {
-          setWorkspaceProjects(prevProjects);
-          setActiveProjectId(prevActiveProjId);
-          setActiveSchematicId(prevActiveSchemId);
-          runtime.persistence.setActiveCloudProjectId(prevActiveProjId);
-          runtime.persistence.setActiveCloudSchematicId(prevActiveSchemId);
-          throw err;
+          const emptyProject = createEmptyProjectDocument(name);
+          await runtime.persistence.replaceProjectInSession(emptyProject, true);
+          setActiveProjectId(projectId);
+          setActiveSchematicId(tempId);
+          restoreSelectionForSchematic(tempId);
+          runtime.persistence.setActiveCloudProjectId(projectId);
+          runtime.persistence.setActiveCloudSchematicId(tempId);
+
+          try {
+            const archiveBytes = await packVxprojArchiveAsync(emptyProject);
+            const newSchem = await createSchematic(projectId, name, archiveBytes, {
+              revision: 1,
+              placementCount: 0,
+            });
+            lastKnownCloudSchematicIdRef.current = newSchem.id;
+            updateMcpSyncState({ activeProjectId: projectId, activeSchematicId: newSchem.id }).catch(() => {});
+            copySchematicState(tempId, newSchem.id);
+            deleteSchematicState(tempId);
+            setWorkspaceProjects((prev) =>
+              prev.map((p) =>
+                p.id === projectId
+                  ? {
+                      ...p,
+                      schematics: p.schematics.map((s) => (s.id === tempId ? newSchem : s)),
+                    }
+                  : p,
+              ),
+            );
+            setActiveSchematicId((prev) => (prev === tempId ? newSchem.id : prev));
+            runtime.persistence.setActiveCloudSchematicId(newSchem.id);
+            restoreSelectionForSchematic(newSchem.id);
+          } catch (err) {
+            setWorkspaceProjects(prevProjects);
+            setActiveProjectId(prevActiveProjId);
+            setActiveSchematicId(prevActiveSchemId);
+            runtime.persistence.setActiveCloudProjectId(prevActiveProjId);
+            runtime.persistence.setActiveCloudSchematicId(prevActiveSchemId);
+            throw err;
+          }
+        } finally {
+          isSwitchingSchematicRef.current = false;
         }
       }
     },
-    [authUser, activeSchematicId, workspaceProjects, activeProjectId, restoreSelectionForSchematic, runtime],
+    [
+      authUser,
+      activeSchematicId,
+      regionPos1,
+      regionPos2,
+      regionBounds,
+      selectedVoxel,
+      selectedPlacementId,
+      savedRegions,
+      activeRegionId,
+      workspaceProjects,
+      activeProjectId,
+      restoreSelectionForSchematic,
+      runtime,
+    ],
   );
 
   const handleRenameSchematic = useCallback(
@@ -1505,6 +1855,40 @@ export default function EditorIsland() {
       syncClipboardEntries();
     });
   }, [runtime, syncClipboardEntries]);
+
+  // Browser -> Cloud Clipboard Reporting
+  useEffect(() => {
+    if (!authUser) return;
+    if (!activeSchematicId || activeSchematicId.startsWith('guest-') || activeSchematicId.startsWith('temp-')) return;
+    if (suppressCloudClipboardPushRef.current) {
+      suppressCloudClipboardPushRef.current = false;
+      return;
+    }
+
+    if (clipboardSyncDebounceTimerRef.current) {
+      clearTimeout(clipboardSyncDebounceTimerRef.current);
+    }
+
+    clipboardSyncDebounceTimerRef.current = setTimeout(() => {
+      const nowIso = new Date().toISOString();
+      lastSyncedClipboardTimestampRef.current = nowIso;
+      const serialized = serializeClipboardEntries(clipboardEntries);
+      updateMcpSyncState({
+        clipboardState: {
+          entries: serialized,
+          updatedAt: nowIso,
+        },
+      }).catch((_err) => {
+        // Best-effort network update, catch silently
+      });
+    }, 400);
+
+    return () => {
+      if (clipboardSyncDebounceTimerRef.current) {
+        clearTimeout(clipboardSyncDebounceTimerRef.current);
+      }
+    };
+  }, [authUser, activeSchematicId, clipboardEntries]);
   const [atlasTexture, setAtlasTexture] = useState<THREE.Texture | null>(null);
 
   // Crash recovery check on mount
@@ -1681,6 +2065,8 @@ export default function EditorIsland() {
 
   const applyCuboidSelection = useCallback(
     (p1: Vec3i, p2: Vec3i) => {
+      const prevSnap = cloneRegionSnapshot(regionStateRef.current);
+
       const minX = Math.min(p1[0], p2[0]);
       const maxX = Math.max(p1[0], p2[0]);
       const minY = Math.min(p1[1], p2[1]);
@@ -1692,41 +2078,40 @@ export default function EditorIsland() {
         min: [minX, minY, minZ],
         maxExclusive: [maxX + 1, maxY + 1, maxZ + 1],
       };
-      setRegionPos1(null);
-      setRegionPos2(null);
-      setRegionBounds(bounds);
 
-      void runtime.store.execute({
-        type: 'selection:set',
-        selection: createCuboidSelection(
-          { minX, minY, minZ, maxX, maxY, maxZ },
-          { x: p1[0], y: p1[1], z: p1[2] }
-        ),
-      });
+      const existingNums = prevSnap.savedRegions
+        .map((r) => {
+          const m = /^R(\d+)$/.exec(r.name);
+          return m ? parseInt(m[1]!, 10) : 0;
+        })
+        .filter((n) => !isNaN(n) && n > 0);
+      const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
+      const nextNum = Math.max(prevSnap.savedRegions.length + 1, maxNum + 1);
+      const newId = `region-${Date.now()}-${nextNum}`;
+      const newReg: SavedRegion = {
+        id: newId,
+        name: `R${nextNum}`,
+        pos1: [p1[0], p1[1], p1[2]],
+        pos2: [p2[0], p2[1], p2[2]],
+        bounds,
+      };
 
-      setSavedRegions((prev) => {
-        addingNewRegionRef.current = false;
-        const existingNums = prev
-          .map((r) => {
-            const m = /^R(\d+)$/.exec(r.name);
-            return m ? parseInt(m[1]!, 10) : 0;
-          })
-          .filter((n) => !isNaN(n) && n > 0);
-        const maxNum = existingNums.length > 0 ? Math.max(...existingNums) : 0;
-        const nextNum = Math.max(prev.length + 1, maxNum + 1);
-        const newId = `region-${Date.now()}-${nextNum}`;
-        const newReg: SavedRegion = {
-          id: newId,
-          name: `R${nextNum}`,
-          pos1: p1,
-          pos2: p2,
-          bounds,
-        };
-        setActiveRegionId(newId);
-        return [...prev, newReg];
+      const nextSnap: RegionUndoSnapshot = {
+        savedRegions: [...prevSnap.savedRegions, newReg],
+        activeRegionId: newId,
+        regionBounds: bounds,
+        regionPos1: null,
+        regionPos2: null,
+      };
+
+      applyRegionSnapshot(nextSnap);
+      runtime.store.pushCustomUndo({
+        label: `Select Region ${newReg.name}`,
+        undo: () => applyRegionSnapshot(prevSnap),
+        redo: () => applyRegionSnapshot(nextSnap),
       });
     },
-    [runtime]
+    [applyRegionSnapshot, runtime]
   );
 
   const handleAddNewRegion = useCallback(() => {
@@ -1739,69 +2124,66 @@ export default function EditorIsland() {
 
   const handleSelectRegion = useCallback(
     (regionId: string) => {
-      const target = savedRegions.find((r) => r.id === regionId);
+      const prevSnap = cloneRegionSnapshot(regionStateRef.current);
+      if (prevSnap.activeRegionId === regionId) return;
+      const target = prevSnap.savedRegions.find((r) => r.id === regionId);
       if (!target) return;
-      setActiveRegionId(target.id);
-      setRegionPos1(null);
-      setRegionPos2(null);
-      setRegionBounds(target.bounds);
-      setRegionPickMode(null);
-      addingNewRegionRef.current = false;
 
-      const minX = Math.min(target.pos1[0], target.pos2[0]);
-      const maxX = Math.max(target.pos1[0], target.pos2[0]);
-      const minY = Math.min(target.pos1[1], target.pos2[1]);
-      const maxY = Math.max(target.pos1[1], target.pos2[1]);
-      const minZ = Math.min(target.pos1[2], target.pos2[2]);
-      const maxZ = Math.max(target.pos1[2], target.pos2[2]);
+      const nextSnap: RegionUndoSnapshot = {
+        savedRegions: prevSnap.savedRegions,
+        activeRegionId: target.id,
+        regionBounds: target.bounds,
+        regionPos1: null,
+        regionPos2: null,
+      };
 
-      void runtime.store.execute({
-        type: 'selection:set',
-        selection: createCuboidSelection(
-          { minX, minY, minZ, maxX, maxY, maxZ },
-          { x: target.pos1[0], y: target.pos1[1], z: target.pos1[2] }
-        ),
+      applyRegionSnapshot(nextSnap);
+      runtime.store.pushCustomUndo({
+        label: `Select Region ${target.name}`,
+        undo: () => applyRegionSnapshot(prevSnap),
+        redo: () => applyRegionSnapshot(nextSnap),
       });
     },
-    [savedRegions, runtime]
+    [applyRegionSnapshot, runtime]
   );
 
   const handleRemoveRegion = useCallback(
     (regionId: string) => {
-      setSavedRegions((prev) => {
-        const remaining = prev.filter((r) => r.id !== regionId);
-        if (activeRegionId === regionId) {
-          const nextActive = remaining[remaining.length - 1] ?? null;
-          if (nextActive) {
-            setActiveRegionId(nextActive.id);
-            setRegionPos1(null);
-            setRegionPos2(null);
-            setRegionBounds(nextActive.bounds);
-            const minX = Math.min(nextActive.pos1[0], nextActive.pos2[0]);
-            const maxX = Math.max(nextActive.pos1[0], nextActive.pos2[0]);
-            const minY = Math.min(nextActive.pos1[1], nextActive.pos2[1]);
-            const maxY = Math.max(nextActive.pos1[1], nextActive.pos2[1]);
-            const minZ = Math.min(nextActive.pos1[2], nextActive.pos2[2]);
-            const maxZ = Math.max(nextActive.pos1[2], nextActive.pos2[2]);
-            void runtime.store.execute({
-              type: 'selection:set',
-              selection: createCuboidSelection(
-                { minX, minY, minZ, maxX, maxY, maxZ },
-                { x: nextActive.pos1[0], y: nextActive.pos1[1], z: nextActive.pos1[2] }
-              ),
-            });
-          } else {
-            setActiveRegionId(null);
-            setRegionPos1(null);
-            setRegionPos2(null);
-            setRegionBounds(null);
-            void runtime.store.execute({ type: 'selection:clear' });
-          }
+      const prevSnap = cloneRegionSnapshot(regionStateRef.current);
+      const target = prevSnap.savedRegions.find((r) => r.id === regionId);
+      if (!target) return;
+
+      const remaining = prevSnap.savedRegions.filter((r) => r.id !== regionId);
+      let nextActiveId = prevSnap.activeRegionId;
+      let nextBounds = prevSnap.regionBounds;
+
+      if (prevSnap.activeRegionId === regionId) {
+        const nextActive = remaining[remaining.length - 1] ?? null;
+        if (nextActive) {
+          nextActiveId = nextActive.id;
+          nextBounds = nextActive.bounds;
+        } else {
+          nextActiveId = null;
+          nextBounds = null;
         }
-        return remaining;
+      }
+
+      const nextSnap: RegionUndoSnapshot = {
+        savedRegions: remaining,
+        activeRegionId: nextActiveId,
+        regionBounds: nextBounds,
+        regionPos1: null,
+        regionPos2: null,
+      };
+
+      applyRegionSnapshot(nextSnap);
+      runtime.store.pushCustomUndo({
+        label: `Remove Region ${target.name}`,
+        undo: () => applyRegionSnapshot(prevSnap),
+        redo: () => applyRegionSnapshot(nextSnap),
       });
     },
-    [activeRegionId, runtime]
+    [applyRegionSnapshot, runtime]
   );
 
   const handleSetOriginFromSelectedVoxel = useCallback(() => {
@@ -1809,8 +2191,7 @@ export default function EditorIsland() {
     const project = runtime.store.getSnapshot().project;
     const placement = project.placements.find((p) => p.id === selectedVoxel.placementId);
     if (!placement) return;
-    const local = worldBlockToLocal(placement, selectedVoxel.position);
-    const newOrigin: Vec3Half = [local[0] * 2, local[1] * 2, local[2] * 2];
+    const newOrigin = computeOriginForWorldBlock(placement, selectedVoxel.position);
     void runtime.store.execute({
       type: 'placement:setOrigin',
       placementId: placement.id,
@@ -1844,14 +2225,31 @@ export default function EditorIsland() {
   }, [selectedVoxel, regionPos1, applyCuboidSelection]);
 
   const handleClearRegionSelection = useCallback(() => {
-    setRegionPos1(null);
-    setRegionPos2(null);
-    setRegionPickMode(null);
-    setRegionBounds(null);
-    setActiveRegionId(null);
-    setSavedRegions([]);
-    void runtime.store.execute({ type: 'selection:clear' });
-  }, [runtime]);
+    const prevSnap = cloneRegionSnapshot(regionStateRef.current);
+    if (
+      prevSnap.savedRegions.length === 0 &&
+      !prevSnap.regionBounds &&
+      !prevSnap.regionPos1 &&
+      !prevSnap.regionPos2
+    ) {
+      return;
+    }
+
+    const nextSnap: RegionUndoSnapshot = {
+      savedRegions: [],
+      activeRegionId: null,
+      regionBounds: null,
+      regionPos1: null,
+      regionPos2: null,
+    };
+
+    applyRegionSnapshot(nextSnap);
+    runtime.store.pushCustomUndo({
+      label: 'Clear Region Selection',
+      undo: () => applyRegionSnapshot(prevSnap),
+      redo: () => applyRegionSnapshot(nextSnap),
+    });
+  }, [applyRegionSnapshot, runtime]);
 
   const handleDeselectActiveRegion = useCallback(() => {
     if (activeRegionId) {

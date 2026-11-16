@@ -755,4 +755,98 @@ console.log('--- Test 9: Non-Zero Placement Origin Marker Highlighting Overlay -
   console.log('✓ Test 9 passed: Non-zero origin marker overlay created, styled, and drag-synced.');
 }
 
+// ============================================================================
+// Test 10: Cursor Pivot Orbit and Pan Without View Snap
+// ============================================================================
+console.log('--- Test 10: Cursor Pivot Orbit and Pan ---');
+{
+  const ctrl = new ViewportCameraController({
+    target: [0, 0, 0],
+    distance: 40,
+    yaw: 0.5,
+    pitch: 0.3,
+  });
+
+  const threeCam = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 1000);
+  ctrl.syncToThreeCamera(threeCam);
+  const camPos0 = [...ctrl.getPosition()];
+  const yaw0 = ctrl.getYaw();
+  const pitch0 = ctrl.getPitch();
+  const threeCamPos0 = threeCam.position.clone();
+  const threeCamQuat0 = threeCam.quaternion.clone();
+
+  // Set an off-center cursor pivot
+  const cursorPivot: [number, number, number] = [8, 3, -12];
+  ctrl.setCursorPivot(cursorPivot);
+
+  // 1. Camera position, yaw, pitch, and forward look vector must have zero jump (< 1e-6)
+  const camPos1 = ctrl.getPosition();
+  const posJump = Math.hypot(
+    camPos1[0] - camPos0[0],
+    camPos1[1] - camPos0[1],
+    camPos1[2] - camPos0[2]
+  );
+  assert(posJump < 1e-6, `setCursorPivot must produce zero position jump (got ${posJump})`);
+  assertEqual(ctrl.getYaw(), yaw0, 'Yaw must remain unchanged when setting cursor pivot');
+  assertEqual(ctrl.getPitch(), pitch0, 'Pitch must remain unchanged when setting cursor pivot');
+  assertDeepEqual(ctrl.getCursorPivot(), cursorPivot, 'getCursorPivot matches set pivot');
+
+  // 2. Three.js camera sync must produce zero position and orientation change
+  ctrl.syncToThreeCamera(threeCam);
+  assert(
+    threeCam.position.distanceTo(threeCamPos0) < 1e-6,
+    'Three camera position must not jump'
+  );
+  assert(
+    Math.abs(threeCam.quaternion.dot(threeCamQuat0) - 1.0) < 1e-6,
+    'Three camera orientation quaternion must not jump'
+  );
+
+  // 3. Orbit around the cursor pivot
+  // Calculate distance from cursorPivot to camera before orbit
+  const distToPivot0 = Math.hypot(
+    camPos1[0] - cursorPivot[0],
+    camPos1[1] - cursorPivot[1],
+    camPos1[2] - cursorPivot[2]
+  );
+  ctrl.orbit(0.12, 0.08);
+
+  const camPos2 = ctrl.getPosition();
+  const distToPivot1 = Math.hypot(
+    camPos2[0] - cursorPivot[0],
+    camPos2[1] - cursorPivot[1],
+    camPos2[2] - cursorPivot[2]
+  );
+  // Distance from camera to cursorPivot must be preserved during orbit
+  assert(
+    Math.abs(distToPivot0 - distToPivot1) < 1e-5,
+    `Orbit around cursorPivot must preserve distance to pivot (${distToPivot0} vs ${distToPivot1})`
+  );
+  // Camera orientation must have changed by specified deltas
+  assert(Math.abs(ctrl.getYaw() - (yaw0 + 0.12)) < 1e-5, 'Yaw updated by deltaYaw');
+  assert(Math.abs(ctrl.getPitch() - (pitch0 + 0.08)) < 1e-5, 'Pitch updated by deltaPitch');
+
+  // 4. Pan translates both look target and cursorPivot
+  const cursorPivotBeforePan = [...ctrl.getCursorPivot()!];
+  ctrl.pan(5, -2);
+  const cursorPivotAfterPan = ctrl.getCursorPivot();
+  assert(cursorPivotAfterPan !== null, 'cursorPivot exists after pan');
+  if (!cursorPivotAfterPan) throw new Error('cursorPivot must not be null after pan');
+  const pivotPanDist = Math.hypot(
+    cursorPivotAfterPan[0] - cursorPivotBeforePan[0],
+    cursorPivotAfterPan[1] - cursorPivotBeforePan[1],
+    cursorPivotAfterPan[2] - cursorPivotBeforePan[2]
+  );
+  assert(
+    Math.abs(pivotPanDist - Math.hypot(5, -2)) < 1e-5,
+    'Pan must translate cursorPivot by exact delta'
+  );
+
+  // 5. Clearing cursor pivot with null reverts to standard orbit target
+  ctrl.setCursorPivot(null);
+  assertEqual(ctrl.getCursorPivot(), null, 'cursorPivot is null after clearing');
+
+  console.log('✓ Test 10 passed: Cursor pivot orbit and pan preserve camera view without jump.');
+}
+
 console.log('\nAll Slice E3.2 Viewport tests passed successfully!');

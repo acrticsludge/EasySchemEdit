@@ -24,6 +24,12 @@ import {
   ProjectStoreError,
   packVxprojArchive,
   unpackVxprojArchive,
+  packVxprojArchiveAsync,
+  unpackVxprojArchiveAsync,
+  sha256Hex,
+  sha256HexAsync,
+  sha256Bytes,
+  sha256BytesAsync,
   saveLibraryEntry,
   getLibraryEntry,
   listLibraryEntries,
@@ -58,6 +64,22 @@ function assertEqual(actual: unknown, expected: unknown, message: string): void 
 function assertThrows(fn: () => unknown, expectedPattern: RegExp, message: string): void {
   try {
     fn();
+    failed++;
+    console.error(`FAIL: ${message} — expected exception matching ${expectedPattern}, but nothing was thrown`);
+  } catch (err) {
+    const errStr = String(err);
+    if (expectedPattern.test(errStr)) {
+      passed++;
+    } else {
+      failed++;
+      console.error(`FAIL: ${message} — exception ${errStr} did not match pattern ${expectedPattern}`);
+    }
+  }
+}
+
+async function assertRejects(fn: () => Promise<unknown>, expectedPattern: RegExp, message: string): Promise<void> {
+  try {
+    await fn();
     failed++;
     console.error(`FAIL: ${message} — expected exception matching ${expectedPattern}, but nothing was thrown`);
   } catch (err) {
@@ -311,6 +333,101 @@ async function runTests(): Promise<void> {
       /PATH_TRAVERSAL/,
       'T2: path traversal rejected on unpack with PATH_TRAVERSAL'
     );
+
+    // --- Async Round-Trip, Interop & Tamper Tests ---
+    const asyncZipBytes = await packVxprojArchiveAsync(project);
+    assert(asyncZipBytes.length > 0, 'T2: packVxprojArchiveAsync returns non-empty byte array');
+
+    const asyncRestored = await unpackVxprojArchiveAsync(asyncZipBytes);
+    assertEqual(asyncRestored.id, project.id, 'T2: async unpacked project id matches');
+    assertEqual(asyncRestored.name, project.name, 'T2: async unpacked project name matches');
+    assertEqual(asyncRestored.revision, project.revision, 'T2: async unpacked revision matches');
+    assertEqual(asyncRestored.overlapPolicy, project.overlapPolicy, 'T2: async unpacked overlapPolicy matches');
+    assertEqual(asyncRestored.conflictOverlay, project.conflictOverlay, 'T2: async unpacked conflictOverlay matches');
+    assertEqual(asyncRestored.placements.length, 1, 'T2: async placements length matches');
+
+    const ap = asyncRestored.placements[0];
+    assertEqual(ap.id, 'p-roundtrip', 'T2: async placement id matches');
+    assertEqual(ap.name, 'Watchtower', 'T2: async placement name matches');
+    assertEqual(ap.transform.rotationY, 180, 'T2: async transform rotationY matches');
+    assertEqual(ap.transform.mirror, 'x', 'T2: async transform mirror matches');
+    assertEqual(ap.locked, true, 'T2: async placement locked state matches');
+    assertEqual(ap.eraseTombstones.has('1_2_4'), true, 'T2: async eraseTombstones set restored');
+    assertEqual(
+      (ap.ancillary.blockEntities.get('1_2_3')?.nbt as any)?.value?.id?.value,
+      'minecraft:beacon',
+      'T2: async blockEntities Map restored'
+    );
+
+    const asyncRestoredChunk = ap.volume.chunks.get('1_-2_3');
+    assert(asyncRestoredChunk !== undefined, 'T2: async chunk restored in volume chunks map');
+    assertEqual(asyncRestoredChunk?.palette[1]?.id, 'minecraft:stone_bricks', 'T2: async chunk palette entry restored');
+    assertEqual(asyncRestoredChunk?.indices[42], 1, 'T2: async chunk indices array data restored');
+
+    // Interop 1: sync-packed archive unpacked by async unpacker
+    const interopFromSync = await unpackVxprojArchiveAsync(zipBytes);
+    assertEqual(interopFromSync.id, project.id, 'T2: sync-packed archive unpacked by async unpacker');
+    assertEqual(
+      interopFromSync.placements[0].volume.chunks.get('1_-2_3')?.palette[1]?.id,
+      'minecraft:stone_bricks',
+      'T2: sync-packed chunk palette verified by async unpacker'
+    );
+
+    // Interop 2: async-packed archive unpacked by sync unpacker
+    const interopFromAsync = unpackVxprojArchive(asyncZipBytes);
+    assertEqual(interopFromAsync.id, project.id, 'T2: async-packed archive unpacked by sync unpacker');
+    assertEqual(
+      interopFromAsync.placements[0].volume.chunks.get('1_-2_3')?.palette[1]?.id,
+      'minecraft:stone_bricks',
+      'T2: async-packed chunk palette verified by sync unpacker'
+    );
+
+    // Async tampering test: tamper with a byte in chunk binary
+    const asyncUnzipped = unzipSync(asyncZipBytes);
+    assert(Boolean(asyncUnzipped[chunkPath]), 'T2: chunk file found in async unzipped structure');
+    const asyncTamperedChunk = new Uint8Array(asyncUnzipped[chunkPath]);
+    asyncTamperedChunk[20] ^= 0xff;
+    asyncUnzipped[chunkPath] = asyncTamperedChunk;
+    const asyncTamperedZip = zipSync(asyncUnzipped);
+
+    await assertRejects(
+      async () => await unpackVxprojArchiveAsync(asyncTamperedZip),
+      /CHECKSUM_MISMATCH/,
+      'T2: tampered zip entry is rejected on async unpack with CHECKSUM_MISMATCH'
+    );
+
+    // Async tampering test: unexpected file
+    const asyncUnzippedWithExtra = unzipSync(asyncZipBytes);
+    asyncUnzippedWithExtra['malicious.txt'] = new TextEncoder().encode('bad');
+    const asyncExtraZip = zipSync(asyncUnzippedWithExtra);
+    await assertRejects(
+      async () => await unpackVxprojArchiveAsync(asyncExtraZip),
+      /UNEXPECTED_ENTRY/,
+      'T2: unexpected file in zip rejected on async unpack with UNEXPECTED_ENTRY'
+    );
+
+    // Async tampering test: path traversal attempt
+    const asyncUnzippedTraversal = unzipSync(asyncZipBytes);
+    asyncUnzippedTraversal['../escaped.txt'] = new TextEncoder().encode('bad');
+    const asyncTraversalZip = zipSync(asyncUnzippedTraversal);
+    await assertRejects(
+      async () => await unpackVxprojArchiveAsync(asyncTraversalZip),
+      /PATH_TRAVERSAL/,
+      'T2: path traversal rejected on async unpack with PATH_TRAVERSAL'
+    );
+
+    // WebCrypto SHA-256 parity check
+    const testData = new TextEncoder().encode('EasySchemEdit WebCrypto Verification 2026');
+    const syncHex = sha256Hex(testData);
+    const asyncHex = await sha256HexAsync(testData);
+    assertEqual(asyncHex, syncHex, 'T2: sha256HexAsync matches sha256Hex exactly');
+    const syncBytes = sha256Bytes(testData);
+    const asyncBytes = await sha256BytesAsync(testData);
+    let bytesMatch = syncBytes.length === asyncBytes.length;
+    for (let i = 0; i < syncBytes.length; i++) {
+      if (syncBytes[i] !== asyncBytes[i]) bytesMatch = false;
+    }
+    assert(bytesMatch, 'T2: sha256BytesAsync matches sha256Bytes byte-for-byte');
   }
 
   console.log('--- Test 3: Storage Budget & Quota Handling ---');

@@ -282,15 +282,19 @@ function clonePlacement(p: Placement): Placement {
   };
 }
 
+function cloneChunk(chunk: VoxelChunk): VoxelChunk {
+  return {
+    key: chunk.key,
+    palette: chunk.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
+    indices: chunk.indices.slice(),
+    revision: chunk.revision,
+  };
+}
+
 function cloneVolume(vol: ChunkedVoxelVolume): ChunkedVoxelVolume {
   const chunks = new Map<string, VoxelChunk>();
   for (const [key, chunk] of vol.chunks) {
-    chunks.set(key, {
-      key: chunk.key,
-      palette: chunk.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
-      indices: chunk.indices.slice(),
-      revision: chunk.revision,
-    });
+    chunks.set(key, cloneChunk(chunk));
   }
   return {
     bounds: {
@@ -333,8 +337,25 @@ function snapshotPlacementMetadata(p: Placement): PlacementMetadata {
   };
 }
 
+const captureMetadata = snapshotPlacementMetadata;
+
 function areIndicesEqual(a: Uint8Array | Uint16Array, b: Uint8Array | Uint16Array): boolean {
+  if (a === b) return true;
   if (a.length !== b.length) return false;
+  if (
+    a.BYTES_PER_ELEMENT === b.BYTES_PER_ELEMENT &&
+    a.byteOffset % 4 === 0 &&
+    b.byteOffset % 4 === 0 &&
+    (a.byteLength & 3) === 0
+  ) {
+    const words = a.byteLength >> 2;
+    const u32a = new Uint32Array(a.buffer, a.byteOffset, words);
+    const u32b = new Uint32Array(b.buffer, b.byteOffset, words);
+    for (let i = 0; i < words; i++) {
+      if (u32a[i] !== u32b[i]) return false;
+    }
+    return true;
+  }
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false;
   }
@@ -342,6 +363,7 @@ function areIndicesEqual(a: Uint8Array | Uint16Array, b: Uint8Array | Uint16Arra
 }
 
 function arePalettesEqual(a: BlockStateId[], b: BlockStateId[]): boolean {
+  if (a === b) return true;
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
     const s1 = a[i]!;
@@ -355,6 +377,66 @@ function arePalettesEqual(a: BlockStateId[], b: BlockStateId[]): boolean {
     }
   }
   return true;
+}
+
+export function chunksEqual(a: VoxelChunk, b: VoxelChunk): boolean {
+  if (a === b) return true;
+  if (a.key !== b.key) return false;
+  if (a.palette.length !== b.palette.length) return false;
+  if (a.indices.length !== b.indices.length) return false;
+  return arePalettesEqual(a.palette, b.palette) && areIndicesEqual(a.indices, b.indices);
+}
+
+function snapshotChunkDelta(c: VoxelChunk): ChunkDeltaSnapshot {
+  return {
+    key: c.key,
+    palette: c.palette.map((s) => ({ id: s.id, props: { ...s.props } })),
+    indices: c.indices.slice(),
+  };
+}
+
+function clonePlacementSelective(
+  nextP: Placement,
+  prevP?: Placement,
+  modifiedChunkKeys?: Set<string>,
+): Placement {
+  const cloned = clonePlacementShallow(nextP);
+  const chunks = new Map<string, VoxelChunk>();
+  const prevChunks = prevP?.volume.chunks;
+
+  for (const [key, nextChunk] of nextP.volume.chunks) {
+    if (prevChunks) {
+      if (modifiedChunkKeys) {
+        if (!modifiedChunkKeys.has(key)) {
+          const prevChunk = prevChunks.get(key);
+          if (prevChunk) {
+            chunks.set(key, prevChunk);
+            continue;
+          }
+        }
+      } else {
+        const prevChunk = prevChunks.get(key);
+        if (prevChunk && chunksEqual(prevChunk, nextChunk)) {
+          chunks.set(key, prevChunk);
+          continue;
+        }
+      }
+    }
+    chunks.set(key, cloneChunk(nextChunk));
+  }
+
+  cloned.volume = {
+    bounds: {
+      min: [...nextP.volume.bounds.min] as Vec3i,
+      maxExclusive: [...nextP.volume.bounds.maxExclusive] as Vec3i,
+    },
+    chunkSize: nextP.volume.chunkSize,
+    nonAirCount: nextP.volume.nonAirCount,
+    paletteCardinality: nextP.volume.paletteCardinality,
+    chunks,
+  };
+
+  return cloned;
 }
 
 function fastPlacementWorldBounds(
@@ -585,6 +667,66 @@ export class EditorSession {
    */
   public clearClipboard(): void {
     this.clipboard.clear();
+  }
+
+  /**
+   * Replace all clipboard entries and notify listeners.
+   */
+  public replaceClipboardEntries(entries: ClipboardEntry[]): void {
+    this.clipboard.replaceEntries(entries);
+    this.notify();
+  }
+
+  /**
+   * Replace the active project state atomically.
+   * Resets history and caches to avoid cross-project memory retention.
+   */
+  public replaceProject(project: Project, options?: { takeOwnership?: boolean }): void {
+    this.project = options?.takeOwnership ? project : cloneProject(project);
+    this.history = new HistoryManager({
+      projectId: this.project.id,
+      maxEntries: 100,
+    });
+    this.cachedResults.clear();
+    this.selection = createSelectionState(
+      'cuboid',
+      createCuboidSelection({ minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 }, { x: 0, y: 0, z: 0 }),
+      { x: 0, y: 0, z: 0 },
+    );
+    this.emitEvent({
+      revision: this.project.revision,
+      kind: 'project:replace',
+      placementIds: this.project.placements.map((p) => p.id),
+      chunkKeys: [],
+    });
+  }
+
+  /**
+   * Updates selection state directly without incrementing project revision or logging history.
+   */
+  public setSelectionQuiet(selection: Selection | null, anchor?: SelectionAnchor): void {
+    if (!selection) {
+      this.selection = createSelectionState(
+        'cuboid',
+        createCuboidSelection({ minX: 0, minY: 0, minZ: 0, maxX: 0, maxY: 0, maxZ: 0 }, { x: 0, y: 0, z: 0 }),
+        { x: 0, y: 0, z: 0 },
+      );
+    } else {
+      this.selection = createSelectionState(
+        selection.kind,
+        selection,
+        anchor ?? { x: 0, y: 0, z: 0 },
+      );
+    }
+  }
+
+  private notify(kind: string = 'clipboard:sync', changedInfo?: CommandChangedInfo): void {
+    this.emitEvent({
+      revision: this.project.revision ?? 1,
+      kind,
+      placementIds: changedInfo?.placementIds ?? [],
+      chunkKeys: changedInfo?.chunkKeys ?? [],
+    });
   }
 
   canUndo(): boolean {
@@ -966,6 +1108,222 @@ export class EditorSession {
         changed: changedInfo,
       },
     };
+  }
+
+  /**
+   * Compare two chunks for equality. Fast path: checks reference equality,
+   * key, palette lengths/contents, and indices arrays.
+   */
+  public chunksEqual(a: VoxelChunk, b: VoxelChunk): boolean {
+    return chunksEqual(a, b);
+  }
+
+  /**
+   * Apply an external/remote project state (e.g. from Cloud MCP or another agent).
+   * Diffs against current project placements to record an atomic, reversible history entry
+   * so remote edits seamlessly share undo/redo with local user edits.
+   *
+   * Skips cloning unchanged chunks in large schematics via chunksEqual.
+   */
+  public applyRemoteProjectUpdate(
+    nextProject: Project,
+    description = 'AI Agent Edit',
+  ): { changed: CommandChangedInfo } {
+    const prevPlacements = this.project.placements;
+    const nextPlacements = nextProject.placements;
+
+    const prevMap = new Map(prevPlacements.map((p) => [p.id, p]));
+    const nextMap = new Map(nextPlacements.map((p) => [p.id, p]));
+
+    const addedPlacements: Array<{ index: number; placement: Placement }> = [];
+    const deletedPlacements: Array<{ index: number; placement: Placement }> = [];
+    const placementDeltas: PlacementDelta[] = [];
+    const changedChunkKeys = new Set<string>();
+    const changedPlacementIds = new Set<string>();
+    const placementModifiedChunks = new Map<string, Set<string>>();
+    let changedCells = 0;
+
+    // 1. Detect added placements (in nextProject, not in this.project)
+    for (let i = 0; i < nextPlacements.length; i++) {
+      const nextP = nextPlacements[i]!;
+      if (!prevMap.has(nextP.id)) {
+        addedPlacements.push({ index: i, placement: clonePlacement(nextP) });
+        changedPlacementIds.add(nextP.id);
+        for (const k of nextP.volume.chunks.keys()) {
+          changedChunkKeys.add(k);
+        }
+        changedCells += nextP.volume.nonAirCount;
+      }
+    }
+
+    // 2. Detect deleted placements (in this.project, not in nextProject)
+    for (let i = 0; i < prevPlacements.length; i++) {
+      const prevP = prevPlacements[i]!;
+      if (!nextMap.has(prevP.id)) {
+        deletedPlacements.push({ index: i, placement: clonePlacement(prevP) });
+        changedPlacementIds.add(prevP.id);
+        for (const k of prevP.volume.chunks.keys()) {
+          changedChunkKeys.add(k);
+        }
+        changedCells += prevP.volume.nonAirCount;
+      }
+    }
+
+    // 3. Detect modified placements (present in both)
+    for (const [id, prevP] of prevMap) {
+      const nextP = nextMap.get(id);
+      if (!nextP) continue;
+
+      const metadataBefore = captureMetadata(prevP);
+      const metadataAfter = captureMetadata(nextP);
+
+      const metadataChanged =
+        metadataBefore.name !== metadataAfter.name ||
+        metadataBefore.visible !== metadataAfter.visible ||
+        metadataBefore.locked !== metadataAfter.locked ||
+        metadataBefore.lockReason !== metadataAfter.lockReason ||
+        metadataBefore.origin[0] !== metadataAfter.origin[0] ||
+        metadataBefore.origin[1] !== metadataAfter.origin[1] ||
+        metadataBefore.origin[2] !== metadataAfter.origin[2] ||
+        metadataBefore.transform.translation[0] !== metadataAfter.transform.translation[0] ||
+        metadataBefore.transform.translation[1] !== metadataAfter.transform.translation[1] ||
+        metadataBefore.transform.translation[2] !== metadataAfter.transform.translation[2] ||
+        metadataBefore.transform.rotationY !== metadataAfter.transform.rotationY ||
+        metadataBefore.transform.mirror !== metadataAfter.transform.mirror;
+
+      if (metadataChanged) {
+        changedPlacementIds.add(id);
+      }
+
+      const chunkDeltas: ChunkDelta[] = [];
+      const prevChunks = prevP.volume.chunks;
+      const nextChunks = nextP.volume.chunks;
+
+      // Deleted chunks
+      for (const [k, pc] of prevChunks) {
+        if (!nextChunks.has(k)) {
+          chunkDeltas.push({
+            key: k,
+            before: snapshotChunkDelta(pc),
+            after: null,
+          });
+          changedChunkKeys.add(k);
+          changedPlacementIds.add(id);
+          changedCells += pc.indices.length;
+          let set = placementModifiedChunks.get(id);
+          if (!set) {
+            set = new Set<string>();
+            placementModifiedChunks.set(id, set);
+          }
+          set.add(k);
+        }
+      }
+
+      // Added or modified chunks
+      for (const [k, nc] of nextChunks) {
+        const pc = prevChunks.get(k);
+        if (!pc) {
+          chunkDeltas.push({
+            key: k,
+            before: null,
+            after: snapshotChunkDelta(nc),
+          });
+          changedChunkKeys.add(k);
+          changedPlacementIds.add(id);
+          changedCells += nc.indices.length;
+          let set = placementModifiedChunks.get(id);
+          if (!set) {
+            set = new Set<string>();
+            placementModifiedChunks.set(id, set);
+          }
+          set.add(k);
+        } else {
+          if (!chunksEqual(pc, nc)) {
+            chunkDeltas.push({
+              key: k,
+              before: snapshotChunkDelta(pc),
+              after: snapshotChunkDelta(nc),
+            });
+            changedChunkKeys.add(k);
+            changedPlacementIds.add(id);
+            for (let i = 0; i < pc.indices.length; i++) {
+              if (pc.indices[i] !== nc.indices[i]) changedCells++;
+            }
+            let set = placementModifiedChunks.get(id);
+            if (!set) {
+              set = new Set<string>();
+              placementModifiedChunks.set(id, set);
+            }
+            set.add(k);
+          }
+        }
+      }
+
+      if (metadataChanged || chunkDeltas.length > 0) {
+        placementDeltas.push({
+          placementId: id,
+          metadataBefore,
+          metadataAfter,
+          chunkDeltas,
+        });
+      }
+    }
+
+    const oldRevision = this.project.revision;
+    const newRevision = Math.max(oldRevision + 1, nextProject.revision ?? 0);
+
+    const hasChanges =
+      addedPlacements.length > 0 ||
+      deletedPlacements.length > 0 ||
+      placementDeltas.length > 0;
+
+    if (hasChanges) {
+      const delta: SessionHistoryDelta = {
+        commandType: 'mcp:sync',
+        beforeRevision: oldRevision,
+        afterRevision: newRevision,
+        placementDeltas,
+        addedPlacements,
+        deletedPlacements,
+        selectionBefore: { ...this.selection },
+        selectionAfter: { ...this.selection },
+      };
+
+      const historyEntry: HistoryEntry & { commandType?: string; description?: string; reversible?: boolean } = {
+        id: `mcp-sync-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        type: 'edit',
+        commandType: 'mcp:sync',
+        description,
+        projectId: this.project.id,
+        timestamp: Date.now(),
+        beforeRevision: oldRevision,
+        afterRevision: newRevision,
+        data: delta,
+        reversible: true,
+      };
+
+      this.history.record(historyEntry);
+    }
+
+    // Update placements with selective cloning (skip cloning unchanged chunks)
+    this.project.placements = nextProject.placements.map((nextP) =>
+      clonePlacementSelective(nextP, prevMap.get(nextP.id), placementModifiedChunks.get(nextP.id)),
+    );
+
+    if (nextProject.name) this.project.name = nextProject.name;
+    if (nextProject.overlapPolicy) this.project.overlapPolicy = nextProject.overlapPolicy;
+    if (nextProject.conflictOverlay) this.project.conflictOverlay = nextProject.conflictOverlay;
+    this.project.revision = newRevision;
+    this.project.metadata.modifiedAt = new Date().toISOString();
+
+    const changedInfo: CommandChangedInfo = {
+      cells: changedCells,
+      placementIds: Array.from(changedPlacementIds),
+      chunkKeys: Array.from(changedChunkKeys),
+    };
+
+    this.notify('mcp:sync', changedInfo);
+    return { changed: changedInfo };
   }
 
   /**

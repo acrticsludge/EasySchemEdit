@@ -19,6 +19,8 @@ import {
   type RecoveryEntry,
   packVxprojArchive,
   unpackVxprojArchive,
+  packVxprojArchiveAsync,
+  unpackVxprojArchiveAsync,
   saveLibraryEntry,
   getLibraryEntry,
   listLibraryEntries,
@@ -224,8 +226,8 @@ export class ProjectPersistenceController {
    * Replaces the currently active project in the EditorSession, updating
    * placements, metadata, and notifying all listeners (Toolbar, Outliner, Viewport).
    */
-  public async replaceProjectInSession(project: Project): Promise<void> {
-    await this.syncProjectIntoStore(project);
+  public async replaceProjectInSession(project: Project, takeOwnership = false): Promise<void> {
+    await this.syncProjectIntoStore(project, takeOwnership);
     this.markClean();
   }
 
@@ -257,7 +259,7 @@ export class ProjectPersistenceController {
     }
 
     const project = this.store.getSnapshot().project;
-    const zipBytes = packVxprojArchive(project);
+    const zipBytes = await packVxprojArchiveAsync(project);
     const placementCount = project.placements.length;
 
     let summary: CloudProjectSummary;
@@ -291,7 +293,7 @@ export class ProjectPersistenceController {
     // Mirror to IndexedDB as local cache if available
     if (typeof indexedDB !== 'undefined') {
       try {
-        await this.saveCurrentProject();
+        await this.saveCurrentProject(zipBytes);
       } catch (err) {
         console.warn('Mirroring cloud save to IndexedDB failed:', err);
       }
@@ -306,7 +308,7 @@ export class ProjectPersistenceController {
    */
   public async openFromCloud(projectId: string): Promise<Project> {
     const bytes = await loadCloudProjectArchive(projectId);
-    const project = unpackVxprojArchive(bytes);
+    const project = await unpackVxprojArchiveAsync(bytes);
     try {
       const meta = await getCloudProject(projectId);
       if (meta && meta.name) {
@@ -315,7 +317,7 @@ export class ProjectPersistenceController {
     } catch {
       // Non-fatal if metadata fetch fails; keep archive name
     }
-    await this.syncProjectIntoStore(project);
+    await this.syncProjectIntoStore(project, true);
     this.activeCloudProjectId = projectId;
     this.markClean();
     return project;
@@ -394,7 +396,7 @@ export class ProjectPersistenceController {
     }
 
     const project = this.store.getSnapshot().project;
-    const zipBytes = packVxprojArchive(project);
+    const zipBytes = await packVxprojArchiveAsync(project);
     const placementCount = project.placements.length;
     const nextRevision = (this.lastSavedRevision || project.revision || 1) + 1;
 
@@ -419,7 +421,7 @@ export class ProjectPersistenceController {
     // Mirror to IndexedDB as local cache if available
     if (typeof indexedDB !== 'undefined') {
       try {
-        await this.saveCurrentProject();
+        await this.saveCurrentProject(zipBytes);
       } catch (err) {
         console.warn('Mirroring schematic save to IndexedDB failed:', err);
       }
@@ -434,7 +436,7 @@ export class ProjectPersistenceController {
    */
   public async openSchematicFromCloud(schematicId: string): Promise<Project> {
     const bytes = await loadSchematicArchiveApi(schematicId);
-    const project = unpackVxprojArchive(bytes);
+    const project = await unpackVxprojArchiveAsync(bytes);
     try {
       const meta = await getSchematicApi(schematicId);
       if (meta && meta.name) {
@@ -446,7 +448,7 @@ export class ProjectPersistenceController {
     } catch {
       // Non-fatal if metadata fetch fails; keep archive name
     }
-    await this.replaceProjectInSession(project);
+    await this.replaceProjectInSession(project, true);
     this.activeCloudSchematicId = schematicId;
     this.markClean();
     return project;
@@ -461,9 +463,9 @@ export class ProjectPersistenceController {
    * Full ChunkedVoxelVolume chunks, palettes, transforms, and ancillary data
    * are serialized into a .vxproj ZIP archive and encoded in the archive payload.
    */
-  public async saveCurrentProject(): Promise<{ revision: number; savedAt: string }> {
+  public async saveCurrentProject(prePackedBytes?: Uint8Array): Promise<{ revision: number; savedAt: string }> {
     const project = this.store.getSnapshot().project;
-    const zipBytes = packVxprojArchive(project);
+    const zipBytes = prePackedBytes ?? (await packVxprojArchiveAsync(project));
     const existing = await getProject(project.id);
     const nextRevision = existing ? existing.revision + 1 : (project.revision || 1);
     const savedAt = new Date().toISOString();
@@ -511,12 +513,12 @@ export class ProjectPersistenceController {
     const parsed = JSON.parse(archive.projectJson);
     if (parsed && parsed.format === 'vxproj-base64' && typeof parsed.payload === 'string') {
       const bytes = base64ToBytes(parsed.payload);
-      project = unpackVxprojArchive(bytes);
+      project = await unpackVxprojArchiveAsync(bytes);
     } else {
       project = parsed as Project;
     }
 
-    await this.syncProjectIntoStore(project);
+    await this.syncProjectIntoStore(project, true);
     this.lastSavedRevision = archive.revision;
     return project;
   }
@@ -611,12 +613,12 @@ export class ProjectPersistenceController {
         try {
           base64Payload = await this.packWithWorker(this.autosaveWorker, project);
         } catch (workerErr) {
-          console.warn('Autosave worker failed, falling back to sync pack:', workerErr);
-          const zipBytes = packVxprojArchive(project);
+          console.warn('Autosave worker failed, falling back to async pack:', workerErr);
+          const zipBytes = await packVxprojArchiveAsync(project);
           base64Payload = bytesToBase64(zipBytes);
         }
       } else {
-        const zipBytes = packVxprojArchive(project);
+        const zipBytes = await packVxprojArchiveAsync(project);
         base64Payload = bytesToBase64(zipBytes);
       }
 
@@ -740,12 +742,12 @@ export class ProjectPersistenceController {
     const parsed = JSON.parse(entry.archive);
     if (parsed && parsed.format === 'vxproj-base64' && typeof parsed.payload === 'string') {
       const bytes = base64ToBytes(parsed.payload);
-      project = unpackVxprojArchive(bytes);
+      project = await unpackVxprojArchiveAsync(bytes);
     } else {
       project = parsed as Project;
     }
 
-    await this.syncProjectIntoStore(project);
+    await this.syncProjectIntoStore(project, true);
     return project;
   }
 
@@ -778,8 +780,8 @@ export class ProjectPersistenceController {
    * Unpacks a .vxproj ZIP archive buffer and restores it into the session store.
    */
   public async importVxprojBytes(bytes: Uint8Array): Promise<Project> {
-    const project = unpackVxprojArchive(bytes);
-    await this.syncProjectIntoStore(project);
+    const project = await unpackVxprojArchiveAsync(bytes);
+    await this.syncProjectIntoStore(project, true);
     this.lastSavedRevision = project.revision;
     return project;
   }
@@ -953,7 +955,13 @@ export class ProjectPersistenceController {
    * Synchronizes a Project object into the session store by clearing existing
    * placements and adding all project placements via commands.
    */
-  private async syncProjectIntoStore(project: Project): Promise<void> {
+  private async syncProjectIntoStore(project: Project, takeOwnership = false): Promise<void> {
+    if (this.store.session && typeof (this.store.session as any).replaceProject === 'function') {
+      (this.store.session as any).replaceProject(project, { takeOwnership });
+      (this.store as any).updateSnapshotAndNotify?.();
+      return;
+    }
+
     const currentPlacements = [...this.store.getSnapshot().project.placements];
 
     // Remove existing placements

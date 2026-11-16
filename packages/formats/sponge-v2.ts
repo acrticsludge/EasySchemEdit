@@ -241,8 +241,12 @@ export class SpongeV2Adapter implements FormatAdapter {
       paletteCardinality: chunks.size > 0 ? Array.from(chunks.values())[0].palette.length : 1,
     };
 
-    const transform: Transform = { translation: offset as Vec3i, rotationY: 0, mirror: 'none' };
-    const origin: Vec3Half = [(offset[0] * 2) as number, (offset[1] * 2) as number, (offset[2] * 2) as number] as Vec3Half;
+    const transform: Transform = { translation: [0, 0, 0], rotationY: 0, mirror: 'none' };
+    const origin: Vec3Half = [
+      ((-offset[0] * 2) || 0) as number,
+      ((-offset[1] * 2) || 0) as number,
+      ((-offset[2] * 2) || 0) as number,
+    ] as Vec3Half;
 
     const ancillary = {
       blockEntities: new Map<string, { position: [number, number, number]; nbt: NbtTag }>(),

@@ -420,6 +420,14 @@ export class ClipboardManager {
   clear(): void {
     this.clipboard.clear();
   }
+
+  // Replace all clipboard entries.
+  replaceEntries(entries: ClipboardEntry[]): void {
+    this.clipboard.clear();
+    for (const entry of entries) {
+      this.clipboard.set(entry.id, entry);
+    }
+  }
 }
 
 // ============================================================================

@@ -48,3 +48,32 @@ Reference Plan: `docs/plans/e2e-rebuild/index.md`
 - **`apps/web` build (`pnpm --filter @easyschemedit/web build`)**: Broken prior to slice E0.1 due to non-existent module alias `packages/domain/src/index.ts` in `astro.config.mjs`, committed `.astro/` generated files causing Windows file lock / EPERM errors, and unlinked package imports. Fixed in slice E0.1.
 - **Root `pnpm typecheck`**: Incomplete prior to slice E0.1; skipped `operations`, `renderer`, `mcp-companion`, and `web`. Fixed in slice E0.1 to cover all 10 monorepo packages.
 
+---
+
+# 2026-11-15 Slice M5 Baseline (Visual & Structural Intelligence Engine)
+
+## Git state
+- **Branch**: `master`
+- **Base commit**: `c1e220b257910e19cc96f296391161ba92e40083`
+- **Pre-existing untracked files**: `Augustograd-cleaned-v2.schem`, `apps/web.zip`
+- **Baseline verification**: `pnpm typecheck` exit 0 (all 10 packages), `pnpm test` 101/101 test files PASS.
+
+---
+
+# 2026-11-16 Cloud MCP Worker 503 Fix Baseline
+
+## Git state
+- **Branch**: `master`
+- **Commit**: `c1e220b`
+- **Working tree**: dirty — 32 modified and 6 untracked paths (pre-existing user work), including `apps/web/src/server/mcp-server.ts`, `apps/web/__tests__/slice-m2-cloud-mcp.test.ts`, `apps/mcp-companion/src/tool-schemas.ts`, `docs/agent/baseline.md`.
+- **User decision**: commit whole tree; pre-existing changes are intentionally included in the fix commit.
+
+## Baseline verification (before any edit)
+- `pnpm typecheck`: exit 0 (all 10 workspace packages).
+- `pnpm test`: 104/104 test files PASS, 19.69s.
+
+## Observed failure
+- `tools/call inspect_region` against `https://easyschemedit.pages.dev/api/mcp` returned Cloudflare **Error 1102** (Worker exceeded CPU/memory), non-retryable.
+- Client sent `maxBlocks: 200000`; `apps/web/src/server/mcp-server.ts` uses the value without a cap, and the same path accepts uncapped `maxStructures` and render `width`/`height`.
+
+

@@ -167,6 +167,18 @@ console.log('=== Slice M3: MCP Companion Builds, Voxel Ops & Cloud Proxy Tests =
   assertEqual(towerData.applied, true, 'm3.2: tower applied');
   assert(towerData.changedCells > 50, 'm3.2: tower generated cells');
   assertEqual(session.snapshot().placements.length, 2, 'm3.2: second placement created');
+
+  // select_structure selects structure and preserves savedRegions
+  const selStructRes = await client.callTool({
+    name: 'select_structure',
+    arguments: { query: 'house' },
+  });
+  assert(!selStructRes.isError, 'm3.2: select_structure house succeeded');
+  const selStructData = parseContentJson(selStructRes);
+  assertEqual(selStructData.ok, true, 'm3.2: select_structure ok is true');
+  assert(selStructData.structure !== undefined, 'm3.2: structure found');
+  assert(Array.isArray(selStructData.savedRegions), 'm3.2: savedRegions array returned');
+  assert(selStructData.activeRegionId === selStructData.structure.id, 'm3.2: activeRegionId matches matched structure');
 }
 
 // 3. 3D Geometric Shapes: generate_shape (sphere, cylinder)
@@ -439,6 +451,25 @@ console.log('=== Slice M3: MCP Companion Builds, Voxel Ops & Cloud Proxy Tests =
   assertEqual(remRes.isError, false, 'm3.8: remove_region succeeded');
   const listSel3 = await client.callTool({ name: 'list_selections', arguments: {} });
   assertEqual(parseContentJson(listSel3).total, 1, 'm3.8: 1 region remaining');
+
+  // pos1 + pos2 support and preservation
+  const selPos = await client.callTool({
+    name: 'create_selection',
+    arguments: { pos1: [0, 64, 0], pos2: [15, 79, 15], name: 'Pos Region' },
+  });
+  assertEqual(selPos.isError, false, 'm3.8: create_selection with pos1/pos2 succeeded');
+  const listSel4 = await client.callTool({ name: 'list_selections', arguments: {} });
+  assertEqual(parseContentJson(listSel4).total, 2, 'm3.8: 2 regions after appending pos region');
+
+  // replaceExisting replaces all
+  const selReplace = await client.callTool({
+    name: 'create_selection',
+    arguments: { bounds: [0, 0, 0, 5, 5, 5], name: 'Sole Region', replaceExisting: true },
+  });
+  assertEqual(selReplace.isError, false, 'm3.8: create_selection with replaceExisting succeeded');
+  const listSel5 = await client.callTool({ name: 'list_selections', arguments: {} });
+  assertEqual(parseContentJson(listSel5).total, 1, 'm3.8: 1 region after replaceExisting');
+  assertEqual(parseContentJson(listSel5).activeRegionId, 'Sole Region', 'm3.8: Sole Region is active');
 }
 
 // 9. autoConfirm: true on confirmation-required tools

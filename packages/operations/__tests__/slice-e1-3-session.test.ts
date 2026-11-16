@@ -10,7 +10,7 @@ import { voxelIndex } from '../../domain/volume.ts';
 import type { Placement, Project } from '../../domain/placement.ts';
 import { getBlock } from '../../domain/volume-api.ts';
 import { createCuboidSelection, createSelectionState } from '../src/selection.ts';
-import { EditorSession } from '../src/session.ts';
+import { EditorSession, chunksEqual } from '../src/session.ts';
 import type { SessionChangeEvent } from '../src/session-types.ts';
 
 let passed = 0;
@@ -719,6 +719,195 @@ console.log('--- Test 16: Large Schematic Region Optimization ---');
   assert(!!redoRes?.ok, 'Redo succeeded on large schematic');
   const chunk0AfterRedo = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
   assert(chunk0AfterRedo.indices[voxelIndex(1, 1, 1)] !== 0, 'Block restored on redo');
+}
+
+// ── Test 17: Interleaved User Edit and AI Remote Project Update (Shared Undo/Redo) ──
+console.log('--- Test 17: Interleaved User Edit and AI Remote Project Update (Shared Undo/Redo) ---');
+{
+  const project = makeTestProject(); // p1 at [0,0,0] with stone at [1,1,1], p2 at [16,0,0] with dirt at [1,1,1], revision = 10
+  const session = new EditorSession(project);
+
+  let eventCount = 0;
+  let lastEvent: SessionChangeEvent | undefined;
+  session.subscribe((ev) => {
+    eventCount++;
+    lastEvent = ev;
+  });
+
+  // Step 1: User Edit (move p1 to [5, 0, 0])
+  const userMove = session.execute({
+    type: 'placement:move',
+    placementId: 'p1',
+    translation: [5, 0, 0],
+  });
+  assert(userMove.ok, 'User edit (placement:move) succeeded');
+  assertEqual(session.revision, 11, 'Session revision monotonically incremented to 11 after user edit');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 5, 'p1 translation X is 5 after user edit');
+
+  // Step 2: AI Agent Remote Edit (applyRemoteProjectUpdate)
+  // AI modifies p1's block at [1,1,1] to diamond_block and adds a new placement p_ai
+  const aiProject: Project = session.snapshot();
+  const p1Chunk = aiProject.placements[0]!.volume.chunks.get('0_0_0')!;
+  p1Chunk.palette.push({ id: 'minecraft:diamond_block', props: {} });
+  p1Chunk.indices[voxelIndex(1, 1, 1)] = p1Chunk.palette.length - 1;
+
+  const aiPlacement = makeTestPlacement('p_ai', 'AI Generated Placement', [32, 0, 0], 'minecraft:emerald_block');
+  aiProject.placements.push(aiPlacement);
+  aiProject.revision = 25; // Remote agent revision
+
+  const remoteUpdateRes = session.applyRemoteProjectUpdate(aiProject, 'AI Agent added diamond block and placement p_ai');
+  assert(remoteUpdateRes.changed.placementIds.includes('p1'), 'remoteUpdate changed info includes modified placement p1');
+  assert(remoteUpdateRes.changed.placementIds.includes('p_ai'), 'remoteUpdate changed info includes added placement p_ai');
+  assertEqual(session.revision, 25, 'Session revision updated to remote revision 25');
+  assertEqual((lastEvent as SessionChangeEvent | undefined)?.kind, 'mcp:sync', 'Session emitted mcp:sync event');
+  assertEqual(session.peekProject().placements.length, 3, 'Project has 3 placements after AI edit');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 5, 'User move edit is preserved after AI edit');
+
+  const p1AfterAi = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assertEqual(p1AfterAi.palette[p1AfterAi.indices[voxelIndex(1, 1, 1)]!]?.id, 'minecraft:diamond_block', 'p1 has diamond block after AI edit');
+
+  // Step 3: First undo() -> undoes AI edit
+  const undoAi = session.undo();
+  assert(!!undoAi?.ok, 'First undo() succeeded');
+  assertEqual((lastEvent as SessionChangeEvent | undefined)?.kind, 'undo', 'Event kind is undo');
+  assertEqual(session.peekProject().placements.length, 2, 'AI added placement p_ai was removed by undo');
+  const p1AfterUndoAi = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assertEqual(p1AfterUndoAi.palette[p1AfterUndoAi.indices[voxelIndex(1, 1, 1)]!]?.id, 'minecraft:stone', 'p1 stone block was restored by undoing AI edit');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 5, 'User move edit is still intact after undoing AI edit');
+
+  // Step 4: Second undo() -> undoes User edit
+  const undoUser = session.undo();
+  assert(!!undoUser?.ok, 'Second undo() succeeded');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 0, 'p1 translation X rolled back to 0 by undoing user edit');
+  const p1AfterUndoUser = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assertEqual(p1AfterUndoUser.palette[p1AfterUndoUser.indices[voxelIndex(1, 1, 1)]!]?.id, 'minecraft:stone', 'p1 stone block remains stone');
+
+  // Step 5: First redo() -> redoes User edit
+  const redoUser = session.redo();
+  assert(!!redoUser?.ok, 'First redo() succeeded');
+  assertEqual((lastEvent as SessionChangeEvent | undefined)?.kind, 'redo', 'Event kind is redo');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 5, 'p1 translation X restored to 5 by redoing user edit');
+  assertEqual(session.peekProject().placements.length, 2, 'AI placement p_ai is not yet restored');
+  const p1AfterRedoUser = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assertEqual(p1AfterRedoUser.palette[p1AfterRedoUser.indices[voxelIndex(1, 1, 1)]!]?.id, 'minecraft:stone', 'p1 stone block remains stone');
+
+  // Step 6: Second redo() -> redoes AI edit
+  const redoAi = session.redo();
+  assert(!!redoAi?.ok, 'Second redo() succeeded');
+  assertEqual(session.peekProject().placements.length, 3, 'AI placement p_ai restored by redoing AI edit');
+  const p1AfterRedoAi = session.peekProject().placements[0]!.volume.chunks.get('0_0_0')!;
+  assertEqual(p1AfterRedoAi.palette[p1AfterRedoAi.indices[voxelIndex(1, 1, 1)]!]?.id, 'minecraft:diamond_block', 'p1 diamond block restored by redoing AI edit');
+  assertEqual(session.peekProject().placements[0]!.transform.translation[0], 5, 'p1 translation X remains 5');
+}
+
+// ── Test 18: chunksEqual Helper and Fast Unchanged Chunk Skipping ──
+console.log('--- Test 18: chunksEqual Helper and Fast Unchanged Chunk Skipping ---');
+{
+  const c1: VoxelChunk = {
+    key: '0_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+    indices: new Uint8Array(4096),
+    revision: 1,
+  };
+  const c2: VoxelChunk = {
+    key: '0_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+    indices: new Uint8Array(4096),
+    revision: 5,
+  };
+  const c3: VoxelChunk = {
+    key: '0_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:dirt', props: {} }],
+    indices: new Uint8Array(4096),
+    revision: 1,
+  };
+  const c4: VoxelChunk = {
+    key: '1_0_0',
+    palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+    indices: new Uint8Array(4096),
+    revision: 1,
+  };
+
+  assert(chunksEqual(c1, c1), 'chunksEqual returns true on exact same chunk reference');
+  assert(chunksEqual(c1, c2), 'chunksEqual returns true on equal content even if revisions differ');
+  assert(!chunksEqual(c1, c3), 'chunksEqual returns false on different palette');
+  assert(!chunksEqual(c1, c4), 'chunksEqual returns false on different keys');
+
+  c2.indices[10] = 1;
+  assert(!chunksEqual(c1, c2), 'chunksEqual returns false after indices modified');
+
+  // Verify applyRemoteProjectUpdate with large schematic skips cloning unchanged chunks
+  const chunks = new Map<string, VoxelChunk>();
+  for (let x = 0; x < 15; x++) {
+    for (let y = 0; y < 15; y++) {
+      for (let z = 0; z < 15; z++) {
+        const k = `${x}_${y}_${z}`;
+        chunks.set(k, {
+          key: k,
+          palette: [CANONICAL_AIR, { id: 'minecraft:stone', props: {} }],
+          indices: new Uint8Array(4096),
+          revision: 0,
+        });
+      }
+    }
+  }
+
+  const largeProject: Project = {
+    schemaVersion: 1,
+    id: 'large-proj-remote',
+    name: 'Large Remote Project',
+    overlapPolicy: 'top-wins',
+    conflictOverlay: 'off',
+    metadata: { createdAt: '', modifiedAt: '' },
+    revision: 1,
+    importGroups: [],
+    placements: [{
+      id: 'p-large',
+      name: 'Large Placement',
+      transform: { translation: [0, 0, 0], rotationY: 0, mirror: 'none' },
+      origin: [0, 0, 0],
+      visible: true,
+      locked: false,
+      createdAt: '',
+      source: { format: 'generated', filename: 'large.schem', diagnostics: [] },
+      eraseTombstones: new Set(),
+      ancillary: {
+        blockEntities: new Map(),
+        entities: [],
+        pendingBlockTicks: [],
+        pendingFluidTicks: [],
+        unknownTags: new Map(),
+      },
+      volume: {
+        bounds: { min: [0, 0, 0], maxExclusive: [240, 240, 240] },
+        chunkSize: 16,
+        chunks,
+        nonAirCount: 0,
+        paletteCardinality: 2,
+      },
+    }],
+  };
+
+  const session = new EditorSession(largeProject);
+  const untouchedChunkKey = '14_14_14';
+  const untouchedChunkBefore = session.peekProject().placements[0]!.volume.chunks.get(untouchedChunkKey)!;
+
+  // Create remote project where only chunk 0_0_0 has a block modification
+  const nextLargeProject: Project = session.snapshot();
+  const chunk0 = nextLargeProject.placements[0]!.volume.chunks.get('0_0_0')!;
+  chunk0.indices[voxelIndex(2, 2, 2)] = 1;
+
+  const t0 = Date.now();
+  const remoteRes = session.applyRemoteProjectUpdate(nextLargeProject, 'Remote edit 1 block in large schematic');
+  const tElapsed = Date.now() - t0;
+
+  console.log(`  > Large schematic applyRemoteProjectUpdate took ${tElapsed}ms`);
+  assert(tElapsed < 100, `applyRemoteProjectUpdate is fast on 3,000+ chunks (${tElapsed}ms < 100ms)`);
+  assertEqual(remoteRes.changed.chunkKeys.length, 1, 'Only 1 chunk recorded as changed');
+  assertEqual(remoteRes.changed.chunkKeys[0], '0_0_0', 'Changed chunk is 0_0_0');
+
+  const untouchedChunkAfter = session.peekProject().placements[0]!.volume.chunks.get(untouchedChunkKey)!;
+  assert(untouchedChunkAfter === untouchedChunkBefore, 'Untouched chunk was reused without cloning');
 }
 
 console.log(`\n=== Summary: ${passed} passed, ${failed} failed ===`);

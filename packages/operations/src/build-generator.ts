@@ -23,6 +23,7 @@ import type {
 } from '../../domain/placement.ts';
 import { setBlock, getBlock } from '../../domain/volume-api.ts';
 import { resolveBlockAt } from '../../domain/effective-block.ts';
+import { localBlockToWorld, worldBlockToLocal } from '../../domain/coordinates.ts';
 import { EditorSession } from './session.ts';
 
 // ============================================================================
@@ -426,23 +427,43 @@ function commitVoxelsToSession(
 
   if (!targetPlacement) {
     // If no existing placement found, fallback to creating a new one
-    return commitVoxelsToSession(session, voxels, { ...options, createNewPlacement: true });
+    return commitVoxelsToSession(session, voxels, { ...options, placementId: undefined, createNewPlacement: true });
   }
 
-  // Check if writing outside target translation would cause negative local coords
-  const [tx, ty, tz] = targetPlacement.transform.translation;
-  if (minX < tx || minY < ty || minZ < tz) {
-    // Local coordinates would be negative, which violates volume.bounds.min = [0,0,0] invariant.
+  // Check if writing outside target translation would cause negative local coords or off-grid transform
+  let hasOutOfBounds = false;
+  let maxLx = 0;
+  let maxLy = 0;
+  let maxLz = 0;
+
+  for (const v of voxels) {
+    try {
+      const [lx, ly, lz] = worldBlockToLocal(targetPlacement, v.pos);
+      if (lx < 0 || ly < 0 || lz < 0) {
+        hasOutOfBounds = true;
+        break;
+      }
+      if (lx > maxLx) maxLx = lx;
+      if (ly > maxLy) maxLy = ly;
+      if (lz > maxLz) maxLz = lz;
+    } catch {
+      hasOutOfBounds = true;
+      break;
+    }
+  }
+
+  if (hasOutOfBounds) {
+    // Local coordinates would be negative or off-grid, which violates volume.bounds.min = [0,0,0] invariant.
     // Create new placement for safe invariant preservation.
-    return commitVoxelsToSession(session, voxels, { ...options, createNewPlacement: true });
+    return commitVoxelsToSession(session, voxels, { ...options, placementId: undefined, createNewPlacement: true });
   }
 
   // Expand target placement volume bounds if needed
   const peeked = session.peekProject().placements.find((p) => p.id === targetPlacement.id);
   if (peeked) {
-    const reqLx = maxX - tx + 1;
-    const reqLy = maxY - ty + 1;
-    const reqLz = maxZ - tz + 1;
+    const reqLx = maxLx + 1;
+    const reqLy = maxLy + 1;
+    const reqLz = maxLz + 1;
     const newMaxX = Math.max(peeked.volume.bounds.maxExclusive[0], Math.ceil(reqLx / 16) * 16);
     const newMaxY = Math.max(peeked.volume.bounds.maxExclusive[1], Math.ceil(reqLy / 16) * 16);
     const newMaxZ = Math.max(peeked.volume.bounds.maxExclusive[2], Math.ceil(reqLz / 16) * 16);
@@ -450,6 +471,7 @@ function commitVoxelsToSession(
       min: peeked.volume.bounds.min,
       maxExclusive: [newMaxX, newMaxY, newMaxZ],
     };
+    targetPlacement.volume.bounds = peeked.volume.bounds;
   }
 
   let totalChanged = 0;
@@ -533,7 +555,8 @@ export function inspectRegionVoxels(
   const includeAir = options?.includeAir ?? false;
   const placementId = options?.placementId;
 
-  const project = session.snapshot();
+  // Use peekProject() to avoid deep-cloning all chunk Maps and Uint8Arrays for a read-only inspection
+  const project = session.peekProject();
   const targetProject: Project = placementId
     ? {
         ...project,
@@ -546,9 +569,249 @@ export function inspectRegionVoxels(
   const blocks: Array<{ pos: Vec3i; block: string }> = [];
   let truncated = false;
 
-  for (let y = bounds.min[1]; y < bounds.maxExclusive[1]; y++) {
-    for (let z = bounds.min[2]; z < bounds.maxExclusive[2]; z++) {
-      for (let x = bounds.min[0]; x < bounds.maxExclusive[0]; x++) {
+  const bMinX = bounds.min[0];
+  const bMaxX = bounds.maxExclusive[0];
+  const bMinY = bounds.min[1];
+  const bMaxY = bounds.maxExclusive[1];
+  const bMinZ = bounds.min[2];
+  const bMaxZ = bounds.maxExclusive[2];
+  const regionVolume = (bMaxX - bMinX) * (bMaxY - bMinY) * (bMaxZ - bMinZ);
+
+  // Fast-path: when includeAir is false and region volume is large (>32,768),
+  // scan intersecting non-empty chunks directly instead of querying millions of empty air cells.
+  if (!includeAir && regionVolume > 32768) {
+    if (targetProject.placements.length === 1) {
+      const p = targetProject.placements[0]!;
+      if (p.visible) {
+        const isIdentity = p.transform.rotationY === 0 && p.transform.mirror === 'none';
+        const tx = p.transform.translation[0] - Math.floor(p.origin[0] / 2);
+        const ty = p.transform.translation[1] - Math.floor(p.origin[1] / 2);
+        const tz = p.transform.translation[2] - Math.floor(p.origin[2] / 2);
+
+        for (const [key, chunk] of p.volume.chunks) {
+          if (chunk.palette.length <= 1) continue;
+
+          const parts = key.split('_');
+          const cx = parseInt(parts[0]!, 10);
+          const cy = parseInt(parts[1]!, 10);
+          const cz = parseInt(parts[2]!, 10);
+
+          const chunkBaseX = cx * 16;
+          const chunkBaseY = cy * 16;
+          const chunkBaseZ = cz * 16;
+
+          if (isIdentity) {
+            const cWorldMinX = tx + chunkBaseX;
+            const cWorldMaxX = cWorldMinX + 16;
+            const cWorldMinY = ty + chunkBaseY;
+            const cWorldMaxY = cWorldMinY + 16;
+            const cWorldMinZ = tz + chunkBaseZ;
+            const cWorldMaxZ = cWorldMinZ + 16;
+
+            const intMinX = Math.max(bMinX, cWorldMinX);
+            const intMaxX = Math.min(bMaxX, cWorldMaxX);
+            const intMinY = Math.max(bMinY, cWorldMinY);
+            const intMaxY = Math.min(bMaxY, cWorldMaxY);
+            const intMinZ = Math.max(bMinZ, cWorldMinZ);
+            const intMaxZ = Math.min(bMaxZ, cWorldMaxZ);
+
+            if (intMinX >= intMaxX || intMinY >= intMaxY || intMinZ >= intMaxZ) {
+              continue;
+            }
+
+            const indices = chunk.indices;
+            const palette = chunk.palette;
+
+            for (let wy = intMinY; wy < intMaxY; wy++) {
+              const ly = wy - cWorldMinY;
+              for (let wz = intMinZ; wz < intMaxZ; wz++) {
+                const lz = wz - cWorldMinZ;
+                const row = (ly * 16 + lz) * 16;
+                for (let wx = intMinX; wx < intMaxX; wx++) {
+                  const lx = wx - cWorldMinX;
+                  const palIdx = indices[row + lx]!;
+                  if (palIdx === 0) continue;
+                  const st = palette[palIdx]!;
+                  if (isAirLike(st.id, VANILLA_AIR_LIKE)) continue;
+
+                  nonAirCount++;
+                  const stateStr = formatBlockStateString(st);
+                  countsByBlock[stateStr] = (countsByBlock[stateStr] ?? 0) + 1;
+                  if (blocks.length < maxBlocks) {
+                    blocks.push({ pos: [wx, wy, wz], block: stateStr });
+                  } else {
+                    truncated = true;
+                  }
+                }
+              }
+            }
+          } else {
+            const indices = chunk.indices;
+            const palette = chunk.palette;
+
+            for (let ly = 0; ly < 16; ly++) {
+              const cyLocal = chunkBaseY + ly;
+              for (let lz = 0; lz < 16; lz++) {
+                const czLocal = chunkBaseZ + lz;
+                const row = (ly * 16 + lz) * 16;
+                for (let lx = 0; lx < 16; lx++) {
+                  const palIdx = indices[row + lx]!;
+                  if (palIdx === 0) continue;
+                  const st = palette[palIdx]!;
+                  if (isAirLike(st.id, VANILLA_AIR_LIKE)) continue;
+
+                  const wPos = localBlockToWorld(p, [chunkBaseX + lx, cyLocal, czLocal]);
+                  if (
+                    wPos[0] >= bMinX && wPos[0] < bMaxX &&
+                    wPos[1] >= bMinY && wPos[1] < bMaxY &&
+                    wPos[2] >= bMinZ && wPos[2] < bMaxZ
+                  ) {
+                    nonAirCount++;
+                    const stateStr = formatBlockStateString(st);
+                    countsByBlock[stateStr] = (countsByBlock[stateStr] ?? 0) + 1;
+                    if (blocks.length < maxBlocks) {
+                      blocks.push({ pos: wPos, block: stateStr });
+                    } else {
+                      truncated = true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        bounds,
+        nonAirCount,
+        countsByBlock,
+        blocks,
+        truncated,
+      };
+    }
+
+    const candidatePositions: Vec3i[] = [];
+    const seenPos = new Set<string>();
+
+    for (const p of targetProject.placements) {
+      if (!p.visible) continue;
+      const isIdentity = p.transform.rotationY === 0 && p.transform.mirror === 'none';
+      const tx = p.transform.translation[0] - Math.floor(p.origin[0] / 2);
+      const ty = p.transform.translation[1] - Math.floor(p.origin[1] / 2);
+      const tz = p.transform.translation[2] - Math.floor(p.origin[2] / 2);
+
+      for (const [key, chunk] of p.volume.chunks) {
+        if (chunk.palette.length <= 1) continue;
+
+        const parts = key.split('_');
+        const cx = parseInt(parts[0]!, 10);
+        const cy = parseInt(parts[1]!, 10);
+        const cz = parseInt(parts[2]!, 10);
+
+        const chunkBaseX = cx * 16;
+        const chunkBaseY = cy * 16;
+        const chunkBaseZ = cz * 16;
+
+        if (isIdentity) {
+          const cWorldMinX = tx + chunkBaseX;
+          const cWorldMaxX = cWorldMinX + 16;
+          const cWorldMinY = ty + chunkBaseY;
+          const cWorldMaxY = cWorldMinY + 16;
+          const cWorldMinZ = tz + chunkBaseZ;
+          const cWorldMaxZ = cWorldMinZ + 16;
+
+          const intMinX = Math.max(bMinX, cWorldMinX);
+          const intMaxX = Math.min(bMaxX, cWorldMaxX);
+          const intMinY = Math.max(bMinY, cWorldMinY);
+          const intMaxY = Math.min(bMaxY, cWorldMaxY);
+          const intMinZ = Math.max(bMinZ, cWorldMinZ);
+          const intMaxZ = Math.min(bMaxZ, cWorldMaxZ);
+
+          if (intMinX >= intMaxX || intMinY >= intMaxY || intMinZ >= intMaxZ) {
+            continue;
+          }
+
+          const indices = chunk.indices;
+          for (let wy = intMinY; wy < intMaxY; wy++) {
+            const ly = wy - cWorldMinY;
+            for (let wz = intMinZ; wz < intMaxZ; wz++) {
+              const lz = wz - cWorldMinZ;
+              const row = (ly * 16 + lz) * 16;
+              for (let wx = intMinX; wx < intMaxX; wx++) {
+                const lx = wx - cWorldMinX;
+                const palIdx = indices[row + lx]!;
+                if (palIdx === 0) continue;
+                const posKey = `${wx},${wy},${wz}`;
+                if (!seenPos.has(posKey)) {
+                  seenPos.add(posKey);
+                  candidatePositions.push([wx, wy, wz]);
+                }
+              }
+            }
+          }
+        } else {
+          const indices = chunk.indices;
+          for (let ly = 0; ly < 16; ly++) {
+            const cyLocal = chunkBaseY + ly;
+            for (let lz = 0; lz < 16; lz++) {
+              const czLocal = chunkBaseZ + lz;
+              const row = (ly * 16 + lz) * 16;
+              for (let lx = 0; lx < 16; lx++) {
+                const palIdx = indices[row + lx]!;
+                if (palIdx === 0) continue;
+                const wPos = localBlockToWorld(p, [chunkBaseX + lx, cyLocal, czLocal]);
+                if (
+                  wPos[0] >= bMinX && wPos[0] < bMaxX &&
+                  wPos[1] >= bMinY && wPos[1] < bMaxY &&
+                  wPos[2] >= bMinZ && wPos[2] < bMaxZ
+                ) {
+                  const posKey = `${wPos[0]},${wPos[1]},${wPos[2]}`;
+                  if (!seenPos.has(posKey)) {
+                    seenPos.add(posKey);
+                    candidatePositions.push(wPos);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Sort candidate positions in standard scan order (Y, then Z, then X)
+    candidatePositions.sort((a, b) =>
+      a[1] !== b[1] ? a[1] - b[1] : a[2] !== b[2] ? a[2] - b[2] : a[0] - b[0]
+    );
+
+    for (const pos of candidatePositions) {
+      const res = resolveBlockAt(targetProject, pos, project.overlapPolicy);
+      const isAir = isAirLike(res.state.id, VANILLA_AIR_LIKE);
+      if (!isAir) {
+        const stateStr = formatBlockStateString(res.state);
+        nonAirCount++;
+        countsByBlock[stateStr] = (countsByBlock[stateStr] ?? 0) + 1;
+        if (blocks.length < maxBlocks) {
+          blocks.push({ pos, block: stateStr });
+        } else {
+          truncated = true;
+        }
+      }
+    }
+
+    return {
+      bounds,
+      nonAirCount,
+      countsByBlock,
+      blocks,
+      truncated,
+    };
+  }
+
+  // Standard path for small regions or when includeAir is requested
+  for (let y = bMinY; y < bMaxY; y++) {
+    for (let z = bMinZ; z < bMaxZ; z++) {
+      for (let x = bMinX; x < bMaxX; x++) {
         const pos: Vec3i = [x, y, z];
         const res = resolveBlockAt(targetProject, pos, project.overlapPolicy);
         const stateStr = formatBlockStateString(res.state);
