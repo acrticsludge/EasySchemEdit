@@ -105,6 +105,9 @@ const pairing = createPairingAuthority({
   },
   allowedOrigins: ALLOWED_ORIGINS,
   generateSessionId: () => randomBytes(16).toString('hex'),
+  // Operator request: pairing tokens must not expire while this companion runs.
+  pairingTokenTtlMs: Number.MAX_SAFE_INTEGER,
+  idleTimeoutMs: Number.MAX_SAFE_INTEGER,
 });
 
 const protocol = createDestructiveProtocol({
@@ -349,13 +352,17 @@ wss.on('connection', (socket, upgradeRequest) => {
 httpServer.listen(PORT, HOST, () => {
   // A pairing token is printed once at startup so the operator can paste it into the editor.
   // Plaintext is displayed and then dropped: only its SHA-256 digest is retained (SPEC-F F12).
-  const { token } = pairing.generate(commandBus.state().projectId);
+  const tokens = Array.from({ length: 3 }, () => pairing.generate(commandBus.state().projectId).token);
   // eslint-disable-next-line no-console
   console.log(`[mcp-companion] listening on http://${HOST}:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(`[mcp-companion] allowed origins: ${ALLOWED_ORIGINS.join(', ') || '(none)'}`);
   // eslint-disable-next-line no-console
-  console.log(`[mcp-companion] pairing token (5-minute TTL, one-time use): ${token}`);
+  console.log(`[mcp-companion] pairing tokens (no expiry, one-time use each):`);
+  for (const [i, t] of tokens.entries()) {
+    // eslint-disable-next-line no-console
+    console.log(`[mcp-companion] token ${i + 1}: ${t}`);
+  }
 });
 
 /** Graceful shutdown so the port is released between runs. */
