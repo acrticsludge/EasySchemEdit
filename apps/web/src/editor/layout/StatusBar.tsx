@@ -45,7 +45,7 @@ export function StatusBar({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '24px',
+        height: '28px',
         padding: '0 12px',
         backgroundColor: 'var(--ink-850)',
         borderTop: '1px solid var(--line)',
@@ -93,6 +93,8 @@ export function StatusBar({
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           padding: '0 12px',
+          borderLeft: '1px solid var(--line-strong)',
+          borderRight: '1px solid var(--line-strong)',
           color: statusMessage ? 'var(--text)' : 'var(--text-faint)',
         }}
       >
@@ -137,8 +139,9 @@ export function StatusBar({
 
 const labelStyle: React.CSSProperties = {
   color: 'var(--text-faint)',
-  fontSize: '11px',
-  letterSpacing: '0.08em',
+  fontSize: '10px',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
 };
 
 const monoStyle: React.CSSProperties = {

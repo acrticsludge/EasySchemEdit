@@ -204,7 +204,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
         flexDirection: 'column',
         gap: '12px',
         background: 'transparent',
-        color: '#f4f4f5',
+        color: 'var(--text)',
         padding: '12px',
         borderRadius: 0,
         border: 'none',
@@ -222,11 +222,11 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: '1px solid #27272a',
+          borderBottom: '1px solid var(--line)',
           paddingBottom: '8px',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: '14px', color: '#60a5fa' }}>
+        <div style={{ fontWeight: 600, fontSize: '14px', color: 'var(--signal)' }}>
           Block & Region Tools
         </div>
         <div style={{ display: 'flex', gap: '6px' }}>
@@ -238,9 +238,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               padding: '3px 8px',
               fontSize: '11px',
               borderRadius: '4px',
-              border: '1px solid #3f3f46',
-              background: sessionState.canUndo ? '#27272a' : '#18181b',
-              color: sessionState.canUndo ? '#fafafa' : '#71717a',
+              border: '1px solid var(--line-strong)',
+              background: sessionState.canUndo ? 'var(--ink-700)' : 'var(--ink-850)',
+              color: sessionState.canUndo ? 'var(--text)' : 'var(--text-faint)',
               cursor: sessionState.canUndo ? 'pointer' : 'default',
             }}
           >
@@ -254,9 +254,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               padding: '3px 8px',
               fontSize: '11px',
               borderRadius: '4px',
-              border: '1px solid #3f3f46',
-              background: sessionState.canRedo ? '#27272a' : '#18181b',
-              color: sessionState.canRedo ? '#fafafa' : '#71717a',
+              border: '1px solid var(--line-strong)',
+              background: sessionState.canRedo ? 'var(--ink-700)' : 'var(--ink-850)',
+              color: sessionState.canRedo ? 'var(--text)' : 'var(--text-faint)',
               cursor: sessionState.canRedo ? 'pointer' : 'default',
             }}
           >
@@ -268,13 +268,13 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
       {/* Active Selection Info */}
       <div
         style={{
-          background: '#09090b',
-          border: '1px solid #27272a',
+          background: 'var(--ink-900)',
+          border: '1px solid var(--line)',
           borderRadius: '6px',
           padding: '8px 10px',
         }}
       >
-        <div style={{ fontWeight: 600, color: '#a1a1aa', fontSize: '11px', marginBottom: '4px' }}>
+        <div style={{ fontWeight: 600, color: 'var(--text-dim)', fontSize: '11px', marginBottom: '4px' }}>
           ACTIVE CUBOID SELECTION
         </div>
         {activeBounds && dimensions ? (
@@ -292,7 +292,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                 display: 'flex',
                 justifyContent: 'space-between',
                 fontSize: '11px',
-                color: '#34d399',
+                color: 'var(--ok)',
                 marginTop: '4px',
               }}
             >
@@ -303,7 +303,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             </div>
           </div>
         ) : (
-          <div style={{ color: '#71717a', fontStyle: 'italic', fontSize: '12px' }}>
+          <div style={{ color: 'var(--text-faint)', fontStyle: 'italic', fontSize: '12px' }}>
             No active selection. Set corners or select a placement.
           </div>
         )}
@@ -312,10 +312,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
       {/* 1.21.11 Block Search & Palette */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-          <label htmlFor="block-search" style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '12px' }}>
+          <label htmlFor="block-search" style={{ fontWeight: 600, color: 'var(--text)', fontSize: '12px' }}>
             1.21.11 Block Selector
           </label>
-          <span style={{ fontSize: '11px', color: '#71717a' }}>
+          <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>
             {allBlocks.length} available
           </span>
         </div>
@@ -329,9 +329,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             width: '100%',
             padding: '6px 8px',
             borderRadius: '4px',
-            border: '1px solid #3f3f46',
-            background: '#09090b',
-            color: '#fafafa',
+            border: '1px solid var(--line-strong)',
+            background: 'var(--ink-900)',
+            color: 'var(--text)',
             fontSize: '12px',
             boxSizing: 'border-box',
             marginBottom: '6px',
@@ -341,9 +341,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
           style={{
             maxHeight: '120px',
             overflowY: 'auto',
-            border: '1px solid #27272a',
+            border: '1px solid var(--line)',
             borderRadius: '4px',
-            background: '#09090b',
+            background: 'var(--ink-900)',
           }}
         >
           {filteredBlocks.map((b) => {
@@ -356,9 +356,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                   padding: '4px 8px',
                   fontSize: '12px',
                   cursor: 'pointer',
-                  background: isSelected ? '#1e3a8a' : 'transparent',
-                  color: isSelected ? '#93c5fd' : '#d4d4d8',
-                  borderBottom: '1px solid #18181b',
+                  background: isSelected ? 'var(--signal-wash)' : 'transparent',
+                  color: isSelected ? 'var(--signal)' : 'var(--text)',
+                  borderBottom: '1px solid var(--line)',
                 }}
               >
                 {b}
@@ -371,21 +371,21 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
       {/* Selected Block & Property Editor */}
       <div
         style={{
-          background: '#09090b',
-          border: '1px solid #27272a',
+          background: 'var(--ink-900)',
+          border: '1px solid var(--line)',
           borderRadius: '6px',
           padding: '8px 10px',
         }}
       >
-        <div style={{ fontWeight: 600, fontSize: '11px', color: '#a1a1aa', marginBottom: '6px' }}>
+        <div style={{ fontWeight: 600, fontSize: '11px', color: 'var(--text-dim)', marginBottom: '6px' }}>
           BLOCK STATE PROPERTIES
         </div>
         <div
           style={{
             fontFamily: 'monospace',
             fontSize: '12px',
-            color: '#38bdf8',
-            background: '#18181b',
+            color: 'var(--signal)',
+            background: 'var(--ink-850)',
             padding: '5px 8px',
             borderRadius: '4px',
             marginBottom: '8px',
@@ -405,15 +405,15 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  background: '#18181b',
+                  background: 'var(--ink-850)',
                   padding: '3px 6px',
                   borderRadius: '3px',
                   fontSize: '11px',
                 }}
               >
                 <span>
-                  <strong style={{ color: '#c084fc' }}>{k}</strong> ={' '}
-                  <span style={{ color: '#fde047' }}>{v}</span>
+                  <strong style={{ color: 'var(--signal)' }}>{k}</strong> ={' '}
+                  <span style={{ color: 'var(--warn)' }}>{v}</span>
                 </span>
                 <button
                   type="button"
@@ -421,7 +421,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#f87171',
+                    color: 'var(--danger)',
                     cursor: 'pointer',
                     fontSize: '12px',
                     padding: '0 4px',
@@ -449,9 +449,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               padding: '4px 6px',
               fontSize: '11px',
               borderRadius: '3px',
-              border: '1px solid #3f3f46',
-              background: '#18181b',
-              color: '#fafafa',
+              border: '1px solid var(--line-strong)',
+              background: 'var(--ink-850)',
+              color: 'var(--text)',
             }}
           />
           <datalist id="common-prop-keys">
@@ -472,9 +472,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               padding: '4px 6px',
               fontSize: '11px',
               borderRadius: '3px',
-              border: '1px solid #3f3f46',
-              background: '#18181b',
-              color: '#fafafa',
+              border: '1px solid var(--line-strong)',
+              background: 'var(--ink-850)',
+              color: 'var(--text)',
             }}
           />
           {COMMON_PROPERTY_VALUES[newPropKey] && (
@@ -493,9 +493,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               padding: '4px 10px',
               fontSize: '11px',
               borderRadius: '3px',
-              border: '1px solid #3b82f6',
-              background: '#2563eb',
-              color: '#ffffff',
+              border: '1px solid var(--signal)',
+              background: 'var(--signal)',
+              color: 'var(--text)',
               cursor: 'pointer',
               fontWeight: 600,
             }}
@@ -507,7 +507,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
 
       {/* Region Action Toolbar */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <div style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '12px' }}>
+        <div style={{ fontWeight: 600, color: 'var(--text)', fontSize: '12px' }}>
           Region Operations
         </div>
 
@@ -523,10 +523,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             }
             style={{
               padding: '7px',
-              background: '#15803d',
-              border: '1px solid #16a34a',
+              background: 'var(--ok)',
+              border: '1px solid var(--ok)',
               borderRadius: '4px',
-              color: '#ffffff',
+              color: 'var(--text)',
               fontWeight: 600,
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
@@ -549,10 +549,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             }
             style={{
               padding: '7px',
-              background: '#0369a1',
-              border: '1px solid #0284c7',
+              background: 'var(--signal)',
+              border: '1px solid var(--signal)',
               borderRadius: '4px',
-              color: '#ffffff',
+              color: 'var(--text)',
               fontWeight: 600,
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
@@ -572,10 +572,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             }
             style={{
               padding: '7px',
-              background: '#6d28d9',
-              border: '1px solid #7c3aed',
+              background: 'var(--signal)',
+              border: '1px solid var(--signal)',
               borderRadius: '4px',
-              color: '#ffffff',
+              color: 'var(--text)',
               fontWeight: 600,
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
@@ -593,10 +593,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             }
             style={{
               padding: '7px',
-              background: '#b91c1c',
-              border: '1px solid #dc2626',
+              background: 'var(--danger)',
+              border: '1px solid var(--danger)',
               borderRadius: '4px',
-              color: '#ffffff',
+              color: 'var(--text)',
               fontWeight: 600,
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
@@ -610,8 +610,8 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
         {/* Replace section */}
         <div
           style={{
-            background: '#09090b',
-            border: '1px solid #27272a',
+            background: 'var(--ink-900)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '8px',
             display: 'flex',
@@ -619,7 +619,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             gap: '6px',
           }}
         >
-          <div style={{ fontSize: '11px', fontWeight: 600, color: '#a1a1aa' }}>
+          <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text-dim)' }}>
             REPLACE REGION
           </div>
           <div style={{ display: 'flex', gap: '6px', alignItems: 'center', minWidth: 0 }}>
@@ -634,9 +634,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                 padding: '5px 8px',
                 fontSize: '11px',
                 borderRadius: '3px',
-                border: '1px solid #3f3f46',
-                background: '#18181b',
-                color: '#fafafa',
+                border: '1px solid var(--line-strong)',
+                background: 'var(--ink-850)',
+                color: 'var(--text)',
               }}
             />
             <button
@@ -654,10 +654,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               style={{
                 flexShrink: 0,
                 padding: '5px 12px',
-                background: '#d97706',
-                border: '1px solid #f59e0b',
+                background: 'var(--warn)',
+                border: '1px solid var(--warn)',
                 borderRadius: '4px',
-                color: '#ffffff',
+                color: 'var(--text)',
                 fontWeight: 600,
                 fontSize: '11px',
                 cursor: activeBounds ? 'pointer' : 'not-allowed',
@@ -667,7 +667,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               Replace
             </button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#a1a1aa' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: 'var(--text-dim)' }}>
             <input
               type="checkbox"
               checked={preserveProperties}
@@ -685,10 +685,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             onClick={() => executeOperation('Copy', () => regionTools.copy())}
             style={{
               padding: '6px',
-              background: '#27272a',
-              border: '1px solid #3f3f46',
+              background: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
-              color: '#fafafa',
+              color: 'var(--text)',
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
               fontSize: '11px',
@@ -703,10 +703,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             onClick={() => executeOperation('Cut', () => regionTools.cut())}
             style={{
               padding: '6px',
-              background: '#27272a',
-              border: '1px solid #3f3f46',
+              background: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
-              color: '#fafafa',
+              color: 'var(--text)',
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
               fontSize: '11px',
@@ -725,10 +725,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             }
             style={{
               padding: '6px',
-              background: '#27272a',
-              border: '1px solid #3f3f46',
+              background: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
-              color: '#fafafa',
+              color: 'var(--text)',
               cursor: 'pointer',
               fontSize: '11px',
             }}
@@ -739,7 +739,7 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
 
         {/* Move Region Controls */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center', minWidth: 0 }}>
-          <span style={{ fontSize: '11px', color: '#a1a1aa' }}>Offset:</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-dim)' }}>Offset:</span>
           {(['dx', 'dy', 'dz'] as const).map((axis, i) => (
             <input
               key={axis}
@@ -756,9 +756,9 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
                 minWidth: 0,
                 padding: '4px',
                 fontSize: '11px',
-                background: '#09090b',
-                color: '#fafafa',
-                border: '1px solid #3f3f46',
+                background: 'var(--ink-900)',
+                color: 'var(--text)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '3px',
                 textAlign: 'center',
               }}
@@ -776,10 +776,10 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
               flexShrink: 0,
               padding: '5px 8px',
               fontSize: '11px',
-              background: '#374151',
-              border: '1px solid #4b5563',
+              background: 'var(--ink-700)',
+              border: '1px solid var(--ink-700)',
               borderRadius: '3px',
-              color: '#fafafa',
+              color: 'var(--text)',
               cursor: activeBounds ? 'pointer' : 'not-allowed',
               opacity: activeBounds ? 1 : 0.5,
             }}
@@ -797,15 +797,15 @@ export const BlockPickerPanel: React.FC<BlockPickerPanelProps> = ({
             padding: '6px 8px',
             borderRadius: '4px',
             background: statusMessage.startsWith('✓')
-              ? '#064e3b'
+              ? 'color-mix(in srgb, var(--ok) 22%, var(--ink-900))'
               : statusMessage.startsWith('✕')
-              ? '#7f1d1d'
-              : '#1e293b',
+              ? 'color-mix(in srgb, var(--danger) 22%, var(--ink-900))'
+              : 'color-mix(in srgb, var(--signal) 16%, var(--ink-900))',
             color: statusMessage.startsWith('✓')
-              ? '#6ee7b7'
+              ? 'var(--ok)'
               : statusMessage.startsWith('✕')
-              ? '#fca5a5'
-              : '#93c5fd',
+              ? 'var(--danger)'
+              : 'var(--signal)',
           }}
         >
           {statusMessage}

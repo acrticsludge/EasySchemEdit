@@ -94,4 +94,22 @@ Reference critique: `docs/audits/ui-critique-2026-11-18.md`.
 - `pnpm --filter @easyschemedit/web build`: exit 0, 3 pages built in 11.19s. One pre-existing Vite warning: `EditorIsland.*.js` chunk is 1,258.71 kB (gzip 326.89 kB) over the 500 kB limit. Not a failure.
 - `pnpm test`: 105/105 test files PASS in 30.09s.
 
+---
+
+# 2026-11-18 Pass 2 Baseline (Dense pro-tool amplification)
+
+Recorded: 2026-11-18, before any pass-2 edit.
+Rationale: the shipped pass-1 tokens were too close to the previous palette to read as a visual change at a glance.
+
+## Git state
+- **Branch**: `master`
+- **Commit**: `850507a` (pass 1, pushed)
+- **Untracked before work**: `Borneo-Deepslate-Fort.schem`, `Borneo-Deepslate-Fort.vxproj` (restored from Recycle Bin; user data, not part of this work).
+
+## Baseline verification (observed, before edit)
+- `pnpm typecheck` exit 0.
+- `pnpm test` 105/105 PASS in 19.78s.
+- `pnpm --filter @easyschemedit/web build` exit 0, 3 pages, pre-existing chunk-size warning only.
+- Screenshot evidence: `docs/audits/ui-precision-shots/`.
+
 

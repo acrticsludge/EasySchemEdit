@@ -1171,7 +1171,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     scene.add(alignGuidesLine);
     alignGuidesLineRef.current = alignGuidesLine;
 
-    // Hover Highlight Overlay (Slice neon-green block overlay #39ff14)
+    // Hover Highlight Overlay (Slice neon-green block overlay var(--ok))
     const hoverGroup = new THREE.Group();
     hoverGroup.name = 'viewport-hover-highlight';
     hoverGroup.visible = false;
@@ -1201,7 +1201,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
     hoverHighlightRef.current = hoverGroup;
     scene.add(hoverGroup);
 
-    // Selected Voxel Highlight Overlay (Slice neon-green block overlay #7dff4a)
+    // Selected Voxel Highlight Overlay (Slice neon-green block overlay var(--ok))
     const selectedVoxelGroup = new THREE.Group();
     selectedVoxelGroup.name = 'viewport-selected-voxel-highlight';
     selectedVoxelGroup.visible = false;
@@ -2563,7 +2563,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         height: '100%',
         overflow: 'hidden',
         userSelect: 'none',
-        backgroundColor: '#181824',
+        backgroundColor: 'var(--ink-850)',
       }}
     >
       <canvas
@@ -2604,8 +2604,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             top: 20,
             left: '50%',
             transform: 'translateX(-50%)',
-            backgroundColor: '#ff3344dd',
-            color: '#ffffff',
+            backgroundColor: 'color-mix(in srgb, var(--danger) 87%, transparent)',
+            color: 'var(--text)',
             padding: '8px 16px',
             borderRadius: '6px',
             fontSize: '13px',
@@ -2627,12 +2627,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           display: 'flex',
           flexDirection: 'column',
           gap: '8px',
-          backgroundColor: '#1e1e2edd',
+          backgroundColor: 'color-mix(in srgb, var(--ink-800) 87%, transparent)',
           backdropFilter: 'blur(8px)',
-          border: '1px solid #33334d',
+          border: '1px solid var(--ink-700)',
           borderRadius: '8px',
           padding: '10px 12px',
-          color: '#e2e2ec',
+          color: 'var(--text)',
           fontSize: '12px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           zIndex: 10,
@@ -2644,10 +2644,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             onClick={handleToggleMode}
             style={{
               padding: '4px 8px',
-              backgroundColor: cameraMode === 'orbit' ? '#2e4466' : '#66442e',
-              border: '1px solid #556688',
+              backgroundColor: cameraMode === 'orbit' ? 'var(--ink-700)' : 'var(--warn)',
+              border: '1px solid var(--ink-700)',
               borderRadius: '4px',
-              color: '#ffffff',
+              color: 'var(--text)',
               cursor: 'pointer',
               fontWeight: 600,
             }}
@@ -2706,7 +2706,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
         {!hudCollapsed && (
           <>
             {/* Overlay toggles */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: '#a0a0b8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '11px', color: 'var(--text-dim)' }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
                 <input
                   type="checkbox"
@@ -2734,7 +2734,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             </div>
 
             {/* Scene Stats */}
-            <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: '#8888a0' }}>
+            <div style={{ display: 'flex', gap: '10px', fontSize: '11px', color: 'var(--text-faint)' }}>
               <span>Meshes: <strong>{stats.meshCount}</strong></span>
               <span>Chunks: <strong>{stats.chunkCount}</strong></span>
               <span>Triangles: <strong>{stats.triangleCount.toLocaleString()}</strong></span>
@@ -2750,12 +2750,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             position: 'absolute',
             top: 12,
             left: 12,
-            backgroundColor: '#1e1e2edd',
+            backgroundColor: 'color-mix(in srgb, var(--ink-800) 87%, transparent)',
             backdropFilter: 'blur(8px)',
-            border: '1px solid #33334d',
+            border: '1px solid var(--ink-700)',
             borderRadius: '6px',
             padding: '6px 12px',
-            color: '#e2e2ec',
+            color: 'var(--text)',
             fontSize: '12px',
             fontFamily: 'monospace',
             boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
@@ -2764,17 +2764,17 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
           }}
         >
           <div>
-            <span style={{ color: '#00e5ff', fontWeight: 600 }}>
+            <span style={{ color: 'var(--signal)', fontWeight: 600 }}>
               [{hoveredVoxel.position[0]}, {hoveredVoxel.position[1]}, {hoveredVoxel.position[2]}]
             </span>{' '}
-            · <span style={{ color: '#ffcc00' }}>{hoveredVoxel.state.id}</span>
+            · <span style={{ color: 'var(--warn)' }}>{hoveredVoxel.state.id}</span>
             {Object.keys(hoveredVoxel.state.props || {}).length > 0 && (
-              <span style={{ color: '#9999bb' }}>
+              <span style={{ color: 'var(--text-dim)' }}>
                 [{Object.entries(hoveredVoxel.state.props).map(([k, v]) => `${k}=${v}`).join(',')}]
               </span>
             )}
             {hoveredVoxel.placementId && (
-              <span style={{ color: '#8888aa' }}> · {hoveredVoxel.placementId}</span>
+              <span style={{ color: 'var(--text-faint)' }}> · {hoveredVoxel.placementId}</span>
             )}
           </div>
         </div>
@@ -2789,16 +2789,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             transform: 'translateX(-50%)',
             zIndex: 25,
             pointerEvents: 'auto',
-            backgroundColor: '#181820ee',
+            backgroundColor: 'color-mix(in srgb, var(--ink-850) 93%, transparent)',
             backdropFilter: 'blur(8px)',
-            border: `1px solid ${regionPickMode === 'pos1' ? '#00e5ff' : '#14f195'}`,
+            border: `1px solid ${regionPickMode === 'pos1' ? 'var(--signal)' : 'var(--ok)'}`,
             borderRadius: '6px',
             padding: '6px 14px',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            boxShadow: `0 4px 20px ${regionPickMode === 'pos1' ? 'rgba(0, 229, 255, 0.25)' : 'rgba(20, 241, 149, 0.25)'}`,
-            color: '#e2e2ec',
+            boxShadow: `0 4px 20px ${regionPickMode === 'pos1' ? 'color-mix(in srgb, var(--signal) 25%, transparent)' : 'color-mix(in srgb, var(--ok) 25%, transparent)'}`,
+            color: 'var(--text)',
             fontSize: '12px',
             fontFamily: 'system-ui, sans-serif',
           }}
@@ -2809,22 +2809,22 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              backgroundColor: regionPickMode === 'pos1' ? '#00e5ff' : '#14f195',
-              boxShadow: `0 0 6px ${regionPickMode === 'pos1' ? '#00e5ff' : '#14f195'}`,
+              backgroundColor: regionPickMode === 'pos1' ? 'var(--signal)' : 'var(--ok)',
+              boxShadow: `0 0 6px ${regionPickMode === 'pos1' ? 'var(--signal)' : 'var(--ok)'}`,
             }}
           />
           <span>
             {regionPickMode === 'pos2'
               ? 'Pos 1 set — click any block to set Pos 2'
               : 'Click any block to set Pos 1'}{' '}
-            <span style={{ color: '#8888aa' }}>(Esc to cancel)</span>
+            <span style={{ color: 'var(--text-faint)' }}>(Esc to cancel)</span>
           </span>
           <button
             onClick={() => onCancelRegionPick?.()}
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#8888aa',
+              color: 'var(--text-faint)',
               cursor: 'pointer',
               fontSize: '12px',
               padding: '0 2px',
@@ -2847,16 +2847,16 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             transform: 'translateX(-50%)',
             zIndex: 25,
             pointerEvents: 'auto',
-            backgroundColor: '#181820ee',
+            backgroundColor: 'color-mix(in srgb, var(--ink-850) 93%, transparent)',
             backdropFilter: 'blur(8px)',
-            border: '1px solid #4a9eff',
+            border: '1px solid var(--signal)',
             borderRadius: '6px',
             padding: '6px 14px',
             display: 'flex',
             alignItems: 'center',
             gap: '10px',
-            boxShadow: '0 4px 20px rgba(74, 158, 255, 0.25)',
-            color: '#e2e2ec',
+            boxShadow: '0 4px 20px color-mix(in srgb, var(--signal) 25%, transparent)',
+            color: 'var(--text)',
             fontSize: '12px',
             fontFamily: 'system-ui, sans-serif',
           }}
@@ -2867,20 +2867,20 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              backgroundColor: '#4a9eff',
-              boxShadow: '0 0 6px #4a9eff',
+              backgroundColor: 'var(--signal)',
+              boxShadow: '0 0 6px var(--signal)',
             }}
           />
           <span>
             Paste mode — click a block to paste{' '}
-            <span style={{ color: '#8888aa' }}>(Esc to cancel)</span>
+            <span style={{ color: 'var(--text-faint)' }}>(Esc to cancel)</span>
           </span>
           <button
             onClick={() => onSelectPasteEntry?.(null)}
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#8888aa',
+              color: 'var(--text-faint)',
               cursor: 'pointer',
               fontSize: '12px',
               padding: '0 2px',
@@ -2904,9 +2904,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             width: '44px',
             zIndex: 20,
             pointerEvents: 'auto',
-            backgroundColor: '#1e1e26f0',
+            backgroundColor: 'color-mix(in srgb, var(--ink-800) 94%, transparent)',
             backdropFilter: 'blur(8px)',
-            border: '1px solid #2a2a38',
+            border: '1px solid var(--ink-800)',
             borderRadius: '4px',
             boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4)',
             display: 'flex',
@@ -2924,7 +2924,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               justifyContent: 'center',
               width: '100%',
               paddingBottom: '4px',
-              borderBottom: '1px solid #2a2a38',
+              borderBottom: '1px solid var(--ink-800)',
             }}
           >
             <button
@@ -2937,7 +2937,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               style={{
                 background: 'transparent',
                 border: 'none',
-                color: '#8e8ea8',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: '13px',
                 lineHeight: 1,
@@ -2961,12 +2961,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: '#232330',
-              border: '1px solid #3b334a',
+              background: 'var(--ink-800)',
+              border: '1px solid var(--ink-800)',
               borderRadius: '4px',
               cursor: selectedVoxelPosition ? 'pointer' : 'not-allowed',
               opacity: selectedVoxelPosition ? 1 : 0.4,
-              color: '#a855f7',
+              color: 'var(--signal)',
               padding: 0,
               transition: 'background 0.15s, border-color 0.15s, transform 0.1s',
             }}
@@ -2993,13 +2993,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: (regionPos1 || regionPickMode === 'pos1') ? 'rgba(0, 229, 255, 0.16)' : '#232330',
-              border: (regionPos1 || regionPickMode === 'pos1') ? '1px solid #00e5ff' : '1px solid #333345',
+              background: (regionPos1 || regionPickMode === 'pos1') ? 'color-mix(in srgb, var(--signal) 16%, transparent)' : 'var(--ink-800)',
+              border: (regionPos1 || regionPickMode === 'pos1') ? '1px solid var(--signal)' : '1px solid var(--ink-700)',
               borderRadius: '4px',
               cursor: (selectedVoxelPosition || regionPickMode === 'pos1') ? 'pointer' : 'not-allowed',
               opacity: (selectedVoxelPosition || regionPos1 || regionPickMode === 'pos1') ? 1 : 0.4,
-              color: (regionPos1 || regionPickMode === 'pos1') ? '#00e5ff' : '#c8c8dd',
-              boxShadow: (regionPos1 || regionPickMode === 'pos1') ? '0 0 8px rgba(0, 229, 255, 0.35)' : 'none',
+              color: (regionPos1 || regionPickMode === 'pos1') ? 'var(--signal)' : 'var(--text)',
+              boxShadow: (regionPos1 || regionPickMode === 'pos1') ? '0 0 8px color-mix(in srgb, var(--signal) 35%, transparent)' : 'none',
               padding: 0,
               transition: 'all 0.15s ease',
             }}
@@ -3023,13 +3023,13 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: (regionPos2 || regionPickMode === 'pos2') ? 'rgba(20, 241, 149, 0.16)' : '#232330',
-              border: (regionPos2 || regionPickMode === 'pos2') ? '1px solid #14f195' : '1px solid #333345',
+              background: (regionPos2 || regionPickMode === 'pos2') ? 'color-mix(in srgb, var(--ok) 16%, transparent)' : 'var(--ink-800)',
+              border: (regionPos2 || regionPickMode === 'pos2') ? '1px solid var(--ok)' : '1px solid var(--ink-700)',
               borderRadius: '4px',
               cursor: (selectedVoxelPosition || regionPickMode === 'pos2') ? 'pointer' : 'not-allowed',
               opacity: (selectedVoxelPosition || regionPos2 || regionPickMode === 'pos2') ? 1 : 0.4,
-              color: (regionPos2 || regionPickMode === 'pos2') ? '#14f195' : '#c8c8dd',
-              boxShadow: (regionPos2 || regionPickMode === 'pos2') ? '0 0 8px rgba(20, 241, 149, 0.35)' : 'none',
+              color: (regionPos2 || regionPickMode === 'pos2') ? 'var(--ok)' : 'var(--text)',
+              boxShadow: (regionPos2 || regionPickMode === 'pos2') ? '0 0 8px color-mix(in srgb, var(--ok) 35%, transparent)' : 'none',
               padding: 0,
               transition: 'all 0.15s ease',
             }}
@@ -3053,12 +3053,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#232330',
-                border: '1px solid #38bdf8',
+                background: 'var(--ink-800)',
+                border: '1px solid var(--signal)',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                color: '#38bdf8',
-                boxShadow: '0 0 6px rgba(56, 189, 248, 0.25)',
+                color: 'var(--signal)',
+                boxShadow: '0 0 6px color-mix(in srgb, var(--signal) 25%, transparent)',
                 padding: 0,
                 transition: 'all 0.15s ease',
               }}
@@ -3088,12 +3088,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                background: '#232330',
-                border: '1px solid #4a9eff',
+                background: 'var(--ink-800)',
+                border: '1px solid var(--signal)',
                 borderRadius: '4px',
                 cursor: selectedVoxelPosition ? 'pointer' : 'not-allowed',
                 opacity: selectedVoxelPosition ? 1 : 0.4,
-                color: '#4a9eff',
+                color: 'var(--signal)',
                 padding: 0,
                 transition: 'all 0.15s ease',
               }}
@@ -3117,12 +3117,12 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: '#232330',
-              border: '1px solid #333345',
+              background: 'var(--ink-800)',
+              border: '1px solid var(--ink-700)',
               borderRadius: '4px',
               cursor: (regionPos1 || regionPos2 || regionBounds || (savedRegions && savedRegions.length > 0)) ? 'pointer' : 'not-allowed',
               opacity: (regionPos1 || regionPos2 || regionBounds || (savedRegions && savedRegions.length > 0)) ? 1 : 0.35,
-              color: '#ff6666',
+              color: 'var(--danger)',
               padding: 0,
               transition: 'all 0.15s ease',
             }}
@@ -3210,10 +3210,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             display: 'flex',
             alignItems: 'center',
             gap: '6px',
-            backgroundColor: '#181a20f2',
+            backgroundColor: 'color-mix(in srgb, var(--ink-800) 95%, transparent)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
-            border: '1px solid #2a2f3a',
+            border: '1px solid var(--ink-800)',
             borderRadius: '6px',
             padding: '0 8px',
             boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
@@ -3222,7 +3222,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             fontSize: '12px',
           }}
         >
-          <span style={{ color: '#94a3b8', fontWeight: 600, fontSize: '11px', marginRight: '2px' }}>
+          <span style={{ color: 'var(--text-dim)', fontWeight: 600, fontSize: '11px', marginRight: '2px' }}>
             Regions:
           </span>
           {savedRegions.map((reg) => {
@@ -3234,11 +3234,11 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                   display: 'flex',
                   alignItems: 'center',
                   gap: '4px',
-                  backgroundColor: isActive ? '#14f19522' : '#222631',
-                  border: isActive ? '1px solid #14f195' : '1px solid #333948',
+                  backgroundColor: isActive ? 'color-mix(in srgb, var(--ok) 13%, transparent)' : 'var(--ink-800)',
+                  border: isActive ? '1px solid var(--ok)' : '1px solid var(--ink-800)',
                   borderRadius: '4px',
                   padding: '2px 6px',
-                  color: isActive ? '#14f195' : '#cbd5e1',
+                  color: isActive ? 'var(--ok)' : 'var(--text)',
                   fontSize: '11px',
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -3257,7 +3257,7 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                   style={{
                     background: 'transparent',
                     border: 'none',
-                    color: isActive ? '#14f19599' : '#64748b',
+                    color: isActive ? 'color-mix(in srgb, var(--ok) 60%, transparent)' : 'var(--text-faint)',
                     cursor: 'pointer',
                     padding: '0 2px',
                     fontSize: '12px',
@@ -3265,8 +3265,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
                     borderRadius: '2px',
                   }}
                   title={`Remove ${reg.name}`}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = isActive ? '#14f19599' : '#64748b')}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = isActive ? 'color-mix(in srgb, var(--ok) 60%, transparent)' : 'var(--text-faint)')}
                 >
                   ×
                 </button>
@@ -3277,9 +3277,9 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
             type="button"
             onClick={() => onAddNewRegion?.()}
             style={{
-              background: '#232836',
-              border: '1px solid #38bdf8',
-              color: '#38bdf8',
+              background: 'var(--ink-800)',
+              border: '1px solid var(--signal)',
+              color: 'var(--signal)',
               borderRadius: '4px',
               width: '20px',
               height: '20px',
@@ -3294,8 +3294,8 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
               transition: 'all 0.12s ease',
             }}
             title="Add new region (+)"
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#38bdf822')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#232836')}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--signal) 13%, transparent)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           >
             +
           </button>
@@ -3307,10 +3307,10 @@ export const ViewportCanvas: React.FC<ViewportCanvasProps> = ({
 
 const btnStyle: React.CSSProperties = {
   padding: '4px 8px',
-  backgroundColor: '#28283c',
-  border: '1px solid #44445c',
+  backgroundColor: 'var(--ink-800)',
+  border: '1px solid var(--ink-700)',
   borderRadius: '4px',
-  color: '#e2e2ec',
+  color: 'var(--text)',
   cursor: 'pointer',
   fontSize: '11px',
 };

@@ -164,10 +164,10 @@ export function ProjectExplorer({
         width: '100%',
         maxHeight: isSectionCollapsed ? '34px' : '45%',
         flexShrink: 0,
-        backgroundColor: '#14161b',
-        borderBottom: '1px solid #282828',
-        borderRight: '1px solid var(--color-border-subtle, #333333)',
-        color: '#eaeaea',
+        backgroundColor: 'var(--ink-900)',
+        borderBottom: '1px solid var(--ink-800)',
+        borderRight: '1px solid var(--color-border-subtle, var(--ink-700))',
+        color: 'var(--text)',
         fontSize: '12px',
         userSelect: 'none',
         overflow: 'hidden',
@@ -184,8 +184,8 @@ export function ProjectExplorer({
           height: '34px',
           minHeight: '34px',
           padding: '0 10px',
-          borderBottom: isSectionCollapsed ? 'none' : '1px solid #24272f',
-          backgroundColor: '#0f1115',
+          borderBottom: isSectionCollapsed ? 'none' : '1px solid var(--ink-800)',
+          backgroundColor: 'var(--ink-900)',
           cursor: 'pointer',
         }}
       >
@@ -193,7 +193,7 @@ export function ProjectExplorer({
           <span
             style={{
               fontSize: '10px',
-              color: '#888888',
+              color: 'var(--text-faint)',
               transform: isSectionCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
               transition: 'transform 0.15s ease',
               display: 'inline-block',
@@ -207,7 +207,7 @@ export function ProjectExplorer({
               fontSize: '11px',
               letterSpacing: '0.6px',
               textTransform: 'uppercase',
-              color: '#c2c5cc',
+              color: 'var(--text)',
             }}
           >
             Explorer
@@ -246,10 +246,10 @@ export function ProjectExplorer({
               style={{
                 margin: '2px 8px 6px 8px',
                 padding: '4px 8px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid #ef4444',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 15%, transparent)',
+                border: '1px solid var(--danger)',
                 borderRadius: '3px',
-                color: '#fca5a5',
+                color: 'var(--danger)',
                 fontSize: '11px',
                 display: 'flex',
                 alignItems: 'center',
@@ -273,7 +273,7 @@ export function ProjectExplorer({
                 style={{
                   background: 'transparent',
                   border: 'none',
-                  color: '#fca5a5',
+                  color: 'var(--danger)',
                   cursor: 'pointer',
                   padding: 0,
                   fontSize: '11px',
@@ -295,17 +295,17 @@ export function ProjectExplorer({
               padding: '4px 8px 4px 6px',
               fontSize: '12px',
               fontWeight: 600,
-              color: '#9aa0a6',
+              color: 'var(--text-dim)',
               cursor: 'pointer',
             }}
             onClick={() => setIsRootExpanded((prev) => !prev)}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '9px', color: '#666', width: '10px', textAlign: 'center' }}>
+              <span style={{ fontSize: '9px', color: 'var(--text-faint)', width: '10px', textAlign: 'center' }}>
                 {isRootExpanded ? '▼' : '▶'}
               </span>
               <span style={{ fontSize: '13px' }}>📁</span>
-              <span style={{ color: rootLabel === 'guest' ? '#e2a93b' : '#4a9eff' }}>
+              <span style={{ color: rootLabel === 'guest' ? 'var(--warn)' : 'var(--signal)' }}>
                 {rootLabel}
               </span>
             </div>
@@ -367,7 +367,7 @@ export function ProjectExplorer({
                   style={{
                     padding: '6px 12px 6px 26px',
                     fontSize: '11px',
-                    color: '#666',
+                    color: 'var(--text-faint)',
                     fontStyle: 'italic',
                   }}
                 >
@@ -390,7 +390,7 @@ export function ProjectExplorer({
                           justifyContent: 'space-between',
                           padding: '3px 8px 3px 18px',
                           cursor: 'pointer',
-                          backgroundColor: activeProjectId === project.id ? '#1b1f29' : 'transparent',
+                          backgroundColor: activeProjectId === project.id ? 'var(--ink-850)' : 'transparent',
                         }}
                         onClick={() => toggleProjectExpand(project.id)}
                       >
@@ -398,7 +398,7 @@ export function ProjectExplorer({
                           <span
                             style={{
                               fontSize: '9px',
-                              color: '#777',
+                              color: 'var(--text-faint)',
                               width: '10px',
                               textAlign: 'center',
                             }}
@@ -436,7 +436,7 @@ export function ProjectExplorer({
                               style={{
                                 fontSize: '11.5px',
                                 fontWeight: 500,
-                                color: '#d0d3da',
+                                color: 'var(--text)',
                                 whiteSpace: 'nowrap',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
@@ -494,7 +494,7 @@ export function ProjectExplorer({
                                   }
                                 }
                               }}
-                              style={{ ...actionButtonStyle, color: '#ef4444' }}
+                              style={{ ...actionButtonStyle, color: 'var(--danger)' }}
                             >
                               ✕
                             </button>
@@ -546,7 +546,7 @@ export function ProjectExplorer({
                               style={{
                                 padding: '3px 8px 3px 36px',
                                 fontSize: '11px',
-                                color: '#555',
+                                color: 'var(--text-faint)',
                                 fontStyle: 'italic',
                               }}
                             >
@@ -575,8 +575,8 @@ export function ProjectExplorer({
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
                                     padding: '3px 8px 3px 34px',
-                                    backgroundColor: isActive ? '#1c2838' : 'transparent',
-                                    borderLeft: isActive ? '3px solid #4a9eff' : '3px solid transparent',
+                                    backgroundColor: isActive ? 'var(--ink-800)' : 'transparent',
+                                    borderLeft: isActive ? '3px solid var(--signal)' : '3px solid transparent',
                                     cursor: 'pointer',
                                     transition: 'background-color 0.1s',
                                   }}
@@ -619,7 +619,7 @@ export function ProjectExplorer({
                                       <span
                                         style={{
                                           fontSize: '11.5px',
-                                          color: isActive ? '#ffffff' : '#b8bcc6',
+                                          color: isActive ? 'var(--text)' : 'var(--text-dim)',
                                           fontWeight: isActive ? 600 : 400,
                                           whiteSpace: 'nowrap',
                                           overflow: 'hidden',
@@ -667,7 +667,7 @@ export function ProjectExplorer({
                                             }
                                           }
                                         }}
-                                        style={{ ...actionButtonStyle, color: '#ef4444' }}
+                                        style={{ ...actionButtonStyle, color: 'var(--danger)' }}
                                       >
                                         ✕
                                       </button>
@@ -701,16 +701,16 @@ const actionButtonStyle: React.CSSProperties = {
   background: 'transparent',
   border: 'none',
   borderRadius: '2px',
-  color: '#8b929e',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
   fontSize: '11px',
 };
 
 const inputStyle: React.CSSProperties = {
-  backgroundColor: '#0c0d10',
-  border: '1px solid #3d4452',
+  backgroundColor: 'var(--ink-900)',
+  border: '1px solid var(--line-strong)',
   borderRadius: '2px',
-  color: '#ffffff',
+  color: 'var(--text)',
   fontSize: '11px',
   padding: '2px 6px',
   outline: 'none',
@@ -718,10 +718,10 @@ const inputStyle: React.CSSProperties = {
 };
 
 const confirmButtonStyle: React.CSSProperties = {
-  backgroundColor: '#2e7d32',
+  backgroundColor: 'var(--ok)',
   border: 'none',
   borderRadius: '2px',
-  color: '#ffffff',
+  color: 'var(--text)',
   fontSize: '10px',
   width: '18px',
   height: '18px',
@@ -733,10 +733,10 @@ const confirmButtonStyle: React.CSSProperties = {
 };
 
 const cancelButtonStyle: React.CSSProperties = {
-  backgroundColor: '#3a3e47',
+  backgroundColor: 'var(--ink-700)',
   border: 'none',
   borderRadius: '2px',
-  color: '#ffffff',
+  color: 'var(--text)',
   fontSize: '10px',
   width: '18px',
   height: '18px',

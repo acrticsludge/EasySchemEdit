@@ -142,8 +142,8 @@ export function WorkspaceShell({
   const leftPanel = layoutState.panels.find((p) => p.id === 'hierarchy');
   const bottomPanel = layoutState.panels.find((p) => p.id === 'bottom-dock');
 
-  const leftWidth = leftPanel?.collapsed ? 28 : (leftPanel?.width ?? 260);
-  const bottomHeight = bottomPanel?.collapsed ? 28 : (bottomPanel?.height ?? 220);
+  const leftWidth = leftPanel?.collapsed ? 28 : (leftPanel?.width ?? 240);
+  const bottomHeight = bottomPanel?.collapsed ? 28 : (bottomPanel?.height ?? 180);
 
   // --------------------------------------------------------------------------
   // Divider Drag Resizing
@@ -160,8 +160,8 @@ export function WorkspaceShell({
     e.preventDefault();
     setActiveResizing(panel);
 
-    const initialW = leftPanel?.width ?? 260;
-    const initialH = bottomPanel?.height ?? 220;
+    const initialW = leftPanel?.width ?? 240;
+    const initialH = bottomPanel?.height ?? 180;
 
     dragStartRef.current = {
       startX: e.clientX,
@@ -351,10 +351,11 @@ export function WorkspaceShell({
             flex: 1,
             minWidth: '200px',
             minHeight: '180px',
-            height: '100%',
+            margin: 'var(--space-2)',
             position: 'relative',
             overflow: 'hidden',
             backgroundColor: 'var(--ink-900)',
+            border: '1px solid var(--line)',
           }}
         >
           {viewportSlot}

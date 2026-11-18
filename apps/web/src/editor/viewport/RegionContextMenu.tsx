@@ -125,13 +125,13 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
         left: clampedX,
         top: clampedY,
         width: `${estimatedMenuWidth}px`,
-        backgroundColor: '#181a20',
-        border: '1px solid #2a2f3a',
+        backgroundColor: 'var(--ink-800)',
+        border: '1px solid var(--ink-800)',
         borderRadius: '8px',
-        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.7), 0 0 1px rgba(255, 255, 255, 0.1)',
+        boxShadow: '0 10px 30px rgba(0, 0, 0, 0.7), 0 0 1px color-mix(in srgb, var(--text) 10%, transparent)',
         backdropFilter: 'blur(10px)',
         padding: '6px 0',
-        color: '#e2e8f0',
+        color: 'var(--text)',
         fontSize: '12px',
         zIndex: 1000,
         userSelect: 'none',
@@ -143,28 +143,28 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
       <div
         style={{
           padding: '6px 12px 8px 12px',
-          borderBottom: '1px solid #2a2f3a',
+          borderBottom: '1px solid var(--ink-800)',
           marginBottom: '4px',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 700, fontSize: '11px', color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+          <span style={{ fontWeight: 700, fontSize: '11px', color: 'var(--text-dim)', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
             Region ({dx} × {dy} × {dz})
           </span>
           <span
             style={{
               fontSize: '10px',
-              backgroundColor: '#262a36',
+              backgroundColor: 'var(--ink-800)',
               padding: '1px 5px',
               borderRadius: '3px',
-              color: '#38bdf8',
+              color: 'var(--signal)',
               fontWeight: 600,
             }}
           >
             {totalVolume.toLocaleString()} blk
           </span>
         </div>
-        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '2px', fontFamily: 'monospace' }}>
+        <div style={{ fontSize: '10px', color: 'var(--text-faint)', marginTop: '2px', fontFamily: 'monospace' }}>
           [{bounds.min[0]},{bounds.min[1]},{bounds.min[2]}] → [{bounds.maxExclusive[0] - 1},{bounds.maxExclusive[1] - 1},{bounds.maxExclusive[2] - 1}]
         </div>
       </div>
@@ -175,11 +175,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           type="button"
           onClick={() => setInlineMode(inlineMode === 'fill' ? 'none' : 'fill')}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--signal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2c.8.8 2 .8 2.8 0L19 11Z" />
               <path d="m5 2 5 5" />
               <path d="M2 13h15" />
@@ -187,7 +187,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             </svg>
             Fill...
           </span>
-          <span style={{ fontSize: '10px', color: '#64748b' }}>{inlineMode === 'fill' ? '▲' : '▶'}</span>
+          <span style={{ fontSize: '10px', color: 'var(--text-faint)' }}>{inlineMode === 'fill' ? '▲' : '▶'}</span>
         </button>
 
         {inlineMode === 'fill' && (
@@ -195,7 +195,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onSubmit={handleApplyFill}
             style={{
               padding: '6px 8px',
-              backgroundColor: '#1f232d',
+              backgroundColor: 'var(--ink-800)',
               borderRadius: '6px',
               margin: '2px 0 4px 0',
               display: 'flex',
@@ -226,11 +226,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           type="button"
           onClick={() => setInlineMode(inlineMode === 'replace' ? 'none' : 'replace')}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--signal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M16 3h5v5" />
               <path d="M4 20L21 3" />
               <path d="M21 16v5h-5" />
@@ -239,7 +239,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             </svg>
             Replace...
           </span>
-          <span style={{ fontSize: '10px', color: '#64748b' }}>{inlineMode === 'replace' ? '▲' : '▶'}</span>
+          <span style={{ fontSize: '10px', color: 'var(--text-faint)' }}>{inlineMode === 'replace' ? '▲' : '▶'}</span>
         </button>
 
         {inlineMode === 'replace' && (
@@ -247,7 +247,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onSubmit={handleApplyReplace}
             style={{
               padding: '6px 8px',
-              backgroundColor: '#1f232d',
+              backgroundColor: 'var(--ink-800)',
               borderRadius: '6px',
               margin: '2px 0 4px 0',
               display: 'flex',
@@ -256,7 +256,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '10px', color: '#94a3b8', width: '32px' }}>From:</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-dim)', width: '32px' }}>From:</span>
               <input
                 type="text"
                 placeholder="minecraft:stone"
@@ -266,7 +266,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
               />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ fontSize: '10px', color: '#94a3b8', width: '32px' }}>To:</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-dim)', width: '32px' }}>To:</span>
               <input
                 type="text"
                 placeholder="minecraft:dirt"
@@ -288,11 +288,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           type="button"
           onClick={() => setInlineMode(inlineMode === 'walls' ? 'none' : 'walls')}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--warn)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="18" height="18" rx="2" />
               <path d="M3 9h18" />
               <path d="M3 15h18" />
@@ -302,7 +302,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             </svg>
             Walls...
           </span>
-          <span style={{ fontSize: '10px', color: '#64748b' }}>{inlineMode === 'walls' ? '▲' : '▶'}</span>
+          <span style={{ fontSize: '10px', color: 'var(--text-faint)' }}>{inlineMode === 'walls' ? '▲' : '▶'}</span>
         </button>
 
         {inlineMode === 'walls' && (
@@ -310,7 +310,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onSubmit={handleApplyWalls}
             style={{
               padding: '6px 8px',
-              backgroundColor: '#1f232d',
+              backgroundColor: 'var(--ink-800)',
               borderRadius: '6px',
               margin: '2px 0 4px 0',
               display: 'flex',
@@ -344,11 +344,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onClose();
           }}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#34d399" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="2" y="2" width="20" height="20" rx="3" />
               <rect x="7" y="7" width="10" height="10" rx="1" strokeDasharray="2 2" />
             </svg>
@@ -358,7 +358,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
       </div>
 
       {/* Divider */}
-      <div style={{ height: '1px', backgroundColor: '#2a2f3a', margin: '4px 0' }} />
+      <div style={{ height: '1px', backgroundColor: 'var(--ink-800)', margin: '4px 0' }} />
 
       {/* Copy */}
       <div style={{ padding: '0 4px' }}>
@@ -369,11 +369,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onClose();
           }}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#93c5fd" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--signal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
               <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
             </svg>
@@ -391,11 +391,11 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             onClose();
           }}
           style={menuItemStyle}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--signal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="6" cy="6" r="3" />
               <path d="M8.12 8.12 12 12" />
               <path d="M20 4 8.12 15.88" />
@@ -423,12 +423,12 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             cursor: hasClipboard ? 'pointer' : 'not-allowed',
           }}
           onMouseEnter={(e) => {
-            if (hasClipboard) e.currentTarget.style.backgroundColor = '#262a36';
+            if (hasClipboard) e.currentTarget.style.backgroundColor = 'var(--ink-800)';
           }}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#60a5fa" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--signal)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
               <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
             </svg>
@@ -447,15 +447,15 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           }}
           style={{
             ...menuItemStyle,
-            color: '#f87171',
+            color: 'var(--danger)',
           }}
           onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#3b181e';
-            e.currentTarget.style.color = '#fca5a5';
+            e.currentTarget.style.backgroundColor = 'var(--danger)';
+            e.currentTarget.style.color = 'var(--danger)';
           }}
           onMouseLeave={(e) => {
             e.currentTarget.style.backgroundColor = 'transparent';
-            e.currentTarget.style.color = '#f87171';
+            e.currentTarget.style.color = 'var(--danger)';
           }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -470,7 +470,7 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
       </div>
 
       {/* Divider */}
-      <div style={{ height: '1px', backgroundColor: '#2a2f3a', margin: '4px 0' }} />
+      <div style={{ height: '1px', backgroundColor: 'var(--ink-800)', margin: '4px 0' }} />
 
       {/* Deselect Region */}
       <div style={{ padding: '0 4px' }}>
@@ -482,9 +482,9 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
           }}
           style={{
             ...menuItemStyle,
-            color: '#94a3b8',
+            color: 'var(--text-dim)',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -509,9 +509,9 @@ export const RegionContextMenu: React.FC<RegionContextMenuProps> = ({
             }}
             style={{
               ...menuItemStyle,
-              color: '#94a3b8',
+              color: 'var(--text-dim)',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#262a36')}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--ink-800)')}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -538,7 +538,7 @@ const menuItemStyle: React.CSSProperties = {
   border: 'none',
   borderRadius: '4px',
   backgroundColor: 'transparent',
-  color: '#e2e8f0',
+  color: 'var(--text)',
   fontSize: '12px',
   fontWeight: 500,
   cursor: 'pointer',
@@ -550,10 +550,10 @@ const menuItemStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   flex: 1,
   padding: '4px 8px',
-  backgroundColor: '#13151b',
-  border: '1px solid #333948',
+  backgroundColor: 'var(--ink-900)',
+  border: '1px solid var(--ink-800)',
   borderRadius: '4px',
-  color: '#f1f5f9',
+  color: 'var(--text)',
   fontSize: '11px',
   fontFamily: 'monospace',
   outline: 'none',
@@ -561,10 +561,10 @@ const inputStyle: React.CSSProperties = {
 
 const applyBtnStyle: React.CSSProperties = {
   padding: '4px 10px',
-  backgroundColor: '#2563eb',
+  backgroundColor: 'var(--signal)',
   border: 'none',
   borderRadius: '4px',
-  color: '#ffffff',
+  color: 'var(--text)',
   fontSize: '11px',
   fontWeight: 600,
   cursor: 'pointer',

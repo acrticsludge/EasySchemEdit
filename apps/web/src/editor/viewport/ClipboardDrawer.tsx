@@ -1,7 +1,7 @@
 // apps/web/src/editor/viewport/ClipboardDrawer.tsx
 // Windows-style (Win+V) Clipboard History Drawer for the 3D viewport.
 // Displays copied/cut regions with isometric thumbnails, dimensions, block count, and quick paste/delete actions.
-// Matches dark S&box aesthetic (#181a20f2, blur(8px), 1px solid #2a2f3a, #14f195 / #4a9eff accents).
+// Matches dark S&box aesthetic (color-mix(in srgb, var(--ink-800) 95%, transparent), blur(8px), 1px solid var(--ink-800), var(--ok) / var(--signal) accents).
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import type { ClipboardEntry } from '@easyschemedit/operations';
@@ -127,10 +127,10 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
             left: '0',
             width: '280px',
             maxHeight: '340px',
-            backgroundColor: '#181a20f2',
+            backgroundColor: 'color-mix(in srgb, var(--ink-800) 95%, transparent)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
-            border: '1px solid #2a2f3a',
+            border: '1px solid var(--ink-800)',
             borderRadius: '8px',
             boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
             display: 'flex',
@@ -145,8 +145,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               padding: '8px 12px',
-              borderBottom: '1px solid #2a2f3a',
-              backgroundColor: '#12141a',
+              borderBottom: '1px solid var(--ink-800)',
+              backgroundColor: 'var(--ink-900)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -155,7 +155,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                 height="14"
                 viewBox="0 0 24 24"
                 fill="none"
-                stroke="#4a9eff"
+                stroke="var(--signal)"
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -163,7 +163,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                 <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
                 <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
               </svg>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#f1f5f9' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
                 Clipboard History
               </span>
               {entries.length > 0 && (
@@ -171,8 +171,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   style={{
                     fontSize: '10px',
                     fontWeight: 700,
-                    backgroundColor: '#262a36',
-                    color: '#94a3b8',
+                    backgroundColor: 'var(--ink-800)',
+                    color: 'var(--text-dim)',
                     padding: '1px 6px',
                     borderRadius: '10px',
                   }}
@@ -190,15 +190,15 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   style={{
                     background: 'none',
                     border: 'none',
-                    color: '#94a3b8',
+                    color: 'var(--text-dim)',
                     fontSize: '11px',
                     cursor: 'pointer',
                     padding: '2px 4px',
                     borderRadius: '3px',
                     transition: 'color 0.12s ease',
                   }}
-                  onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                  onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-dim)')}
                   title="Clear all clipboard entries"
                 >
                   Clear all
@@ -210,7 +210,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#94a3b8',
+                  color: 'var(--text-dim)',
                   fontSize: '12px',
                   cursor: 'pointer',
                   padding: '2px 4px',
@@ -220,8 +220,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
-                onMouseEnter={(e) => (e.currentTarget.style.color = '#f1f5f9')}
-                onMouseLeave={(e) => (e.currentTarget.style.color = '#94a3b8')}
+                onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--text)')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-dim)')}
                 title="Close drawer"
               >
                 ✕
@@ -250,7 +250,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   justifyContent: 'center',
                   padding: '28px 16px',
                   textAlign: 'center',
-                  color: '#64748b',
+                  color: 'var(--text-faint)',
                   gap: '8px',
                 }}
               >
@@ -259,7 +259,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   height="28"
                   viewBox="0 0 24 24"
                   fill="none"
-                  stroke="#333948"
+                  stroke="var(--ink-800)"
                   strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -267,7 +267,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                   <rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
                   <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
                 </svg>
-                <div style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>
+                <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-dim)' }}>
                   Clipboard is empty
                 </div>
                 <div style={{ fontSize: '11px', lineHeight: '1.4' }}>
@@ -289,8 +289,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                       alignItems: 'center',
                       gap: '8px',
                       padding: '6px 8px',
-                      backgroundColor: isActive ? '#1c2430' : '#1c1f28',
-                      border: isActive ? '1px solid #14f195' : '1px solid #2a2f3a',
+                      backgroundColor: isActive ? 'var(--ink-800)' : 'var(--ink-800)',
+                      border: isActive ? '1px solid var(--ok)' : '1px solid var(--ink-800)',
                       borderRadius: '6px',
                       transition: 'border-color 0.12s, background-color 0.12s',
                     }}
@@ -301,8 +301,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                         width: '52px',
                         height: '52px',
                         flexShrink: 0,
-                        backgroundColor: '#0e1015',
-                        border: '1px solid #252a36',
+                        backgroundColor: 'var(--ink-900)',
+                        border: '1px solid var(--ink-800)',
                         borderRadius: '4px',
                         display: 'flex',
                         alignItems: 'center',
@@ -327,7 +327,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                           height="20"
                           viewBox="0 0 24 24"
                           fill="none"
-                          stroke="#4a9eff"
+                          stroke="var(--signal)"
                           strokeWidth="1.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -353,7 +353,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                         style={{
                           fontSize: '11px',
                           fontWeight: 600,
-                          color: '#f1f5f9',
+                          color: 'var(--text)',
                           whiteSpace: 'nowrap',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
@@ -361,13 +361,13 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                       >
                         {dims.width} × {dims.height} × {dims.depth}
                       </div>
-                      <div style={{ fontSize: '10px', color: '#94a3b8' }}>
+                      <div style={{ fontSize: '10px', color: 'var(--text-dim)' }}>
                         {blockCount.toLocaleString()} {blockCount === 1 ? 'block' : 'blocks'}
                       </div>
                       <div
                         style={{
                           fontSize: '9px',
-                          color: '#64748b',
+                          color: 'var(--text-faint)',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '4px',
@@ -377,7 +377,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                         <span>•</span>
                         <span
                           style={{
-                            color: entry.scope === 'effective-composite' ? '#4a9eff' : '#a78bfa',
+                            color: entry.scope === 'effective-composite' ? 'var(--signal)' : 'var(--signal)',
                           }}
                         >
                           {entry.scope === 'effective-composite' ? 'composite' : 'single'}
@@ -404,9 +404,9 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                           fontWeight: 600,
                           borderRadius: '4px',
                           cursor: 'pointer',
-                          border: isActive ? '1px solid #14f195' : '1px solid #363d4e',
-                          backgroundColor: isActive ? '#14f195' : '#272d3b',
-                          color: isActive ? '#090a0f' : '#e2e8f0',
+                          border: isActive ? '1px solid var(--ok)' : '1px solid var(--ink-800)',
+                          backgroundColor: isActive ? 'var(--ok)' : 'var(--ink-800)',
+                          color: isActive ? 'var(--ink-900)' : 'var(--text)',
                           transition: 'all 0.12s ease',
                           outline: 'none',
                         }}
@@ -421,7 +421,7 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                         style={{
                           background: 'none',
                           border: 'none',
-                          color: '#64748b',
+                          color: 'var(--text-faint)',
                           fontSize: '11px',
                           cursor: 'pointer',
                           padding: '2px 4px',
@@ -429,8 +429,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
                           lineHeight: 1,
                         }}
                         title="Delete from clipboard"
-                        onMouseEnter={(e) => (e.currentTarget.style.color = '#ef4444')}
-                        onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                        onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--danger)')}
+                        onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--text-faint)')}
                       >
                         ✕
                       </button>
@@ -456,12 +456,12 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
         style={{
           width: '36px',
           height: '36px',
-          backgroundColor: isOpen ? '#252a36' : '#181a20f2',
+          backgroundColor: isOpen ? 'var(--ink-800)' : 'color-mix(in srgb, var(--ink-800) 95%, transparent)',
           backdropFilter: 'blur(8px)',
           WebkitBackdropFilter: 'blur(8px)',
-          border: isOpen ? '1px solid #4a9eff' : '1px solid #2a2f3a',
+          border: isOpen ? '1px solid var(--signal)' : '1px solid var(--ink-800)',
           borderRadius: '6px',
-          color: isOpen ? '#4a9eff' : '#e2e8f0',
+          color: isOpen ? 'var(--signal)' : 'var(--text)',
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
@@ -473,14 +473,14 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
         }}
         onMouseEnter={(e) => {
           if (!isOpen) {
-            e.currentTarget.style.borderColor = '#4a9eff';
-            e.currentTarget.style.backgroundColor = '#222631';
+            e.currentTarget.style.borderColor = 'var(--signal)';
+            e.currentTarget.style.backgroundColor = 'var(--ink-800)';
           }
         }}
         onMouseLeave={(e) => {
           if (!isOpen) {
-            e.currentTarget.style.borderColor = '#2a2f3a';
-            e.currentTarget.style.backgroundColor = '#181a20f2';
+            e.currentTarget.style.borderColor = 'var(--ink-800)';
+            e.currentTarget.style.backgroundColor = 'color-mix(in srgb, var(--ink-800) 95%, transparent)';
           }
         }}
       >
@@ -507,8 +507,8 @@ export const ClipboardDrawer: React.FC<ClipboardDrawerProps> = ({
               position: 'absolute',
               top: '-4px',
               right: '-4px',
-              backgroundColor: '#14f195',
-              color: '#090a0f',
+              backgroundColor: 'var(--ok)',
+              color: 'var(--ink-900)',
               fontSize: '10px',
               fontWeight: 700,
               borderRadius: '8px',

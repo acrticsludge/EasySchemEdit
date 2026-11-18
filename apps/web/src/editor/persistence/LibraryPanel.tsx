@@ -173,7 +173,7 @@ export function LibraryPanel({
         backgroundColor: 'transparent',
         border: 'none',
         borderRadius: 0,
-        color: '#f4f4f5',
+        color: 'var(--text)',
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
@@ -189,8 +189,8 @@ export function LibraryPanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '10px 14px',
-          backgroundColor: '#27272a',
-          borderBottom: '1px solid #3f3f46',
+          backgroundColor: 'var(--ink-700)',
+          borderBottom: '1px solid var(--line-strong)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -199,8 +199,8 @@ export function LibraryPanel({
           <span
             style={{
               fontSize: '11px',
-              backgroundColor: '#3f3f46',
-              color: '#d4d4d8',
+              backgroundColor: 'var(--line-strong)',
+              color: 'var(--text)',
               padding: '2px 6px',
               borderRadius: '10px',
             }}
@@ -213,8 +213,8 @@ export function LibraryPanel({
             type="button"
             onClick={() => setShowSaveForm(!showSaveForm)}
             style={{
-              backgroundColor: showSaveForm ? '#3f3f46' : '#2563eb',
-              color: '#ffffff',
+              backgroundColor: showSaveForm ? 'var(--line-strong)' : 'var(--signal)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               padding: '4px 8px',
@@ -233,7 +233,7 @@ export function LibraryPanel({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#a1a1aa',
+                color: 'var(--text-dim)',
                 fontSize: '16px',
                 cursor: 'pointer',
                 padding: '2px 4px',
@@ -250,15 +250,15 @@ export function LibraryPanel({
         <form
           onSubmit={handleSaveToLibrary}
           style={{
-            backgroundColor: '#27272a',
-            borderBottom: '1px solid #3f3f46',
+            backgroundColor: 'var(--ink-700)',
+            borderBottom: '1px solid var(--line-strong)',
             padding: '12px 14px',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
           }}
         >
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#e4e4e7' }}>
+          <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text)' }}>
             Save Placement to Library
           </div>
 
@@ -272,9 +272,9 @@ export function LibraryPanel({
               }}
               style={{
                 flex: 1,
-                backgroundColor: '#18181b',
-                border: '1px solid #3f3f46',
-                color: '#f4f4f5',
+                backgroundColor: 'var(--ink-850)',
+                border: '1px solid var(--line-strong)',
+                color: 'var(--text)',
                 borderRadius: '4px',
                 padding: '4px 8px',
                 fontSize: '12px',
@@ -291,9 +291,9 @@ export function LibraryPanel({
               value={saveFormat}
               onChange={(e) => setSaveFormat(e.target.value as any)}
               style={{
-                backgroundColor: '#18181b',
-                border: '1px solid #3f3f46',
-                color: '#f4f4f5',
+                backgroundColor: 'var(--ink-850)',
+                border: '1px solid var(--line-strong)',
+                color: 'var(--text)',
                 borderRadius: '4px',
                 padding: '4px 8px',
                 fontSize: '12px',
@@ -311,9 +311,9 @@ export function LibraryPanel({
             onChange={(e) => setSaveName(e.target.value)}
             required
             style={{
-              backgroundColor: '#18181b',
-              border: '1px solid #3f3f46',
-              color: '#f4f4f5',
+              backgroundColor: 'var(--ink-850)',
+              border: '1px solid var(--line-strong)',
+              color: 'var(--text)',
               borderRadius: '4px',
               padding: '6px 8px',
               fontSize: '12px',
@@ -326,9 +326,9 @@ export function LibraryPanel({
             value={saveDesc}
             onChange={(e) => setSaveDesc(e.target.value)}
             style={{
-              backgroundColor: '#18181b',
-              border: '1px solid #3f3f46',
-              color: '#f4f4f5',
+              backgroundColor: 'var(--ink-850)',
+              border: '1px solid var(--line-strong)',
+              color: 'var(--text)',
               borderRadius: '4px',
               padding: '6px 8px',
               fontSize: '12px',
@@ -341,9 +341,9 @@ export function LibraryPanel({
             value={saveTags}
             onChange={(e) => setSaveTags(e.target.value)}
             style={{
-              backgroundColor: '#18181b',
-              border: '1px solid #3f3f46',
-              color: '#f4f4f5',
+              backgroundColor: 'var(--ink-850)',
+              border: '1px solid var(--line-strong)',
+              color: 'var(--text)',
               borderRadius: '4px',
               padding: '6px 8px',
               fontSize: '12px',
@@ -354,8 +354,8 @@ export function LibraryPanel({
             type="submit"
             disabled={isLoading || availablePlacements.length === 0}
             style={{
-              backgroundColor: '#16a34a',
-              color: '#ffffff',
+              backgroundColor: 'var(--ok)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               padding: '6px 12px',
@@ -374,7 +374,7 @@ export function LibraryPanel({
       <div
         style={{
           padding: '8px 12px',
-          borderBottom: '1px solid #27272a',
+          borderBottom: '1px solid var(--line)',
           display: 'flex',
           flexDirection: 'column',
           gap: '6px',
@@ -389,9 +389,9 @@ export function LibraryPanel({
             style={{
               width: '100%',
               boxSizing: 'border-box',
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
-              color: '#f4f4f5',
+              backgroundColor: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
+              color: 'var(--text)',
               borderRadius: '4px',
               padding: '6px 10px',
               fontSize: '12px',
@@ -405,9 +405,9 @@ export function LibraryPanel({
               type="button"
               onClick={() => setSelectedTag(null)}
               style={{
-                backgroundColor: selectedTag === null ? '#2563eb' : '#27272a',
-                color: selectedTag === null ? '#ffffff' : '#a1a1aa',
-                border: '1px solid #3f3f46',
+                backgroundColor: selectedTag === null ? 'var(--signal)' : 'var(--ink-700)',
+                color: selectedTag === null ? 'var(--text)' : 'var(--text-dim)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '12px',
                 padding: '2px 8px',
                 fontSize: '11px',
@@ -423,9 +423,9 @@ export function LibraryPanel({
                 type="button"
                 onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
                 style={{
-                  backgroundColor: selectedTag === tag ? '#2563eb' : '#27272a',
-                  color: selectedTag === tag ? '#ffffff' : '#a1a1aa',
-                  border: '1px solid #3f3f46',
+                  backgroundColor: selectedTag === tag ? 'var(--signal)' : 'var(--ink-700)',
+                  color: selectedTag === tag ? 'var(--text)' : 'var(--text-dim)',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: '12px',
                   padding: '2px 8px',
                   fontSize: '11px',
@@ -445,9 +445,9 @@ export function LibraryPanel({
         <div
           style={{
             margin: '6px 12px 0',
-            backgroundColor: 'rgba(34, 197, 94, 0.1)',
-            border: '1px solid #22c55e',
-            color: '#86efac',
+            backgroundColor: 'color-mix(in srgb, var(--ok) 10%, transparent)',
+            border: '1px solid var(--ok)',
+            color: 'var(--ok)',
             padding: '6px 10px',
             borderRadius: '4px',
             fontSize: '11px',
@@ -461,9 +461,9 @@ export function LibraryPanel({
         <div
           style={{
             margin: '6px 12px 0',
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid #ef4444',
-            color: '#fca5a5',
+            backgroundColor: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+            border: '1px solid var(--danger)',
+            color: 'var(--danger)',
             padding: '6px 10px',
             borderRadius: '4px',
             fontSize: '11px',
@@ -489,7 +489,7 @@ export function LibraryPanel({
             style={{
               textAlign: 'center',
               padding: '32px 16px',
-              color: '#71717a',
+              color: 'var(--text-faint)',
               fontSize: '12px',
             }}
           >
@@ -500,8 +500,8 @@ export function LibraryPanel({
             <div
               key={entry.id}
               style={{
-                backgroundColor: '#27272a',
-                border: '1px solid #3f3f46',
+                backgroundColor: 'var(--ink-700)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '6px',
                 padding: '10px 12px',
                 display: 'flex',
@@ -511,11 +511,11 @@ export function LibraryPanel({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#f4f4f5' }}>
+                  <h4 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
                     {entry.name}
                   </h4>
                   {entry.description && (
-                    <div style={{ fontSize: '11px', color: '#a1a1aa', marginTop: '2px' }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px' }}>
                       {entry.description}
                     </div>
                   )}
@@ -524,8 +524,8 @@ export function LibraryPanel({
                   style={{
                     fontSize: '10px',
                     fontWeight: 600,
-                    backgroundColor: entry.format === 'litematic' ? '#4338ca' : '#0284c7',
-                    color: '#ffffff',
+                    backgroundColor: entry.format === 'litematic' ? 'var(--signal)' : 'var(--signal)',
+                    color: 'var(--text)',
                     padding: '2px 5px',
                     borderRadius: '4px',
                     textTransform: 'uppercase',
@@ -539,7 +539,7 @@ export function LibraryPanel({
               <div
                 style={{
                   fontSize: '11px',
-                  color: '#71717a',
+                  color: 'var(--text-faint)',
                   display: 'flex',
                   gap: '12px',
                   alignItems: 'center',
@@ -560,8 +560,8 @@ export function LibraryPanel({
                       key={tag}
                       style={{
                         fontSize: '10px',
-                        backgroundColor: '#18181b',
-                        color: '#38bdf8',
+                        backgroundColor: 'var(--ink-850)',
+                        color: 'var(--signal)',
                         padding: '1px 6px',
                         borderRadius: '4px',
                       }}
@@ -579,8 +579,8 @@ export function LibraryPanel({
                   onClick={() => handlePlaceInScene(entry.id)}
                   disabled={isLoading}
                   style={{
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
+                    backgroundColor: 'var(--signal)',
+                    color: 'var(--text)',
                     border: 'none',
                     borderRadius: '4px',
                     padding: '4px 10px',
@@ -598,8 +598,8 @@ export function LibraryPanel({
                   aria-label={`Delete ${entry.name}`}
                   style={{
                     backgroundColor: 'transparent',
-                    color: '#ef4444',
-                    border: '1px solid #7f1d1d',
+                    color: 'var(--danger)',
+                    border: '1px solid color-mix(in srgb, var(--danger) 22%, var(--ink-900))',
                     borderRadius: '4px',
                     padding: '4px 8px',
                     fontSize: '11px',

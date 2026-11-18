@@ -144,10 +144,11 @@ export function OutlinerPanel({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          height: '32px',
+          height: '30px',
           padding: '0 12px',
           borderBottom: '1px solid var(--line)',
-          backgroundColor: 'var(--ink-900)',
+          backgroundColor: 'var(--ink-850)',
+          boxShadow: 'inset 0 -2px 0 var(--ink-900)',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -190,7 +191,7 @@ export function OutlinerPanel({
           placeholder="Filter placements..."
           style={{
             width: '100%',
-            height: '28px',
+            height: '26px',
             padding: '0 8px',
             backgroundColor: 'var(--ink-900)',
             border: '1px solid var(--line)',
@@ -241,10 +242,10 @@ export function OutlinerPanel({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  minHeight: '28px',
+                  minHeight: '24px',
                   padding: '0 8px',
                   backgroundColor: isSelected ? 'var(--signal-wash)' : 'transparent',
-                  borderLeft: isSelected ? '3px solid var(--signal)' : '3px solid transparent',
+                  borderLeft: isSelected ? '1px solid var(--signal)' : '1px solid transparent',
                   borderBottom: '1px solid var(--line)',
                   cursor: 'pointer',
                   opacity: placement.visible ? 1 : 0.5,
@@ -385,9 +386,9 @@ const numericStyle: React.CSSProperties = {
 };
 
 const panelTitleStyle: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: '10px',
   fontWeight: 600,
-  letterSpacing: '0.08em',
+  letterSpacing: '0.1em',
   textTransform: 'uppercase',
   color: 'var(--text-faint)',
 };

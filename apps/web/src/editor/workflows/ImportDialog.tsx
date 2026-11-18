@@ -53,16 +53,16 @@ export function GhostPreviewHud({
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 1000,
-        backgroundColor: 'rgba(26, 26, 26, 0.92)',
+        backgroundColor: 'color-mix(in srgb, var(--ink-850) 92%, transparent)',
         backdropFilter: 'blur(8px)',
-        border: '1px solid #4a9eff',
+        border: '1px solid var(--signal)',
         borderRadius: '8px',
-        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px rgba(74, 158, 255, 0.3)',
+        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.6), 0 0 10px color-mix(in srgb, var(--signal) 30%, transparent)',
         padding: '10px 18px',
         display: 'flex',
         alignItems: 'center',
         gap: '16px',
-        color: '#eaeaea',
+        color: 'var(--text)',
         fontSize: '13px',
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         userSelect: 'none',
@@ -75,15 +75,15 @@ export function GhostPreviewHud({
             width: '8px',
             height: '8px',
             borderRadius: '50%',
-            backgroundColor: '#4a9eff',
-            boxShadow: '0 0 6px #4a9eff',
+            backgroundColor: 'var(--signal)',
+            boxShadow: '0 0 6px var(--signal)',
           }}
         />
-        <span style={{ fontWeight: 600, color: '#ffffff' }}>Ghost Preview:</span>
+        <span style={{ fontWeight: 600, color: 'var(--text)' }}>Ghost Preview:</span>
         <span>Click to place</span>
       </div>
 
-      <div style={{ width: '1px', height: '18px', backgroundColor: '#444444' }} />
+      <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--ink-700)' }} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
         <button
@@ -91,9 +91,9 @@ export function GhostPreviewHud({
           onClick={() => controller.rotateGhostClockwise()}
           title="Rotate 90° Clockwise (R)"
           style={{
-            backgroundColor: '#252525',
-            color: '#eaeaea',
-            border: '1px solid #444444',
+            backgroundColor: 'var(--ink-800)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             padding: '4px 8px',
             fontSize: '12px',
@@ -101,7 +101,7 @@ export function GhostPreviewHud({
             transition: 'all 0.15s ease',
           }}
         >
-          <kbd style={{ fontWeight: 600, color: '#4a9eff' }}>R</kbd>: Rotate ({workflow.ghostRotationY}°)
+          <kbd style={{ fontWeight: 600, color: 'var(--signal)' }}>R</kbd>: Rotate ({workflow.ghostRotationY}°)
         </button>
 
         <button
@@ -109,9 +109,9 @@ export function GhostPreviewHud({
           onClick={() => controller.mirrorGhost()}
           title="Cycle Mirror Axis (M)"
           style={{
-            backgroundColor: '#252525',
-            color: '#eaeaea',
-            border: '1px solid #444444',
+            backgroundColor: 'var(--ink-800)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             padding: '4px 8px',
             fontSize: '12px',
@@ -119,7 +119,7 @@ export function GhostPreviewHud({
             transition: 'all 0.15s ease',
           }}
         >
-          <kbd style={{ fontWeight: 600, color: '#4a9eff' }}>M</kbd>: Mirror ({workflow.ghostMirror})
+          <kbd style={{ fontWeight: 600, color: 'var(--signal)' }}>M</kbd>: Mirror ({workflow.ghostMirror})
         </button>
 
         <button
@@ -127,9 +127,9 @@ export function GhostPreviewHud({
           onClick={() => controller.snapGhostToGround(null, 0)}
           title="Snap Ghost to Ground Plane Y=0"
           style={{
-            backgroundColor: '#252525',
-            color: '#eaeaea',
-            border: '1px solid #444444',
+            backgroundColor: 'var(--ink-800)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             padding: '4px 8px',
             fontSize: '12px',
@@ -140,15 +140,15 @@ export function GhostPreviewHud({
         </button>
       </div>
 
-      <div style={{ width: '1px', height: '18px', backgroundColor: '#444444' }} />
+      <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--ink-700)' }} />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button
           type="button"
           onClick={() => void controller.confirmPlace()}
           style={{
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
+            backgroundColor: 'var(--signal)',
+            color: 'var(--text)',
             border: 'none',
             borderRadius: '4px',
             padding: '5px 12px',
@@ -166,15 +166,15 @@ export function GhostPreviewHud({
           title="Cancel Ghost Preview (Esc)"
           style={{
             backgroundColor: 'transparent',
-            color: '#a8a8a8',
-            border: '1px solid #444444',
+            color: 'var(--text-faint)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             padding: '4px 8px',
             fontSize: '12px',
             cursor: 'pointer',
           }}
         >
-          <kbd style={{ fontWeight: 600, color: '#ef4444' }}>Esc</kbd>: Cancel
+          <kbd style={{ fontWeight: 600, color: 'var(--danger)' }}>Esc</kbd>: Cancel
         </button>
       </div>
     </div>
@@ -246,9 +246,9 @@ export function ImportDropZone({
         style={{
           width: '100%',
           minHeight: '200px',
-          border: isDragging ? '2px dashed #4a9eff' : '2px dashed #444444',
+          border: isDragging ? '2px dashed var(--signal)' : '2px dashed var(--line-strong)',
           borderRadius: '8px',
-          backgroundColor: isDragging ? 'rgba(74, 158, 255, 0.08)' : '#1a1a1a',
+          backgroundColor: isDragging ? 'color-mix(in srgb, var(--signal) 8%, transparent)' : 'var(--ink-850)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -265,7 +265,7 @@ export function ImportDropZone({
           height="48"
           viewBox="0 0 24 24"
           fill="none"
-          stroke={isDragging ? '#4a9eff' : '#a8a8a8'}
+          stroke={isDragging ? 'var(--signal)' : 'var(--text-faint)'}
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -275,16 +275,16 @@ export function ImportDropZone({
           <line x1="12" y1="3" x2="12" y2="15" />
         </svg>
 
-        <div style={{ color: '#eaeaea', fontSize: '15px', fontWeight: 600 }}>
+        <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: 600 }}>
           {isDragging ? 'Drop schematic file to import' : 'Drag & drop schematic file here'}
         </div>
-        <div style={{ color: '#a8a8a8', fontSize: '12px' }}>
-          or <span style={{ color: '#4a9eff', textDecoration: 'underline' }}>browse from your computer</span>
+        <div style={{ color: 'var(--text-faint)', fontSize: '12px' }}>
+          or <span style={{ color: 'var(--signal)', textDecoration: 'underline' }}>browse from your computer</span>
         </div>
         <div
           style={{
             fontSize: '11px',
-            color: '#777777',
+            color: 'var(--text-faint)',
             marginTop: '4px',
           }}
         >
@@ -306,9 +306,9 @@ export function ImportDropZone({
             type="button"
             onClick={onClose}
             style={{
-              backgroundColor: '#252525',
-              color: '#eaeaea',
-              border: '1px solid #444444',
+              backgroundColor: 'var(--ink-800)',
+              color: 'var(--text)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
               padding: '6px 16px',
               fontSize: '13px',
@@ -364,10 +364,10 @@ export function ImportReportView({
   const formatKind = report.format?.kind ?? 'unknown';
   const formatBadgeColor =
     formatKind === 'schem-v3'
-      ? '#22c55e'
+      ? 'var(--ok)'
       : formatKind === 'litematic'
-        ? '#3b82f6'
-        : '#eab308';
+        ? 'var(--signal)'
+        : 'var(--warn)';
 
   return (
     <div
@@ -384,7 +384,7 @@ export function ImportReportView({
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          borderBottom: '1px solid #333333',
+          borderBottom: '1px solid var(--line)',
           paddingBottom: '14px',
         }}
       >
@@ -394,12 +394,12 @@ export function ImportReportView({
               margin: '0 0 4px 0',
               fontSize: '18px',
               fontWeight: 600,
-              color: '#ffffff',
+              color: 'var(--text)',
             }}
           >
             Import Schematic
           </h2>
-          <div style={{ color: '#a8a8a8', fontSize: '12px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '12px' }}>
             {fileName ?? 'Unknown file'}
           </div>
         </div>
@@ -430,96 +430,96 @@ export function ImportReportView({
       >
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             Dimensions (W × H × L)
           </div>
-          <div style={{ color: '#ffffff', fontSize: '15px', fontWeight: 600 }}>
+          <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: 600 }}>
             {report.dimensions.width} × {report.dimensions.height} × {report.dimensions.length}
           </div>
         </div>
 
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             Non-Air Blocks
           </div>
-          <div style={{ color: '#22c55e', fontSize: '15px', fontWeight: 600 }}>
+          <div style={{ color: 'var(--ok)', fontSize: '15px', fontWeight: 600 }}>
             {report.nonAirBlockCount.toLocaleString()}
           </div>
         </div>
 
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             Regions
           </div>
-          <div style={{ color: '#ffffff', fontSize: '15px', fontWeight: 600 }}>
+          <div style={{ color: 'var(--text)', fontSize: '15px', fontWeight: 600 }}>
             {report.regionCount}
           </div>
         </div>
 
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             Volume
           </div>
-          <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 500 }}>
+          <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 500 }}>
             {report.volume.toString()} blocks
           </div>
         </div>
 
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             Palette Size
           </div>
-          <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 500 }}>
+          <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 500 }}>
             {report.paletteSize} states
           </div>
         </div>
 
         <div
           style={{
-            backgroundColor: '#1a1a1a',
-            border: '1px solid #333333',
+            backgroundColor: 'var(--ink-850)',
+            border: '1px solid var(--line)',
             borderRadius: '6px',
             padding: '10px 14px',
           }}
         >
-          <div style={{ color: '#888888', fontSize: '11px', marginBottom: '4px' }}>
+          <div style={{ color: 'var(--text-faint)', fontSize: '11px', marginBottom: '4px' }}>
             File Size
           </div>
-          <div style={{ color: '#ffffff', fontSize: '13px', fontWeight: 500 }}>
+          <div style={{ color: 'var(--text)', fontSize: '13px', fontWeight: 500 }}>
             {formatBytes(report.fileSizeBytes)}
           </div>
         </div>
@@ -528,15 +528,15 @@ export function ImportReportView({
       {/* Preserved Ancillary Data */}
       <div
         style={{
-          backgroundColor: '#1a1a1a',
-          border: '1px solid #333333',
+          backgroundColor: 'var(--ink-850)',
+          border: '1px solid var(--line)',
           borderRadius: '6px',
           padding: '12px 14px',
         }}
       >
         <div
           style={{
-            color: '#a8a8a8',
+            color: 'var(--text-faint)',
             fontSize: '12px',
             fontWeight: 600,
             marginBottom: '8px',
@@ -544,24 +544,24 @@ export function ImportReportView({
         >
           Preserved Features:
         </div>
-        <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: '#eaeaea' }}>
+        <div style={{ display: 'flex', gap: '16px', fontSize: '12px', color: 'var(--text)' }}>
           <div>
             Block Entities:{' '}
-            <strong style={{ color: '#ffffff' }}>{report.preserved.blockEntities}</strong>
+            <strong style={{ color: 'var(--text)' }}>{report.preserved.blockEntities}</strong>
           </div>
           <div>
             Entities:{' '}
-            <strong style={{ color: '#ffffff' }}>{report.preserved.entities}</strong>
+            <strong style={{ color: 'var(--text)' }}>{report.preserved.entities}</strong>
           </div>
           <div>
             Biomes:{' '}
-            <strong style={{ color: '#ffffff' }}>
+            <strong style={{ color: 'var(--text)' }}>
               {report.preserved.biomes ? 'Yes' : 'No'}
             </strong>
           </div>
           <div>
             Ticks:{' '}
-            <strong style={{ color: '#ffffff' }}>{report.preserved.ticks}</strong>
+            <strong style={{ color: 'var(--text)' }}>{report.preserved.ticks}</strong>
           </div>
         </div>
       </div>
@@ -570,12 +570,12 @@ export function ImportReportView({
       {report.warnings && report.warnings.length > 0 && (
         <div
           style={{
-            backgroundColor: 'rgba(234, 179, 8, 0.1)',
-            border: '1px solid #eab308',
+            backgroundColor: 'color-mix(in srgb, var(--warn) 10%, transparent)',
+            border: '1px solid var(--warn)',
             borderRadius: '6px',
             padding: '10px 14px',
             fontSize: '12px',
-            color: '#eab308',
+            color: 'var(--warn)',
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: '4px' }}>
@@ -595,7 +595,7 @@ export function ImportReportView({
           display: 'flex',
           justifyContent: 'flex-end',
           gap: '12px',
-          borderTop: '1px solid #333333',
+          borderTop: '1px solid var(--line)',
           paddingTop: '16px',
         }}
       >
@@ -603,9 +603,9 @@ export function ImportReportView({
           type="button"
           onClick={handleCancel}
           style={{
-            backgroundColor: '#252525',
-            color: '#eaeaea',
-            border: '1px solid #444444',
+            backgroundColor: 'var(--ink-800)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             padding: '8px 16px',
             fontSize: '13px',
@@ -620,9 +620,9 @@ export function ImportReportView({
           disabled={placing}
           onClick={handlePlaceAtOrigin}
           style={{
-            backgroundColor: '#252525',
-            color: '#eaeaea',
-            border: '1px solid #4a9eff',
+            backgroundColor: 'var(--ink-800)',
+            color: 'var(--text)',
+            border: '1px solid var(--signal)',
             borderRadius: '4px',
             padding: '8px 16px',
             fontSize: '13px',
@@ -638,15 +638,15 @@ export function ImportReportView({
           disabled={placing}
           onClick={handleStartGhost}
           style={{
-            backgroundColor: '#2563eb',
-            color: '#ffffff',
+            backgroundColor: 'var(--signal)',
+            color: 'var(--text)',
             border: 'none',
             borderRadius: '4px',
             padding: '8px 18px',
             fontSize: '13px',
             fontWeight: 600,
             cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(37, 99, 235, 0.4)',
+            boxShadow: '0 2px 8px color-mix(in srgb, var(--signal) 40%, transparent)',
           }}
         >
           Place at Cursor (Ghost Preview)
@@ -699,8 +699,8 @@ export function ImportDialog({
         style={{
           width: '90%',
           maxWidth: '680px',
-          backgroundColor: '#161616',
-          border: '1px solid #333333',
+          backgroundColor: 'var(--ink-900)',
+          border: '1px solid var(--line)',
           borderRadius: '8px',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.8)',
           overflow: 'hidden',
@@ -714,15 +714,15 @@ export function ImportDialog({
               flexDirection: 'column',
               alignItems: 'center',
               gap: '16px',
-              color: '#eaeaea',
+              color: 'var(--text)',
             }}
           >
             <div
               style={{
                 width: '36px',
                 height: '36px',
-                border: '3px solid #333333',
-                borderTopColor: '#4a9eff',
+                border: '3px solid var(--line)',
+                borderTopColor: 'var(--signal)',
                 borderRadius: '50%',
                 animation: 'spin 1s linear infinite',
               }}
@@ -730,7 +730,7 @@ export function ImportDialog({
             <div style={{ fontSize: '15px', fontWeight: 500 }}>
               Parsing schematic...
             </div>
-            <div style={{ fontSize: '12px', color: '#888888' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-faint)' }}>
               Validating format, structures, and block palette
             </div>
           </div>
@@ -750,7 +750,7 @@ export function ImportDialog({
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
-                color: '#ef4444',
+                color: 'var(--danger)',
                 fontSize: '18px',
                 fontWeight: 600,
               }}
@@ -765,11 +765,11 @@ export function ImportDialog({
 
             <div
               style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid #ef4444',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+                border: '1px solid var(--danger)',
                 borderRadius: '6px',
                 padding: '12px 16px',
-                color: '#eaeaea',
+                color: 'var(--text)',
                 fontSize: '13px',
                 lineHeight: 1.5,
               }}
@@ -778,8 +778,8 @@ export function ImportDialog({
             </div>
 
             {report?.errors && report.errors.length > 0 && (
-              <div style={{ fontSize: '12px', color: '#888888' }}>
-                <div style={{ fontWeight: 600, color: '#a8a8a8', marginBottom: '4px' }}>
+              <div style={{ fontSize: '12px', color: 'var(--text-faint)' }}>
+                <div style={{ fontWeight: 600, color: 'var(--text-faint)', marginBottom: '4px' }}>
                   Diagnostics:
                 </div>
                 <ul style={{ margin: 0, paddingLeft: '16px' }}>
@@ -800,9 +800,9 @@ export function ImportDialog({
                   onClose?.();
                 }}
                 style={{
-                  backgroundColor: '#252525',
-                  color: '#eaeaea',
-                  border: '1px solid #444444',
+                  backgroundColor: 'var(--ink-800)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: '4px',
                   padding: '6px 14px',
                   fontSize: '13px',
@@ -816,8 +816,8 @@ export function ImportDialog({
                 type="button"
                 onClick={() => controller.reset()}
                 style={{
-                  backgroundColor: '#2563eb',
-                  color: '#ffffff',
+                  backgroundColor: 'var(--signal)',
+                  color: 'var(--text)',
                   border: 'none',
                   borderRadius: '4px',
                   padding: '6px 16px',

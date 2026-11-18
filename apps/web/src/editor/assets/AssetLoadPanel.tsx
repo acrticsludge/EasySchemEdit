@@ -34,45 +34,45 @@ function getBadgeStyle(state: BrowserAssetManagerState, fromCache: boolean): {
     case 'ready':
       return {
         text: fromCache ? 'Ready (Cached)' : 'Ready (Downloaded)',
-        bgColor: 'rgba(16, 185, 129, 0.15)',
-        textColor: '#34d399',
-        borderColor: '#059669',
+        bgColor: 'color-mix(in srgb, var(--ok) 15%, transparent)',
+        textColor: 'var(--ok)',
+        borderColor: 'var(--ok)',
       };
     case 'downloading':
       return {
         text: 'Downloading…',
-        bgColor: 'rgba(59, 130, 246, 0.15)',
-        textColor: '#60a5fa',
-        borderColor: '#2563eb',
+        bgColor: 'color-mix(in srgb, var(--signal) 15%, transparent)',
+        textColor: 'var(--signal)',
+        borderColor: 'var(--signal)',
       };
     case 'verifying':
       return {
         text: 'Verifying…',
-        bgColor: 'rgba(168, 85, 247, 0.15)',
-        textColor: '#c084fc',
-        borderColor: '#7e22ce',
+        bgColor: 'color-mix(in srgb, var(--signal) 15%, transparent)',
+        textColor: 'var(--signal)',
+        borderColor: 'var(--signal)',
       };
     case 'extracting':
       return {
         text: 'Extracting…',
-        bgColor: 'rgba(59, 130, 246, 0.15)',
-        textColor: '#60a5fa',
-        borderColor: '#2563eb',
+        bgColor: 'color-mix(in srgb, var(--signal) 15%, transparent)',
+        textColor: 'var(--signal)',
+        borderColor: 'var(--signal)',
       };
     case 'error':
       return {
         text: 'Fallback Mode — Manual JAR Needed',
-        bgColor: 'rgba(239, 68, 68, 0.15)',
-        textColor: '#f87171',
-        borderColor: '#dc2626',
+        bgColor: 'color-mix(in srgb, var(--danger) 15%, transparent)',
+        textColor: 'var(--danger)',
+        borderColor: 'var(--danger)',
       };
     case 'idle':
     default:
       return {
         text: 'Idle (Not Loaded)',
-        bgColor: 'rgba(113, 113, 122, 0.15)',
-        textColor: '#a1a1aa',
-        borderColor: '#52525b',
+        bgColor: 'color-mix(in srgb, var(--text-faint) 15%, transparent)',
+        textColor: 'var(--text-dim)',
+        borderColor: 'var(--text-faint)',
       };
   }
 }
@@ -197,9 +197,9 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
-        background: '#18181b',
-        color: '#f4f4f5',
-        border: '1px solid #27272a',
+        background: 'var(--ink-850)',
+        color: 'var(--text)',
+        border: '1px solid var(--line)',
         borderRadius: '8px',
         padding: '18px',
         fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -216,7 +216,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid #27272a',
+          borderBottom: '1px solid var(--line)',
           paddingBottom: '12px',
         },
       },
@@ -225,7 +225,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
         h(
           'span',
-          { style: { fontWeight: 600, fontSize: '15px', color: '#fafafa' } },
+          { style: { fontWeight: 600, fontSize: '15px', color: 'var(--text)' } },
           'Minecraft 1.21.11 Assets',
         ),
         h(
@@ -254,7 +254,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
             style: {
               background: 'transparent',
               border: 'none',
-              color: '#a1a1aa',
+              color: 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '16px',
               padding: '4px 8px',
@@ -273,7 +273,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
-            background: '#27272a',
+            background: 'var(--ink-700)',
             padding: '10px 12px',
             borderRadius: '6px',
           },
@@ -281,8 +281,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         h(
           'div',
           { style: { display: 'flex', justifyContent: 'space-between', fontSize: '12px' } },
-          h('span', { style: { color: '#e4e4e7' } }, statusText),
-          h('span', { style: { color: '#60a5fa', fontWeight: 600 } }, `${progress}%`),
+          h('span', { style: { color: 'var(--text)' } }, statusText),
+          h('span', { style: { color: 'var(--signal)', fontWeight: 600 } }, `${progress}%`),
         ),
         h(
           'div',
@@ -294,7 +294,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
             style: {
               width: '100%',
               height: '6px',
-              background: '#3f3f46',
+              background: 'var(--line-strong)',
               borderRadius: '3px',
               overflow: 'hidden',
             },
@@ -303,7 +303,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
             style: {
               width: `${Math.min(100, Math.max(0, progress))}%`,
               height: '100%',
-              background: '#3b82f6',
+              background: 'var(--signal)',
               transition: 'width 0.2s ease',
             },
           }),
@@ -316,8 +316,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         'div',
         {
           style: {
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid #dc2626',
+            background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+            border: '1px solid var(--danger)',
             borderRadius: '6px',
             padding: '10px 12px',
             display: 'flex',
@@ -327,17 +327,17 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         },
         h(
           'div',
-          { style: { fontWeight: 600, color: '#f87171', fontSize: '13px' } },
+          { style: { fontWeight: 600, color: 'var(--danger)', fontSize: '13px' } },
           errorCode ? `Download Error (${errorCode})` : 'Download Error',
         ),
         h(
           'div',
-          { style: { color: '#fca5a5', fontSize: '12px' } },
+          { style: { color: 'var(--danger)', fontSize: '12px' } },
           errorMessage || 'Browser could not download assets automatically. Browser network policy or CORS might block Mojang CDN.',
         ),
         h(
           'div',
-          { style: { color: '#d4d4d8', fontSize: '12px', marginTop: '4px' } },
+          { style: { color: 'var(--text)', fontSize: '12px', marginTop: '4px' } },
           'Use the drop zone below to load your local Minecraft 1.21.11 client.jar directly.',
         ),
       ),
@@ -353,8 +353,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
           disabled: isBusy,
           onClick: () => manager.autoLoad(),
           style: {
-            background: isBusy ? '#3f3f46' : '#2563eb',
-            color: '#ffffff',
+            background: isBusy ? 'var(--line-strong)' : 'var(--signal)',
+            color: 'var(--text)',
             border: 'none',
             borderRadius: '6px',
             padding: '7px 14px',
@@ -371,9 +371,9 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
           type: 'button',
           onClick: () => setShowManualImport((v) => !v),
           style: {
-            background: showManualImport ? '#3f3f46' : '#27272a',
-            color: '#e4e4e7',
-            border: '1px solid #3f3f46',
+            background: showManualImport ? 'var(--line-strong)' : 'var(--ink-700)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '6px',
             padding: '7px 14px',
             fontWeight: 500,
@@ -390,8 +390,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
           onClick: () => manager.clearCacheAndReload(),
           style: {
             background: 'transparent',
-            color: '#a1a1aa',
-            border: '1px solid #3f3f46',
+            color: 'var(--text-dim)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '6px',
             padding: '7px 14px',
             fontWeight: 500,
@@ -413,8 +413,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
           onDrop: handleJarDrop,
           onClick: () => jarInputRef.current?.click(),
           style: {
-            border: isDraggingJar ? '2px dashed #3b82f6' : '2px dashed #52525b',
-            background: isDraggingJar ? 'rgba(59, 130, 246, 0.08)' : 'rgba(39, 39, 42, 0.5)',
+            border: isDraggingJar ? '2px dashed var(--signal)' : '2px dashed var(--line-strong)',
+            background: isDraggingJar ? 'color-mix(in srgb, var(--signal) 8%, transparent)' : 'color-mix(in srgb, var(--ink-700) 50%, transparent)',
             borderRadius: '8px',
             padding: '20px 16px',
             textAlign: 'center',
@@ -439,12 +439,12 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         h('div', { style: { fontSize: '24px' } }, '📦'),
         h(
           'div',
-          { style: { fontWeight: 600, color: '#fafafa', fontSize: '13px' } },
+          { style: { fontWeight: 600, color: 'var(--text)', fontSize: '13px' } },
           'Drop Minecraft 1.21.11 client.jar here, or click to browse',
         ),
         h(
           'div',
-          { style: { color: '#a1a1aa', fontSize: '11px', maxWidth: '480px' } },
+          { style: { color: 'var(--text-dim)', fontSize: '11px', maxWidth: '480px' } },
           'Typically found at: %appdata%\\.minecraft\\versions\\1.21.11\\1.21.11.jar (Windows) or ~/Library/Application Support/minecraft/versions/1.21.11/1.21.11.jar (macOS)',
         ),
       ),
@@ -454,7 +454,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
       'div',
       {
         style: {
-          borderTop: '1px solid #27272a',
+          borderTop: '1px solid var(--line)',
           paddingTop: '14px',
           display: 'flex',
           flexDirection: 'column',
@@ -475,10 +475,10 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
         h(
           'div',
           null,
-          h('div', { style: { fontWeight: 600, color: '#fafafa' } }, 'Resource Pack Layers'),
+          h('div', { style: { fontWeight: 600, color: 'var(--text)' } }, 'Resource Pack Layers'),
           h(
             'div',
-            { style: { color: '#71717a', fontSize: '11px' } },
+            { style: { color: 'var(--text-faint)', fontSize: '11px' } },
             `Active Textures: ${textureCount} | Atlas: ${atlasDimensions.width}×${atlasDimensions.height} (${atlasDimensions.pages} page${atlasDimensions.pages === 1 ? '' : 's'})`,
           ),
         ),
@@ -501,9 +501,9 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
               type: 'button',
               onClick: () => packInputRef.current?.click(),
               style: {
-                background: '#27272a',
-                color: '#e4e4e7',
-                border: '1px solid #3f3f46',
+                background: 'var(--ink-700)',
+                color: 'var(--text)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '6px',
                 padding: '5px 12px',
                 fontWeight: 500,
@@ -527,10 +527,10 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
             display: 'flex',
             flexDirection: 'column',
             gap: '6px',
-            border: isDraggingPack ? '1px dashed #3b82f6' : '1px solid transparent',
+            border: isDraggingPack ? '1px dashed var(--signal)' : '1px solid transparent',
             borderRadius: '6px',
             padding: isDraggingPack ? '8px' : '0',
-            background: isDraggingPack ? 'rgba(59, 130, 246, 0.05)' : 'transparent',
+            background: isDraggingPack ? 'color-mix(in srgb, var(--signal) 5%, transparent)' : 'transparent',
           },
         },
         resourcePacks.length === 0
@@ -539,9 +539,9 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
               {
                 style: {
                   padding: '12px',
-                  background: '#1f1f23',
+                  background: 'var(--ink-850)',
                   borderRadius: '6px',
-                  color: '#71717a',
+                  color: 'var(--text-faint)',
                   textAlign: 'center',
                   fontSize: '12px',
                 },
@@ -558,8 +558,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     padding: '8px 12px',
-                    background: pack.enabled ? '#27272a' : '#1f1f23',
-                    border: '1px solid #3f3f46',
+                    background: pack.enabled ? 'var(--ink-700)' : 'var(--ink-850)',
+                    border: '1px solid var(--line-strong)',
                     borderRadius: '6px',
                     opacity: pack.enabled ? 1 : 0.6,
                   },
@@ -569,7 +569,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                   { style: { display: 'flex', alignItems: 'center', gap: '10px' } },
                   h(
                     'span',
-                    { style: { fontSize: '11px', color: '#71717a', width: '20px' } },
+                    { style: { fontSize: '11px', color: 'var(--text-faint)', width: '20px' } },
                     `#${index + 1}`,
                   ),
                   h('input', {
@@ -585,12 +585,12 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                     null,
                     h(
                       'div',
-                      { style: { fontWeight: 500, color: '#f4f4f5', fontSize: '12px' } },
+                      { style: { fontWeight: 500, color: 'var(--text)', fontSize: '12px' } },
                       pack.name,
                     ),
                     h(
                       'div',
-                      { style: { fontSize: '11px', color: '#a1a1aa' } },
+                      { style: { fontSize: '11px', color: 'var(--text-dim)' } },
                       formatBytes(pack.sizeBytes),
                     ),
                   ),
@@ -606,8 +606,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                       'aria-label': `Move ${pack.name} up`,
                       onClick: () => manager.moveResourcePack(pack.id, 'up'),
                       style: {
-                        background: '#3f3f46',
-                        color: index === 0 ? '#71717a' : '#e4e4e7',
+                        background: 'var(--line-strong)',
+                        color: index === 0 ? 'var(--text-faint)' : 'var(--text)',
                         border: 'none',
                         borderRadius: '4px',
                         padding: '3px 8px',
@@ -625,8 +625,8 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                       'aria-label': `Move ${pack.name} down`,
                       onClick: () => manager.moveResourcePack(pack.id, 'down'),
                       style: {
-                        background: '#3f3f46',
-                        color: index === resourcePacks.length - 1 ? '#71717a' : '#e4e4e7',
+                        background: 'var(--line-strong)',
+                        color: index === resourcePacks.length - 1 ? 'var(--text-faint)' : 'var(--text)',
                         border: 'none',
                         borderRadius: '4px',
                         padding: '3px 8px',
@@ -644,7 +644,7 @@ export function AssetLoadPanel(props: AssetLoadPanelProps): React.ReactElement {
                       onClick: () => manager.removeResourcePack(pack.id),
                       style: {
                         background: 'transparent',
-                        color: '#f87171',
+                        color: 'var(--danger)',
                         border: 'none',
                         borderRadius: '4px',
                         padding: '3px 6px',

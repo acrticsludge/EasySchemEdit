@@ -217,16 +217,15 @@ export function SelectedPlacementBar({
       aria-label="Selected Placement Actions"
       style={{
         position: 'absolute',
-        bottom: '14px',
+        bottom: 'var(--space-3)',
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 20,
         display: 'flex',
         alignItems: 'center',
-        gap: '8px',
-        padding: '8px 12px',
+        gap: 'var(--space-2)',
+        padding: 'var(--space-2) var(--space-3)',
         backgroundColor: 'var(--ink-800)',
-        backdropFilter: 'blur(8px)',
         border: '1px solid var(--line)',
         maxWidth: 'calc(100% - 24px)',
         overflowX: 'auto',
@@ -244,10 +243,11 @@ export function SelectedPlacementBar({
       `}</style>
 
       {/* Placement Name + Coordinates Badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginRight: 'var(--space-1)' }}>
         <span
           style={{
             fontWeight: 600,
+            fontSize: '13px',
             maxWidth: '120px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
@@ -276,7 +276,7 @@ export function SelectedPlacementBar({
               ...numericStyle,
               backgroundColor: 'var(--ink-900)',
               color: 'var(--text)',
-              padding: '4px 8px',
+              padding: 'var(--space-1) var(--space-2)',
               border: '1px solid var(--line)',
               cursor: placement.locked ? 'default' : 'pointer',
               userSelect: 'none',
@@ -286,8 +286,8 @@ export function SelectedPlacementBar({
             ({tx}, {ty}, {tz})
           </span>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: '10px', color: 'var(--text-dim)' }}>
               X
               <input
                 type="number"
@@ -298,7 +298,7 @@ export function SelectedPlacementBar({
                 style={coordInputStyle}
               />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: '10px', color: 'var(--text-dim)' }}>
               Y
               <input
                 type="number"
@@ -308,7 +308,7 @@ export function SelectedPlacementBar({
                 style={coordInputStyle}
               />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)', fontSize: '10px', color: 'var(--text-dim)' }}>
               Z
               <input
                 type="number"
@@ -423,8 +423,8 @@ export function SelectedPlacementBar({
       <div style={dividerStyle} />
 
       {/* Step Toggle & Nudge Buttons */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <span className="spb-label" style={{ fontSize: '11px', color: 'var(--text-faint)' }}>Step</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+        <span className="spb-label" style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--text-faint)' }}>Step</span>
         <div style={{ display: 'flex', border: '1px solid var(--line)' }}>
           <button
             type="button"
@@ -457,9 +457,9 @@ export function SelectedPlacementBar({
         </div>
 
         {/* Nudge Buttons on X, Y, Z */}
-        <div style={{ display: 'flex', gap: '2px' }}>
+        <div style={{ display: 'flex', gap: 'var(--space-0h)' }}>
           {(['x', 'y', 'z'] as const).map((axis) => (
-            <div key={axis} style={{ display: 'flex', gap: '2px' }}>
+            <div key={axis} style={{ display: 'flex', gap: 'var(--space-0h)' }}>
               <button
                 type="button"
                 disabled={placement.locked}
@@ -501,8 +501,8 @@ export function SelectedPlacementBar({
           aria-label="Snap to Chunk"
           style={{
             ...actionButtonStyle,
-            padding: '0 8px',
-            fontSize: '11px',
+            padding: '0 var(--space-2)',
+            fontSize: '10px',
             opacity: placement.locked ? 0.4 : 1,
             cursor: placement.locked ? 'not-allowed' : 'pointer',
           }}
@@ -560,7 +560,7 @@ const dividerStyle: React.CSSProperties = {
   width: '1px',
   height: '16px',
   backgroundColor: 'var(--line)',
-  margin: '0 4px',
+  margin: '0 var(--space-1)',
   flexShrink: 0,
 };
 
@@ -568,9 +568,9 @@ const actionButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '4px',
+  gap: 'var(--space-1)',
   height: '24px',
-  padding: '0 8px',
+  padding: '0 var(--space-2)',
   backgroundColor: 'var(--ink-700)',
   border: '1px solid var(--line)',
   color: 'var(--text)',
@@ -584,7 +584,7 @@ const toggleStepButtonStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   height: '24px',
-  padding: '0 8px',
+  padding: '0 var(--space-2)',
   border: '1px solid',
   fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
   fontVariantNumeric: 'tabular-nums',
@@ -596,9 +596,9 @@ const nudgeButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '2px',
+  gap: 'var(--space-0h)',
   height: '24px',
-  padding: '0 4px',
+  padding: '0 var(--space-1)',
   backgroundColor: 'var(--ink-700)',
   border: '1px solid var(--line)',
   color: 'var(--text)',
@@ -608,11 +608,11 @@ const nudgeButtonStyle: React.CSSProperties = {
 
 const coordInputStyle: React.CSSProperties = {
   width: '48px',
-  height: '24px',
+  height: '26px',
   backgroundColor: 'var(--ink-900)',
   color: 'var(--text)',
   border: '1px solid var(--line)',
-  padding: '0 4px',
+  padding: '0 var(--space-1)',
   ...numericStyle,
   textAlign: 'center',
 };
@@ -623,7 +623,7 @@ const coordBtnStyle: React.CSSProperties = {
   justifyContent: 'center',
   height: '24px',
   minWidth: '24px',
-  padding: '0 4px',
+  padding: '0 var(--space-1)',
   backgroundColor: 'var(--ink-700)',
   border: '1px solid var(--line)',
   cursor: 'pointer',

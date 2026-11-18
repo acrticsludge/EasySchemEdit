@@ -84,8 +84,8 @@ export function MaterialListPanel({
         flexDirection: 'column',
         height: '100%',
         width: '100%',
-        backgroundColor: 'var(--color-bg-secondary, #18181b)',
-        color: 'var(--color-text-primary, #f4f4f5)',
+        backgroundColor: 'var(--color-bg-secondary, var(--ink-850))',
+        color: 'var(--color-text-primary, var(--text))',
         fontFamily: 'system-ui, -apple-system, sans-serif',
         fontSize: '13px',
         boxSizing: 'border-box',
@@ -99,8 +99,8 @@ export function MaterialListPanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '8px 12px',
-          backgroundColor: 'var(--color-bg-tertiary, #27272a)',
-          borderBottom: '1px solid var(--color-border-subtle, #3f3f46)',
+          backgroundColor: 'var(--color-bg-tertiary, var(--ink-700))',
+          borderBottom: '1px solid var(--color-border-subtle, var(--line-strong))',
           gap: '12px',
           flexWrap: 'wrap',
         }}
@@ -110,7 +110,7 @@ export function MaterialListPanel({
           <span style={{ fontWeight: 600, fontSize: '13px' }}>Materials</span>
 
           {/* Mode Toggle */}
-          <div style={{ display: 'flex', backgroundColor: '#18181b', borderRadius: '4px', padding: '2px' }}>
+          <div style={{ display: 'flex', backgroundColor: 'var(--ink-850)', borderRadius: '4px', padding: '2px' }}>
             <button
               type="button"
               onClick={() => void controller.setMode('effective')}
@@ -118,8 +118,8 @@ export function MaterialListPanel({
                 padding: '3px 10px',
                 borderRadius: '3px',
                 border: 'none',
-                backgroundColor: mode === 'effective' ? '#2563eb' : 'transparent',
-                color: mode === 'effective' ? '#ffffff' : '#a1a1aa',
+                backgroundColor: mode === 'effective' ? 'var(--signal)' : 'transparent',
+                color: mode === 'effective' ? 'var(--text)' : 'var(--text-dim)',
                 fontWeight: mode === 'effective' ? 600 : 400,
                 fontSize: '11px',
                 cursor: 'pointer',
@@ -134,8 +134,8 @@ export function MaterialListPanel({
                 padding: '3px 10px',
                 borderRadius: '3px',
                 border: 'none',
-                backgroundColor: mode === 'perPlacement' ? '#2563eb' : 'transparent',
-                color: mode === 'perPlacement' ? '#ffffff' : '#a1a1aa',
+                backgroundColor: mode === 'perPlacement' ? 'var(--signal)' : 'transparent',
+                color: mode === 'perPlacement' ? 'var(--text)' : 'var(--text-dim)',
                 fontWeight: mode === 'perPlacement' ? 600 : 400,
                 fontSize: '11px',
                 cursor: 'pointer',
@@ -152,9 +152,9 @@ export function MaterialListPanel({
               onChange={(e) => void controller.setPlacementId(e.target.value ? e.target.value : undefined)}
               style={{
                 padding: '3px 8px',
-                backgroundColor: '#27272a',
-                color: '#f4f4f5',
-                border: '1px solid #3f3f46',
+                backgroundColor: 'var(--ink-700)',
+                color: 'var(--text)',
+                border: '1px solid var(--line-strong)',
                 borderRadius: '4px',
                 fontSize: '11px',
               }}
@@ -174,9 +174,9 @@ export function MaterialListPanel({
               padding: '2px 8px',
               borderRadius: '4px',
               fontSize: '11px',
-              backgroundColor: 'rgba(59, 130, 246, 0.15)',
-              color: '#93c5fd',
-              border: '1px solid #2563eb',
+              backgroundColor: 'color-mix(in srgb, var(--signal) 15%, transparent)',
+              color: 'var(--signal)',
+              border: '1px solid var(--signal)',
             }}
           >
             {totalBlocks} Blocks ({totalTypes} Types)
@@ -190,9 +190,9 @@ export function MaterialListPanel({
             onClick={() => void handleCopyCsv()}
             style={{
               padding: '4px 10px',
-              backgroundColor: copyFeedback === 'csv' ? '#16a34a' : '#27272a',
-              color: '#f4f4f5',
-              border: '1px solid #3f3f46',
+              backgroundColor: copyFeedback === 'csv' ? 'var(--ok)' : 'var(--ink-700)',
+              color: 'var(--text)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
               fontSize: '11px',
               fontWeight: 500,
@@ -208,9 +208,9 @@ export function MaterialListPanel({
             onClick={() => void handleCopyJson()}
             style={{
               padding: '4px 10px',
-              backgroundColor: copyFeedback === 'json' ? '#16a34a' : '#27272a',
-              color: '#f4f4f5',
-              border: '1px solid #3f3f46',
+              backgroundColor: copyFeedback === 'json' ? 'var(--ok)' : 'var(--ink-700)',
+              color: 'var(--text)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
               fontSize: '11px',
               fontWeight: 500,
@@ -230,8 +230,8 @@ export function MaterialListPanel({
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '6px 12px',
-          backgroundColor: '#202023',
-          borderBottom: '1px solid #333338',
+          backgroundColor: 'var(--ink-800)',
+          borderBottom: '1px solid var(--ink-700)',
           fontSize: '12px',
           gap: '8px',
           flexWrap: 'wrap',
@@ -239,7 +239,7 @@ export function MaterialListPanel({
       >
         {/* Search input */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, maxWidth: '320px' }}>
-          <span style={{ color: '#a1a1aa' }}>🔍</span>
+          <span style={{ color: 'var(--text-dim)' }}>🔍</span>
           <input
             type="text"
             value={searchQuery}
@@ -248,10 +248,10 @@ export function MaterialListPanel({
             style={{
               width: '100%',
               padding: '4px 8px',
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
+              backgroundColor: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
-              color: '#f4f4f5',
+              color: 'var(--text)',
               fontSize: '11px',
             }}
           />
@@ -262,7 +262,7 @@ export function MaterialListPanel({
               style={{
                 background: 'none',
                 border: 'none',
-                color: '#a1a1aa',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: '12px',
               }}
@@ -274,15 +274,15 @@ export function MaterialListPanel({
 
         {/* Sort Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ color: '#a1a1aa' }}>Sort by:</span>
+          <span style={{ color: 'var(--text-dim)' }}>Sort by:</span>
           <select
             value={sortOrder}
             onChange={(e) => controller.setSortOrder(e.target.value as SortOrder)}
             style={{
               padding: '3px 8px',
-              backgroundColor: '#27272a',
-              color: '#f4f4f5',
-              border: '1px solid #3f3f46',
+              backgroundColor: 'var(--ink-700)',
+              color: 'var(--text)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
               fontSize: '11px',
             }}
@@ -309,9 +309,9 @@ export function MaterialListPanel({
               style={{
                 position: 'sticky',
                 top: 0,
-                backgroundColor: 'var(--color-bg-secondary, #18181b)',
-                borderBottom: '1px solid #3f3f46',
-                color: '#a1a1aa',
+                backgroundColor: 'var(--color-bg-secondary, var(--ink-850))',
+                borderBottom: '1px solid var(--line-strong)',
+                color: 'var(--text-dim)',
                 fontSize: '11px',
                 textTransform: 'uppercase',
                 letterSpacing: '0.04em',
@@ -333,7 +333,7 @@ export function MaterialListPanel({
                   style={{
                     padding: '32px 16px',
                     textAlign: 'center',
-                    color: '#71717a',
+                    color: 'var(--text-faint)',
                   }}
                 >
                   {searchQuery ? `No blocks matching "${searchQuery}"` : 'No materials found in current selection.'}
@@ -346,52 +346,52 @@ export function MaterialListPanel({
                   onMouseEnter={() => onHoverBlock?.(item.blockId)}
                   onMouseLeave={() => onHoverBlock?.(null)}
                   style={{
-                    borderBottom: '1px solid #27272a',
+                    borderBottom: '1px solid var(--line)',
                     cursor: 'default',
                     transition: 'background-color 0.1s ease',
                   }}
                   onMouseOver={(e) => {
-                    e.currentTarget.style.backgroundColor = '#27272a';
+                    e.currentTarget.style.backgroundColor = 'var(--ink-700)';
                   }}
                   onMouseOut={(e) => {
                     e.currentTarget.style.backgroundColor = 'transparent';
                   }}
                 >
                   {/* Block ID */}
-                  <td style={{ padding: '6px 6px', fontFamily: 'monospace', color: '#93c5fd' }}>
+                  <td style={{ padding: '6px 6px', fontFamily: 'monospace', color: 'var(--signal)' }}>
                     {item.blockId}
                   </td>
 
                   {/* Count */}
-                  <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: '#f4f4f5' }}>
+                  <td style={{ padding: '6px 6px', textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>
                     {item.count.toLocaleString()}
                   </td>
 
                   {/* Stacks */}
-                  <td style={{ padding: '6px 6px', textAlign: 'right', color: '#d4d4d8' }}>
+                  <td style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text)' }}>
                     {item.stacks > 0 ? (
                       <>
-                        <span style={{ fontWeight: 500, color: '#e4e4e7' }}>{item.stacks} st</span>
-                        {item.remainder > 0 && <span style={{ color: '#a1a1aa' }}> + {item.remainder}</span>}
+                        <span style={{ fontWeight: 500, color: 'var(--text)' }}>{item.stacks} st</span>
+                        {item.remainder > 0 && <span style={{ color: 'var(--text-dim)' }}> + {item.remainder}</span>}
                       </>
                     ) : (
-                      <span style={{ color: '#a1a1aa' }}>{item.remainder}</span>
+                      <span style={{ color: 'var(--text-dim)' }}>{item.remainder}</span>
                     )}
                   </td>
 
                   {/* Shulker Boxes (1728 blocks) */}
-                  <td style={{ padding: '6px 6px', textAlign: 'right', color: '#a1a1aa' }}>
+                  <td style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-dim)' }}>
                     {item.shulkerBoxes >= 0.01 ? `${item.shulkerBoxes} SB` : '< 0.01 SB'}
                   </td>
 
                   {/* Percentage */}
-                  <td style={{ padding: '6px 6px', textAlign: 'right', color: '#a1a1aa' }}>
+                  <td style={{ padding: '6px 6px', textAlign: 'right', color: 'var(--text-dim)' }}>
                     <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                       <div
                         style={{
                           width: '40px',
                           height: '4px',
-                          backgroundColor: '#3f3f46',
+                          backgroundColor: 'var(--line-strong)',
                           borderRadius: '2px',
                           overflow: 'hidden',
                         }}
@@ -400,7 +400,7 @@ export function MaterialListPanel({
                           style={{
                             width: `${Math.min(100, item.percentage)}%`,
                             height: '100%',
-                            backgroundColor: '#3b82f6',
+                            backgroundColor: 'var(--signal)',
                           }}
                         />
                       </div>

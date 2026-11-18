@@ -145,8 +145,8 @@ export function AgentLogPanel({
         flexDirection: 'column',
         height: '100%',
         width: '100%',
-        backgroundColor: '#18181b',
-        color: '#f4f4f5',
+        backgroundColor: 'var(--ink-850)',
+        color: 'var(--text)',
         fontFamily: 'system-ui, -apple-system, sans-serif',
         fontSize: '13px',
         boxSizing: 'border-box',
@@ -161,8 +161,8 @@ export function AgentLogPanel({
           alignItems: 'center',
           gap: '8px',
           padding: '8px 12px',
-          backgroundColor: '#27272a',
-          borderBottom: '1px solid #3f3f46',
+          backgroundColor: 'var(--ink-700)',
+          borderBottom: '1px solid var(--line-strong)',
           flexWrap: 'wrap',
         }}
       >
@@ -185,9 +185,9 @@ export function AgentLogPanel({
             flex: '1 1 240px',
             minWidth: '200px',
             padding: '4px 8px',
-            backgroundColor: '#18181b',
-            color: '#f4f4f5',
-            border: '1px solid #52525b',
+            backgroundColor: 'var(--ink-850)',
+            color: 'var(--text)',
+            border: '1px solid var(--line-strong)',
             borderRadius: '4px',
             fontFamily: 'monospace',
             fontSize: '12px',
@@ -200,8 +200,8 @@ export function AgentLogPanel({
             onClick={handleDisconnect}
             style={{
               padding: '4px 12px',
-              backgroundColor: '#ef4444',
-              color: '#ffffff',
+              backgroundColor: 'var(--danger)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               cursor: 'pointer',
@@ -217,8 +217,8 @@ export function AgentLogPanel({
             disabled={isConnecting || !pairingToken.trim()}
             style={{
               padding: '4px 12px',
-              backgroundColor: isConnecting || !pairingToken.trim() ? '#52525b' : '#3b82f6',
-              color: '#ffffff',
+              backgroundColor: isConnecting || !pairingToken.trim() ? 'var(--text-faint)' : 'var(--signal)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               cursor: isConnecting || !pairingToken.trim() ? 'not-allowed' : 'pointer',
@@ -238,9 +238,9 @@ export function AgentLogPanel({
               alignItems: 'center',
               gap: '6px',
               padding: '4px 10px',
-              backgroundColor: 'rgba(59, 130, 246, 0.15)',
-              color: '#60a5fa',
-              border: '1px solid #3b82f6',
+              backgroundColor: 'color-mix(in srgb, var(--signal) 15%, transparent)',
+              color: 'var(--signal)',
+              border: '1px solid var(--signal)',
               borderRadius: '4px',
               cursor: 'pointer',
               fontWeight: 500,
@@ -256,8 +256,8 @@ export function AgentLogPanel({
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  backgroundColor: '#22c55e',
-                  boxShadow: '0 0 6px #22c55e',
+                  backgroundColor: 'var(--ok)',
+                  boxShadow: '0 0 6px var(--ok)',
                 }}
                 title="Live Sync Active"
               />
@@ -277,9 +277,9 @@ export function AgentLogPanel({
                 gap: '5px',
                 padding: '2px 8px',
                 borderRadius: '9999px',
-                backgroundColor: 'rgba(34, 197, 94, 0.2)',
-                color: '#4ade80',
-                border: '1px solid rgba(34, 197, 94, 0.4)',
+                backgroundColor: 'color-mix(in srgb, var(--ok) 20%, transparent)',
+                color: 'var(--ok)',
+                border: '1px solid color-mix(in srgb, var(--ok) 40%, transparent)',
                 fontSize: '11px',
                 fontWeight: 600,
               }}
@@ -290,7 +290,7 @@ export function AgentLogPanel({
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  backgroundColor: '#4ade80',
+                  backgroundColor: 'var(--ok)',
                 }}
               />
               Connected to {hostDisplay}
@@ -307,9 +307,9 @@ export function AgentLogPanel({
                 gap: '5px',
                 padding: '2px 8px',
                 borderRadius: '9999px',
-                backgroundColor: 'rgba(234, 179, 8, 0.2)',
-                color: '#facc15',
-                border: '1px solid rgba(234, 179, 8, 0.4)',
+                backgroundColor: 'color-mix(in srgb, var(--warn) 20%, transparent)',
+                color: 'var(--warn)',
+                border: '1px solid color-mix(in srgb, var(--warn) 40%, transparent)',
                 fontSize: '11px',
                 fontWeight: 600,
               }}
@@ -328,9 +328,9 @@ export function AgentLogPanel({
                 gap: '5px',
                 padding: '2px 8px',
                 borderRadius: '9999px',
-                backgroundColor: 'rgba(239, 68, 68, 0.2)',
-                color: '#f87171',
-                border: '1px solid rgba(239, 68, 68, 0.4)',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 20%, transparent)',
+                color: 'var(--danger)',
+                border: '1px solid color-mix(in srgb, var(--danger) 40%, transparent)',
                 fontSize: '11px',
                 fontWeight: 600,
               }}
@@ -351,9 +351,9 @@ export function AgentLogPanel({
                   gap: '5px',
                   padding: '2px 8px',
                   borderRadius: '9999px',
-                  backgroundColor: 'rgba(34, 197, 94, 0.16)',
-                  color: '#4ade80',
-                  border: '1px solid rgba(34, 197, 94, 0.35)',
+                  backgroundColor: 'color-mix(in srgb, var(--ok) 16%, transparent)',
+                  color: 'var(--ok)',
+                  border: '1px solid color-mix(in srgb, var(--ok) 35%, transparent)',
                   fontSize: '11px',
                   fontWeight: 600,
                 }}
@@ -364,7 +364,7 @@ export function AgentLogPanel({
                     width: '6px',
                     height: '6px',
                     borderRadius: '50%',
-                    backgroundColor: '#4ade80',
+                    backgroundColor: 'var(--ok)',
                   }}
                 />
                 Cloud Sync Active
@@ -379,9 +379,9 @@ export function AgentLogPanel({
                   gap: '5px',
                   padding: '2px 8px',
                   borderRadius: '9999px',
-                  backgroundColor: 'rgba(113, 113, 122, 0.2)',
-                  color: '#a1a1aa',
-                  border: '1px solid rgba(113, 113, 122, 0.4)',
+                  backgroundColor: 'color-mix(in srgb, var(--text-faint) 20%, transparent)',
+                  color: 'var(--text-dim)',
+                  border: '1px solid color-mix(in srgb, var(--text-faint) 40%, transparent)',
                   fontSize: '11px',
                   fontWeight: 600,
                 }}
@@ -411,7 +411,7 @@ export function AgentLogPanel({
               alignItems: 'center',
               justifyContent: 'center',
               height: '100%',
-              color: '#71717a',
+              color: 'var(--text-faint)',
               fontStyle: 'italic',
             }}
           >
@@ -427,7 +427,7 @@ export function AgentLogPanel({
             }}
           >
             <thead>
-              <tr style={{ borderBottom: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '11px' }}>
+              <tr style={{ borderBottom: '1px solid var(--line-strong)', color: 'var(--text-dim)', fontSize: '11px' }}>
                 <th style={{ padding: '6px 8px', width: '90px' }}>Time</th>
                 <th style={{ padding: '6px 8px', width: '130px' }}>Tool</th>
                 <th style={{ padding: '6px 8px', width: '60px' }}>Rev</th>
@@ -448,18 +448,18 @@ export function AgentLogPanel({
                   <tr
                     key={entry.id}
                     style={{
-                      borderBottom: '1px solid #27272a',
+                      borderBottom: '1px solid var(--line)',
                       opacity: entry.undone ? 0.6 : 1,
                     }}
                   >
-                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: '#a1a1aa' }}>
+                    <td style={{ padding: '6px 8px', fontFamily: 'monospace', color: 'var(--text-dim)' }}>
                       {timeStr}
                     </td>
                     <td style={{ padding: '6px 8px' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                         <code
                           style={{
-                            backgroundColor: '#27272a',
+                            backgroundColor: 'var(--ink-700)',
                             padding: '2px 5px',
                             borderRadius: '3px',
                             fontSize: '12px',
@@ -473,9 +473,9 @@ export function AgentLogPanel({
                               fontSize: '9px',
                               padding: '1px 4px',
                               borderRadius: '3px',
-                              backgroundColor: 'rgba(59, 130, 246, 0.2)',
-                              color: '#60a5fa',
-                              border: '1px solid rgba(59, 130, 246, 0.4)',
+                              backgroundColor: 'color-mix(in srgb, var(--signal) 20%, transparent)',
+                              color: 'var(--signal)',
+                              border: '1px solid color-mix(in srgb, var(--signal) 40%, transparent)',
                             }}
                           >
                             Cloud
@@ -492,7 +492,7 @@ export function AgentLogPanel({
                     <td style={{ padding: '6px 8px' }}>
                       <div>{entry.resultSummary}</div>
                       {entry.warnings.length > 0 && (
-                        <div style={{ color: '#facc15', fontSize: '11px', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--warn)', fontSize: '11px', marginTop: '2px' }}>
                           {entry.warnings.map((w, idx) => (
                             <span key={idx}>⚠ {w} </span>
                           ))}
@@ -521,8 +521,8 @@ export function AgentLogPanel({
                           borderRadius: '4px',
                           border: 'none',
                           cursor: undoAvailable ? 'pointer' : 'not-allowed',
-                          backgroundColor: undoAvailable ? '#3f3f46' : '#27272a',
-                          color: undoAvailable ? '#ffffff' : '#71717a',
+                          backgroundColor: undoAvailable ? 'var(--line-strong)' : 'var(--ink-700)',
+                          color: undoAvailable ? 'var(--text)' : 'var(--text-faint)',
                         }}
                       >
                         {entry.undone ? 'Undone' : 'Undo'}

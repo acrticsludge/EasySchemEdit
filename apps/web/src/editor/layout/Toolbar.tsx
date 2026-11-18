@@ -94,7 +94,7 @@ export function Toolbar({
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '40px',
+        height: '44px',
         backgroundColor: 'var(--ink-850)',
         borderBottom: '1px solid var(--line-strong)',
         color: 'var(--text)',
@@ -104,25 +104,25 @@ export function Toolbar({
       }}
     >
       <style>{`
-        .editor-toolbar { gap: 12px; padding: 0 12px; }
+        .editor-toolbar { gap: var(--space-2); padding: 0 var(--space-2); }
         .editor-toolbar .etb-group,
         .editor-toolbar .etb-brand,
-        .editor-toolbar .etb-auth { gap: 8px; }
-        .editor-toolbar .etb-brand { margin-right: 4px; }
-        .editor-toolbar .etb-tools { gap: 4px; padding: 4px; }
-        .editor-toolbar .etb-tool-button { padding: 4px 8px; }
+        .editor-toolbar .etb-auth { gap: var(--space-2); }
+        .editor-toolbar .etb-brand { margin-right: var(--space-1); }
+        .editor-toolbar .etb-tools { gap: var(--space-0h); padding: var(--space-1); }
+        .editor-toolbar .etb-tool-button { padding: var(--space-1) var(--space-2); }
         .editor-toolbar .etb-separator {
           width: 1px;
           height: 18px;
           background-color: var(--line-strong);
-          margin: 0 4px;
+          margin: 0 var(--space-1);
           flex-shrink: 0;
         }
         .editor-toolbar .etb-file-icon { display: none; }
         .editor-toolbar .etb-overlays-label {
-          font-size: 11px;
+          font-size: 10px;
           color: var(--text-faint);
-          letter-spacing: 0.08em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
         }
         @media (max-width: 1279px) {

@@ -108,11 +108,11 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
         style={{
           width: '100%',
           maxWidth: '520px',
-          backgroundColor: '#18181b',
-          border: '1px solid #3f3f46',
+          backgroundColor: 'var(--ink-850)',
+          border: '1px solid var(--line-strong)',
           borderRadius: '8px',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)',
-          color: '#f4f4f5',
+          color: 'var(--text)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -125,8 +125,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '12px 16px',
-            backgroundColor: '#27272a',
-            borderBottom: '1px solid #3f3f46',
+            backgroundColor: 'var(--ink-700)',
+            borderBottom: '1px solid var(--line-strong)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -143,7 +143,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             style={{
               background: 'none',
               border: 'none',
-              color: '#a1a1aa',
+              color: 'var(--text-dim)',
               fontSize: '18px',
               cursor: 'pointer',
               lineHeight: 1,
@@ -156,7 +156,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
 
         {/* Content Body */}
         <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '16px', fontSize: '13px' }}>
-          <p style={{ margin: 0, color: '#a1a1aa', fontSize: '12px', lineHeight: 1.5 }}>
+          <p style={{ margin: 0, color: 'var(--text-dim)', fontSize: '12px', lineHeight: 1.5 }}>
             Consolidates overlapping voxel geometry into a static composite layer. Competing cells are resolved
             according to the chosen precedence policy.
           </p>
@@ -206,7 +206,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                 />
                 <div>
                   <span style={{ fontWeight: 500 }}>Replace in-place</span>
-                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
                     Modifies existing placements directly by writing effective voxels.
                   </div>
                 </div>
@@ -221,7 +221,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                 />
                 <div>
                   <span style={{ fontWeight: 500 }}>Create new baked placement</span>
-                  <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
                     Creates a new consolidated placement, leaving source placements intact.
                   </div>
                 </div>
@@ -229,7 +229,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
 
               {createNewPlacement && (
                 <div style={{ marginLeft: '24px', marginTop: '4px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', color: '#a1a1aa', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', color: 'var(--text-dim)', marginBottom: '4px' }}>
                     Placement Name:
                   </label>
                   <input
@@ -239,10 +239,10 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                     style={{
                       width: '100%',
                       padding: '6px 10px',
-                      backgroundColor: '#27272a',
-                      border: '1px solid #3f3f46',
+                      backgroundColor: 'var(--ink-700)',
+                      border: '1px solid var(--line-strong)',
                       borderRadius: '4px',
-                      color: '#f4f4f5',
+                      color: 'var(--text)',
                       fontSize: '12px',
                       boxSizing: 'border-box',
                     }}
@@ -265,7 +265,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#60a5fa',
+                  color: 'var(--signal)',
                   fontSize: '11px',
                   cursor: 'pointer',
                   padding: 0,
@@ -279,8 +279,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
               style={{
                 maxHeight: '140px',
                 overflowY: 'auto',
-                backgroundColor: '#202023',
-                border: '1px solid #333338',
+                backgroundColor: 'var(--ink-800)',
+                border: '1px solid var(--ink-700)',
                 borderRadius: '4px',
                 padding: '6px',
                 display: 'flex',
@@ -299,7 +299,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                       justifyContent: 'space-between',
                       padding: '4px 8px',
                       borderRadius: '3px',
-                      backgroundColor: isSelected ? 'rgba(59, 130, 246, 0.1)' : 'transparent',
+                      backgroundColor: isSelected ? 'color-mix(in srgb, var(--signal) 10%, transparent)' : 'transparent',
                       cursor: 'pointer',
                     }}
                   >
@@ -316,8 +316,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                         <span
                           style={{
                             fontSize: '10px',
-                            color: '#f87171',
-                            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                            color: 'var(--danger)',
+                            backgroundColor: 'color-mix(in srgb, var(--danger) 15%, transparent)',
                             padding: '1px 5px',
                             borderRadius: '3px',
                           }}
@@ -326,7 +326,7 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
                         </span>
                       )}
                     </div>
-                    <span style={{ fontSize: '11px', color: '#71717a' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>
                       {p.nonAirCount} voxels
                     </span>
                   </label>
@@ -340,10 +340,10 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             <div
               style={{
                 padding: '8px 12px',
-                backgroundColor: 'rgba(234, 179, 8, 0.15)',
-                border: '1px solid #ca8a04',
+                backgroundColor: 'color-mix(in srgb, var(--warn) 15%, transparent)',
+                border: '1px solid var(--warn)',
                 borderRadius: '4px',
-                color: '#facc15',
+                color: 'var(--warn)',
                 fontSize: '12px',
               }}
             >
@@ -355,10 +355,10 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             <div
               style={{
                 padding: '8px 12px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid #dc2626',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 15%, transparent)',
+                border: '1px solid var(--danger)',
                 borderRadius: '4px',
-                color: '#f87171',
+                color: 'var(--danger)',
                 fontSize: '12px',
               }}
             >
@@ -370,10 +370,10 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             <div
               style={{
                 padding: '8px 12px',
-                backgroundColor: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid #dc2626',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 15%, transparent)',
+                border: '1px solid var(--danger)',
                 borderRadius: '4px',
-                color: '#f87171',
+                color: 'var(--danger)',
                 fontSize: '12px',
               }}
             >
@@ -390,8 +390,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             justifyContent: 'flex-end',
             gap: '8px',
             padding: '12px 16px',
-            backgroundColor: '#27272a',
-            borderTop: '1px solid #3f3f46',
+            backgroundColor: 'var(--ink-700)',
+            borderTop: '1px solid var(--line-strong)',
           }}
         >
           <button
@@ -400,8 +400,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             disabled={isExecuting}
             style={{
               padding: '6px 14px',
-              backgroundColor: '#3f3f46',
-              color: '#f4f4f5',
+              backgroundColor: 'var(--line-strong)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               fontSize: '12px',
@@ -418,8 +418,8 @@ export function BakeDialog({ controller, isOpen, onClose, className }: BakeDialo
             disabled={isInvalid || isExecuting}
             style={{
               padding: '6px 16px',
-              backgroundColor: isInvalid || isExecuting ? '#3f3f46' : '#2563eb',
-              color: '#ffffff',
+              backgroundColor: isInvalid || isExecuting ? 'var(--line-strong)' : 'var(--signal)',
+              color: 'var(--text)',
               border: 'none',
               borderRadius: '4px',
               fontSize: '12px',

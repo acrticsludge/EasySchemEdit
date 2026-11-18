@@ -329,11 +329,11 @@ export function ProjectDialog({
         style={{
           width: '100%',
           maxWidth: '660px',
-          backgroundColor: '#18181b',
-          border: '1px solid #3f3f46',
+          backgroundColor: 'var(--ink-850)',
+          border: '1px solid var(--line-strong)',
           borderRadius: '8px',
           boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6)',
-          color: '#f4f4f5',
+          color: 'var(--text)',
           display: 'flex',
           flexDirection: 'column',
           maxHeight: '90vh',
@@ -347,8 +347,8 @@ export function ProjectDialog({
             alignItems: 'center',
             justifyContent: 'space-between',
             padding: '12px 16px',
-            backgroundColor: '#27272a',
-            borderBottom: '1px solid #3f3f46',
+            backgroundColor: 'var(--ink-700)',
+            borderBottom: '1px solid var(--line-strong)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -360,8 +360,8 @@ export function ProjectDialog({
               <span
                 style={{
                   fontSize: '11px',
-                  backgroundColor: '#b45309',
-                  color: '#fef3c7',
+                  backgroundColor: 'var(--warn)',
+                  color: 'var(--warn)',
                   padding: '2px 6px',
                   borderRadius: '4px',
                   fontWeight: 500,
@@ -379,7 +379,7 @@ export function ProjectDialog({
             style={{
               background: 'none',
               border: 'none',
-              color: '#a1a1aa',
+              color: 'var(--text-dim)',
               fontSize: '18px',
               cursor: 'pointer',
               lineHeight: 1,
@@ -394,8 +394,8 @@ export function ProjectDialog({
         {recoveryEntry && (
           <div
             style={{
-              backgroundColor: '#451a03',
-              borderBottom: '1px solid #b45309',
+              backgroundColor: 'var(--warn)',
+              borderBottom: '1px solid var(--warn)',
               padding: '10px 16px',
               display: 'flex',
               alignItems: 'center',
@@ -403,7 +403,7 @@ export function ProjectDialog({
               gap: '12px',
             }}
           >
-            <div style={{ fontSize: '12px', color: '#fed7aa' }}>
+            <div style={{ fontSize: '12px', color: 'var(--warn)' }}>
               ⚠️ <strong>Unsaved session recovery found</strong> from{' '}
               {new Date(recoveryEntry.savedAt).toLocaleTimeString()} (rev {recoveryEntry.revision})
             </div>
@@ -413,8 +413,8 @@ export function ProjectDialog({
                 onClick={handleRestoreRecovery}
                 disabled={isLoading}
                 style={{
-                  backgroundColor: '#f59e0b',
-                  color: '#18181b',
+                  backgroundColor: 'var(--warn)',
+                  color: 'var(--ink-850)',
                   border: 'none',
                   borderRadius: '4px',
                   padding: '4px 8px',
@@ -431,8 +431,8 @@ export function ProjectDialog({
                 disabled={isLoading}
                 style={{
                   backgroundColor: 'transparent',
-                  color: '#fdba74',
-                  border: '1px solid #78350f',
+                  color: 'var(--warn)',
+                  border: '1px solid var(--warn)',
                   borderRadius: '4px',
                   padding: '4px 8px',
                   fontSize: '12px',
@@ -458,8 +458,8 @@ export function ProjectDialog({
           {/* Current Project Card & Save Action */}
           <div
             style={{
-              backgroundColor: '#27272a',
-              border: '1px solid #3f3f46',
+              backgroundColor: 'var(--ink-700)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '6px',
               padding: '12px',
               display: 'flex',
@@ -482,7 +482,7 @@ export function ProjectDialog({
                   style={{
                     display: 'block',
                     fontSize: '11px',
-                    color: '#a1a1aa',
+                    color: 'var(--text-dim)',
                     marginBottom: '4px',
                     fontWeight: 500,
                   }}
@@ -497,12 +497,12 @@ export function ProjectDialog({
                   placeholder="Enter project name..."
                   style={{
                     width: '100%',
-                    backgroundColor: '#18181b',
-                    border: '1px solid #3f3f46',
+                    backgroundColor: 'var(--ink-850)',
+                    border: '1px solid var(--line-strong)',
                     borderRadius: '4px',
                     padding: '6px 10px',
                     fontSize: '13px',
-                    color: '#f4f4f5',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 />
@@ -514,8 +514,8 @@ export function ProjectDialog({
                   onClick={handleSaveToCloud}
                   disabled={isLoading}
                   style={{
-                    backgroundColor: '#2563eb',
-                    color: '#ffffff',
+                    backgroundColor: 'var(--signal)',
+                    color: 'var(--text)',
                     border: 'none',
                     borderRadius: '4px',
                     padding: '8px 14px',
@@ -536,9 +536,9 @@ export function ProjectDialog({
                   onClick={() => setIsCreatingNew((prev) => !prev)}
                   disabled={isLoading}
                   style={{
-                    backgroundColor: '#3f3f46',
-                    color: '#f4f4f5',
-                    border: '1px solid #52525b',
+                    backgroundColor: 'var(--line-strong)',
+                    color: 'var(--text)',
+                    border: '1px solid var(--line-strong)',
                     borderRadius: '4px',
                     padding: '8px 12px',
                     fontSize: '12px',
@@ -554,8 +554,8 @@ export function ProjectDialog({
             {isCreatingNew && (
               <div
                 style={{
-                  backgroundColor: '#18181b',
-                  border: '1px solid #3b82f6',
+                  backgroundColor: 'var(--ink-850)',
+                  border: '1px solid var(--signal)',
                   borderRadius: '4px',
                   padding: '10px',
                   marginTop: '4px',
@@ -575,12 +575,12 @@ export function ProjectDialog({
                   }}
                   style={{
                     flex: 1,
-                    backgroundColor: '#27272a',
-                    border: '1px solid #52525b',
+                    backgroundColor: 'var(--ink-700)',
+                    border: '1px solid var(--line-strong)',
                     borderRadius: '4px',
                     padding: '6px 10px',
                     fontSize: '13px',
-                    color: '#f4f4f5',
+                    color: 'var(--text)',
                     outline: 'none',
                   }}
                 />
@@ -589,8 +589,8 @@ export function ProjectDialog({
                   onClick={handleNewProjectSubmit}
                   disabled={isLoading}
                   style={{
-                    backgroundColor: '#16a34a',
-                    color: '#ffffff',
+                    backgroundColor: 'var(--ok)',
+                    color: 'var(--text)',
                     border: 'none',
                     borderRadius: '4px',
                     padding: '6px 12px',
@@ -606,8 +606,8 @@ export function ProjectDialog({
                   onClick={() => setIsCreatingNew(false)}
                   style={{
                     background: 'none',
-                    border: '1px solid #52525b',
-                    color: '#a1a1aa',
+                    border: '1px solid var(--line-strong)',
+                    color: 'var(--text-dim)',
                     borderRadius: '4px',
                     padding: '6px 10px',
                     fontSize: '12px',
@@ -620,7 +620,7 @@ export function ProjectDialog({
             )}
 
             {/* Current Project Details & Cloud status */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: '#a1a1aa' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '11px', color: 'var(--text-dim)' }}>
               <span>
                 {currentProject.placements.length} placement{currentProject.placements.length === 1 ? '' : 's'}
               </span>
@@ -628,11 +628,11 @@ export function ProjectDialog({
               <span>Rev {currentProject.revision || 0}</span>
               <span>•</span>
               {activeCloudId ? (
-                <span style={{ color: '#4ade80' }}>
+                <span style={{ color: 'var(--ok)' }}>
                   ✓ Cloud linked (ID: {activeCloudId.slice(0, 8)}...)
                 </span>
               ) : (
-                <span style={{ color: '#f59e0b' }}>
+                <span style={{ color: 'var(--warn)' }}>
                   ○ Local only (not yet saved to cloud)
                 </span>
               )}
@@ -649,7 +649,7 @@ export function ProjectDialog({
                 marginBottom: '8px',
               }}
             >
-              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: '#d4d4d8' }}>
+              <h3 style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text)' }}>
                 Saved Cloud Projects ({cloudProjects.length})
               </h3>
               <button
@@ -659,7 +659,7 @@ export function ProjectDialog({
                 style={{
                   background: 'none',
                   border: 'none',
-                  color: '#38bdf8',
+                  color: 'var(--signal)',
                   fontSize: '11px',
                   cursor: 'pointer',
                   padding: '2px 4px',
@@ -678,9 +678,9 @@ export function ProjectDialog({
                 style={{
                   textAlign: 'center',
                   padding: '28px 16px',
-                  backgroundColor: '#27272a',
+                  backgroundColor: 'var(--ink-700)',
                   borderRadius: '6px',
-                  color: '#71717a',
+                  color: 'var(--text-faint)',
                   fontSize: '13px',
                 }}
               >
@@ -691,9 +691,9 @@ export function ProjectDialog({
                 style={{
                   maxHeight: '260px',
                   overflowY: 'auto',
-                  border: '1px solid #3f3f46',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: '6px',
-                  backgroundColor: '#18181b',
+                  backgroundColor: 'var(--ink-850)',
                 }}
               >
                 {cloudProjects.map((proj) => {
@@ -708,8 +708,8 @@ export function ProjectDialog({
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '10px 12px',
-                        borderBottom: '1px solid #27272a',
-                        backgroundColor: isCurrent ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
+                        borderBottom: '1px solid var(--line)',
+                        backgroundColor: isCurrent ? 'color-mix(in srgb, var(--signal) 8%, transparent)' : 'transparent',
                         gap: '8px',
                       }}
                     >
@@ -726,12 +726,12 @@ export function ProjectDialog({
                                 if (e.key === 'Escape') setRenamingProjectId(null);
                               }}
                               style={{
-                                backgroundColor: '#27272a',
-                                border: '1px solid #3b82f6',
+                                backgroundColor: 'var(--ink-700)',
+                                border: '1px solid var(--signal)',
                                 borderRadius: '4px',
                                 padding: '3px 6px',
                                 fontSize: '12px',
-                                color: '#ffffff',
+                                color: 'var(--text)',
                                 outline: 'none',
                               }}
                             />
@@ -739,8 +739,8 @@ export function ProjectDialog({
                               type="button"
                               onClick={() => handleConfirmRename(proj.id)}
                               style={{
-                                backgroundColor: '#16a34a',
-                                color: '#ffffff',
+                                backgroundColor: 'var(--ok)',
+                                color: 'var(--text)',
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '3px 8px',
@@ -755,8 +755,8 @@ export function ProjectDialog({
                               onClick={() => setRenamingProjectId(null)}
                               style={{
                                 background: 'none',
-                                border: '1px solid #52525b',
-                                color: '#a1a1aa',
+                                border: '1px solid var(--line-strong)',
+                                color: 'var(--text-dim)',
                                 borderRadius: '4px',
                                 padding: '3px 6px',
                                 fontSize: '11px',
@@ -772,7 +772,7 @@ export function ProjectDialog({
                               style={{
                                 fontSize: '13px',
                                 fontWeight: 600,
-                                color: '#f4f4f5',
+                                color: 'var(--text)',
                                 overflow: 'hidden',
                                 textOverflow: 'ellipsis',
                                 whiteSpace: 'nowrap',
@@ -785,8 +785,8 @@ export function ProjectDialog({
                               <span
                                 style={{
                                   fontSize: '10px',
-                                  color: '#4ade80',
-                                  backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                  color: 'var(--ok)',
+                                  backgroundColor: 'color-mix(in srgb, var(--ok) 10%, transparent)',
                                   padding: '1px 5px',
                                   borderRadius: '4px',
                                   fontWeight: 500,
@@ -801,7 +801,7 @@ export function ProjectDialog({
                         <div
                           style={{
                             fontSize: '11px',
-                            color: '#71717a',
+                            color: 'var(--text-faint)',
                             marginTop: '2px',
                             display: 'flex',
                             gap: '8px',
@@ -827,8 +827,8 @@ export function ProjectDialog({
                               onClick={() => handleOpenProject(proj.id, proj.name)}
                               disabled={isLoading}
                               style={{
-                                backgroundColor: isCurrent ? '#3f3f46' : '#2563eb',
-                                color: '#ffffff',
+                                backgroundColor: isCurrent ? 'var(--line-strong)' : 'var(--signal)',
+                                color: 'var(--text)',
                                 border: 'none',
                                 borderRadius: '4px',
                                 padding: '4px 10px',
@@ -846,8 +846,8 @@ export function ProjectDialog({
                               title="Rename project"
                               style={{
                                 backgroundColor: 'transparent',
-                                color: '#a1a1aa',
-                                border: '1px solid #3f3f46',
+                                color: 'var(--text-dim)',
+                                border: '1px solid var(--line-strong)',
                                 borderRadius: '4px',
                                 padding: '4px 8px',
                                 fontSize: '11px',
@@ -864,8 +864,8 @@ export function ProjectDialog({
                               title="Delete project"
                               style={{
                                 backgroundColor: 'transparent',
-                                color: '#ef4444',
-                                border: '1px solid #7f1d1d',
+                                color: 'var(--danger)',
+                                border: '1px solid color-mix(in srgb, var(--danger) 22%, var(--ink-900))',
                                 borderRadius: '4px',
                                 padding: '4px 8px',
                                 fontSize: '11px',
@@ -888,7 +888,7 @@ export function ProjectDialog({
           <div
             style={{
               paddingTop: '8px',
-              borderTop: '1px solid #27272a',
+              borderTop: '1px solid var(--line)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
@@ -896,16 +896,16 @@ export function ProjectDialog({
               gap: '8px',
             }}
           >
-            <span style={{ fontSize: '11px', color: '#71717a' }}>LOCAL ARCHIVE BACKUP:</span>
+            <span style={{ fontSize: '11px', color: 'var(--text-faint)' }}>LOCAL ARCHIVE BACKUP:</span>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button
                 type="button"
                 onClick={handleDownloadVxproj}
                 disabled={isLoading}
                 style={{
-                  backgroundColor: '#18181b',
-                  color: '#38bdf8',
-                  border: '1px solid #0284c7',
+                  backgroundColor: 'var(--ink-850)',
+                  color: 'var(--signal)',
+                  border: '1px solid var(--signal)',
                   borderRadius: '4px',
                   padding: '5px 10px',
                   fontSize: '11px',
@@ -919,9 +919,9 @@ export function ProjectDialog({
                 onClick={handleOpenFileClick}
                 disabled={isLoading}
                 style={{
-                  backgroundColor: '#18181b',
-                  color: '#a78bfa',
-                  border: '1px solid #7c3aed',
+                  backgroundColor: 'var(--ink-850)',
+                  color: 'var(--signal)',
+                  border: '1px solid var(--signal)',
                   borderRadius: '4px',
                   padding: '5px 10px',
                   fontSize: '11px',
@@ -944,9 +944,9 @@ export function ProjectDialog({
           {statusMessage && (
             <div
               style={{
-                backgroundColor: 'rgba(34, 197, 94, 0.1)',
-                border: '1px solid #22c55e',
-                color: '#86efac',
+                backgroundColor: 'color-mix(in srgb, var(--ok) 10%, transparent)',
+                border: '1px solid var(--ok)',
+                color: 'var(--ok)',
                 padding: '8px 12px',
                 borderRadius: '4px',
                 fontSize: '12px',
@@ -959,9 +959,9 @@ export function ProjectDialog({
           {errorMessage && (
             <div
               style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                border: '1px solid #ef4444',
-                color: '#fca5a5',
+                backgroundColor: 'color-mix(in srgb, var(--danger) 10%, transparent)',
+                border: '1px solid var(--danger)',
+                color: 'var(--danger)',
                 padding: '8px 12px',
                 borderRadius: '4px',
                 fontSize: '12px',
@@ -978,8 +978,8 @@ export function ProjectDialog({
             display: 'flex',
             justifyContent: 'flex-end',
             padding: '12px 16px',
-            backgroundColor: '#27272a',
-            borderTop: '1px solid #3f3f46',
+            backgroundColor: 'var(--ink-700)',
+            borderTop: '1px solid var(--line-strong)',
           }}
         >
           <button
@@ -987,9 +987,9 @@ export function ProjectDialog({
             onClick={onClose}
             disabled={isLoading}
             style={{
-              backgroundColor: '#3f3f46',
-              color: '#f4f4f5',
-              border: '1px solid #52525b',
+              backgroundColor: 'var(--line-strong)',
+              color: 'var(--text)',
+              border: '1px solid var(--line-strong)',
               borderRadius: '4px',
               padding: '6px 14px',
               fontSize: '13px',

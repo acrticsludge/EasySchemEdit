@@ -5,22 +5,23 @@
   color-scheme: dark;
 
   /* Palette — the only color source */
-  --ink-900: #0B0D0E;
-  --ink-850: #111417;
-  --ink-800: #171B1F;
-  --ink-700: #20262B;
-  --line: #2B3338;
-  --line-strong: #3A444B;
-  --text: #E8ECEA;
-  --text-dim: #9AA5A6;
-  --text-faint: #667276;
+  --ink-900: #07090C;
+  --ink-850: #10141A;
+  --ink-800: #181E26;
+  --ink-700: #222A34;
+  --line: #2C3642;
+  --line-strong: #3C4A58;
+  --text: #F2F5F4;
+  --text-dim: #A7B3BD;
+  --text-faint: #788691;
   --signal: #F2B14A;
-  --signal-wash: rgba(242,177,74,.12);
+  --signal-wash: rgba(242,177,74,.16);
   --ok: #5BD1A0;
   --warn: #E8C15A;
   --danger: #F2685E;
 
-  /* Spacing scale: 4 / 8 / 12 / 24 */
+  /* Spacing scale: 2 / 4 / 8 / 12 / 24 */
+  --space-0h: 2px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -72,6 +73,16 @@
 .editor-workspace :focus-visible {
   outline: 2px solid var(--signal);
   outline-offset: 2px;
+}
+
+.editor-workspace ::selection {
+  background: var(--signal);
+  color: var(--ink-900);
+}
+
+.editor-workspace input,
+.editor-workspace textarea {
+  caret-color: var(--signal);
 }
 
 .editor-workspace ::-webkit-scrollbar {

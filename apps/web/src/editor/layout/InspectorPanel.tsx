@@ -65,7 +65,7 @@ export function InspectorPanel({
         >
           No placement selected.
           <br />
-          <span style={{ fontSize: '11px', marginTop: '8px', display: 'block', color: 'var(--text-faint)' }}>
+          <span style={{ fontSize: '11px', marginTop: 'var(--space-2)', display: 'block', color: 'var(--text-faint)' }}>
             Click a placement in the outliner or viewport to inspect and transform.
           </span>
         </div>
@@ -246,7 +246,7 @@ export function InspectorPanel({
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
         {/* Placement Name */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
           <label style={labelStyle}>Placement Name</label>
           <input
             type="text"
@@ -262,12 +262,12 @@ export function InspectorPanel({
         </div>
 
         {/* Position (World block coordinates) */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
             <label style={labelStyle}>Position (X, Y, Z)</label>
             <span style={unitStyle}>Blocks</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-1)' }}>
             <NumericField
               label="X"
               value={tx}
@@ -294,17 +294,17 @@ export function InspectorPanel({
           {/* Quick Nudge (1 / 16) Row */}
           <div
             style={{
-              marginTop: '8px',
+              marginTop: 'var(--space-2)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              gap: '4px',
+              gap: 'var(--space-1)',
               backgroundColor: 'var(--ink-900)',
-              padding: '4px 8px',
+              padding: 'var(--space-1) var(--space-2)',
               border: '1px solid var(--line)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}>
               <span style={unitStyle}>Nudge</span>
               <button
                 type="button"
@@ -336,9 +336,9 @@ export function InspectorPanel({
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '4px' }}>
+            <div style={{ display: 'flex', gap: 'var(--space-1)' }}>
               {(['x', 'y', 'z'] as const).map((axis) => (
-                <div key={axis} style={{ display: 'flex', gap: '2px' }}>
+                <div key={axis} style={{ display: 'flex', gap: 'var(--space-0h)' }}>
                   <button
                     type="button"
                     disabled={placement.locked}
@@ -374,12 +374,12 @@ export function InspectorPanel({
         </div>
 
         {/* Origin / Pivot */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
             <label style={labelStyle}>Origin / Pivot</label>
             <span style={unitStyle}>Half-blocks allowed</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--space-1)' }}>
             <NumericField
               label="X"
               value={ox}
@@ -406,10 +406,10 @@ export function InspectorPanel({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
+              gap: 'var(--space-2)',
               fontSize: '11px',
               color: 'var(--text-dim)',
-              marginTop: '8px',
+              marginTop: 'var(--space-2)',
               cursor: 'pointer',
             }}
           >
@@ -424,12 +424,12 @@ export function InspectorPanel({
         </div>
 
         {/* Rotation */}
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--space-1)' }}>
             <label style={labelStyle}>Rotation Y</label>
             <span style={unitStyle}>degrees</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-1)' }}>
             {([0, 90, 180, 270] as const).map((r) => {
               const isActive = rot === r;
               return (
@@ -441,7 +441,7 @@ export function InspectorPanel({
                   title={`${r} degrees`}
                   style={{
                     ...numericSegmentStyle,
-                    height: '28px',
+                    height: '26px',
                     backgroundColor: isActive ? 'var(--signal-wash)' : 'var(--ink-900)',
                     color: isActive ? 'var(--signal)' : 'var(--text)',
                     borderColor: isActive ? 'var(--signal)' : 'var(--line)',
@@ -457,9 +457,9 @@ export function InspectorPanel({
         </div>
 
         {/* Mirror */}
-        <div style={{ marginBottom: '12px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
           <label style={labelStyle}>Mirror</label>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-1)' }}>
             {(['none', 'x', 'z'] as const).map((m) => {
               const isActive = mirror === m;
               const label = m === 'none' ? 'None' : m.toUpperCase();
@@ -471,7 +471,7 @@ export function InspectorPanel({
                   disabled={placement.locked}
                   style={{
                     ...numericSegmentStyle,
-                    height: '28px',
+                    height: '26px',
                     backgroundColor: isActive ? 'var(--signal-wash)' : 'var(--ink-900)',
                     color: isActive ? 'var(--signal)' : 'var(--text)',
                     borderColor: isActive ? 'var(--signal)' : 'var(--line)',
@@ -486,12 +486,12 @@ export function InspectorPanel({
           </div>
         </div>
 
-        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: '12px 0' }} />
+        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: 'var(--space-2) 0' }} />
 
         {/* Placement Info / Stats */}
         <div>
-          <label style={{ ...labelStyle, marginBottom: '8px' }}>Metadata & Dimensions</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11px' }}>
+          <label style={{ ...labelStyle, marginBottom: 'var(--space-2)' }}>Metadata & Dimensions</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-1)', fontSize: '11px' }}>
             <StatRow label="Size (W x H x D)" value={`${w} x ${h} x ${d}`} />
             <StatRow label="Non-Air Blocks" value={nonAirCount.toLocaleString()} />
             <StatRow label="Chunks" value={chunksCount.toString()} />
@@ -499,12 +499,12 @@ export function InspectorPanel({
           </div>
         </div>
 
-        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: '12px 0' }} />
+        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: 'var(--space-2) 0' }} />
 
         {/* Placement Actions: Duplicate Side-by-Side, Lock, Delete */}
-        <div style={{ marginBottom: '12px' }}>
-          <label style={{ ...labelStyle, marginBottom: '8px' }}>Actions</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        <div style={{ marginBottom: 'var(--space-2)' }}>
+          <label style={{ ...labelStyle, marginBottom: 'var(--space-2)' }}>Actions</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
             <button
               type="button"
               onClick={handleDuplicatePlacement}
@@ -523,7 +523,7 @@ export function InspectorPanel({
             >
               <Icon name="duplicate" size={16} /> Duplicate Side-by-Side
             </button>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-1)' }}>
               <button
                 type="button"
                 onClick={handleToggleLock}
@@ -531,7 +531,7 @@ export function InspectorPanel({
                 aria-label={placement.locked ? 'Unlock Placement' : 'Lock Placement'}
                 style={{
                   ...actionButtonStyle,
-                  padding: '4px 8px',
+                  padding: 'var(--space-1) var(--space-2)',
                   backgroundColor: 'var(--ink-900)',
                   border: '1px solid var(--line)',
                   color: placement.locked ? 'var(--warn)' : 'var(--text)',
@@ -548,7 +548,7 @@ export function InspectorPanel({
                 aria-label="Delete Placement"
                 style={{
                   ...actionButtonStyle,
-                  padding: '4px 8px',
+                  padding: 'var(--space-1) var(--space-2)',
                   backgroundColor: 'var(--ink-900)',
                   border: '1px solid var(--line)',
                   color: 'var(--danger)',
@@ -586,7 +586,7 @@ function NumericField({
         alignItems: 'center',
         background: 'var(--ink-900)',
         border: '1px solid var(--line)',
-        height: '28px',
+        height: '26px',
       }}
     >
       <span
@@ -646,7 +646,7 @@ function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div
       style={{
-        padding: '4px 8px',
+        padding: 'var(--space-1) var(--space-2)',
         background: 'var(--ink-900)',
         border: '1px solid var(--line)',
       }}
@@ -681,39 +681,41 @@ const panelHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  height: '32px',
+  height: '30px',
   padding: '0 12px',
   borderBottom: '1px solid var(--line)',
-  backgroundColor: 'var(--ink-900)',
+  backgroundColor: 'var(--ink-850)',
+  boxShadow: 'inset 0 -2px 0 var(--ink-900)',
   flexShrink: 0,
 };
 
 const panelTitleStyle: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: '10px',
   fontWeight: 600,
-  letterSpacing: '0.08em',
+  letterSpacing: '0.1em',
   textTransform: 'uppercase',
   color: 'var(--text-faint)',
 };
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
-  fontSize: '11px',
+  fontSize: '10px',
   fontWeight: 500,
-  letterSpacing: '0.08em',
+  letterSpacing: '0.1em',
   textTransform: 'uppercase',
   color: 'var(--text-faint)',
-  marginBottom: '4px',
+  marginBottom: 'var(--space-1)',
 };
 
 const unitStyle: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: '10px',
+  letterSpacing: '0.1em',
   color: 'var(--text-faint)',
 };
 
 const textInputStyle: React.CSSProperties = {
   width: '100%',
-  height: '28px',
+  height: '26px',
   padding: '0 8px',
   backgroundColor: 'var(--ink-900)',
   border: '1px solid var(--line)',
@@ -755,7 +757,7 @@ const iconButtonStyle: React.CSSProperties = {
 };
 
 const nudgeStepBtnStyle: React.CSSProperties = {
-  padding: '4px 8px',
+  padding: 'var(--space-1) var(--space-2)',
   fontSize: '12px',
   border: '1px solid',
   cursor: 'pointer',
@@ -777,7 +779,7 @@ const actionButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: '8px',
+  gap: 'var(--space-2)',
   fontSize: '12px',
   textAlign: 'center',
 };

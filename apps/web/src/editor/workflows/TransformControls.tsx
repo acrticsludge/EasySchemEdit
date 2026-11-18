@@ -216,7 +216,7 @@ export function TransformControls({
         style={{
           padding: '12px',
           background: 'transparent',
-          color: '#a1a1aa',
+          color: 'var(--text-dim)',
           borderRadius: 0,
           border: 'none',
           fontSize: '13px',
@@ -245,7 +245,7 @@ export function TransformControls({
         gap: '12px',
         padding: '12px',
         background: 'transparent',
-        color: '#fafafa',
+        color: 'var(--text)',
         borderRadius: 0,
         border: 'none',
         fontSize: '13px',
@@ -262,7 +262,7 @@ export function TransformControls({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid #27272a',
+          borderBottom: '1px solid var(--line)',
           paddingBottom: '10px',
         }}
       >
@@ -271,7 +271,7 @@ export function TransformControls({
             <div style={{ fontWeight: 600, fontSize: '14px' }}>
               Group Transform
             </div>
-            <div style={{ fontSize: '11px', color: '#a1a1aa' }}>
+            <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>
               {groupPlacements.length} placements selected
             </div>
           </div>
@@ -289,9 +289,9 @@ export function TransformControls({
                 }}
                 autoFocus
                 style={{
-                  background: '#27272a',
-                  color: '#fafafa',
-                  border: '1px solid #3b82f6',
+                  background: 'var(--ink-700)',
+                  color: 'var(--text)',
+                  border: '1px solid var(--signal)',
                   borderRadius: '4px',
                   padding: '2px 6px',
                   fontSize: '13px',
@@ -306,7 +306,7 @@ export function TransformControls({
                   fontWeight: 600,
                   fontSize: '14px',
                   cursor: isLocked ? 'default' : 'pointer',
-                  borderBottom: isLocked ? 'none' : '1px dashed #52525b',
+                  borderBottom: isLocked ? 'none' : '1px dashed var(--line-strong)',
                 }}
               >
                 {currentPlacement?.name}
@@ -317,9 +317,9 @@ export function TransformControls({
                 style={{
                   fontSize: '11px',
                   padding: '2px 6px',
-                  background: 'rgba(239, 68, 68, 0.2)',
-                  color: '#f87171',
-                  border: '1px solid #ef4444',
+                  background: 'color-mix(in srgb, var(--danger) 20%, transparent)',
+                  color: 'var(--danger)',
+                  border: '1px solid var(--danger)',
                   borderRadius: '4px',
                 }}
               >
@@ -331,9 +331,9 @@ export function TransformControls({
                 style={{
                   fontSize: '11px',
                   padding: '2px 6px',
-                  background: 'rgba(161, 161, 170, 0.2)',
-                  color: '#a1a1aa',
-                  border: '1px solid #52525b',
+                  background: 'color-mix(in srgb, var(--text-dim) 20%, transparent)',
+                  color: 'var(--text-dim)',
+                  border: '1px solid var(--line-strong)',
                   borderRadius: '4px',
                 }}
               >
@@ -350,7 +350,7 @@ export function TransformControls({
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#a1a1aa',
+              color: 'var(--text-dim)',
               cursor: 'pointer',
               fontSize: '16px',
               padding: '2px 6px',
@@ -368,9 +368,9 @@ export function TransformControls({
             <div
               style={{
                 padding: '8px',
-                background: 'rgba(239, 68, 68, 0.15)',
-                color: '#f87171',
-                border: '1px solid #ef4444',
+                background: 'color-mix(in srgb, var(--danger) 15%, transparent)',
+                color: 'var(--danger)',
+                border: '1px solid var(--danger)',
                 borderRadius: '4px',
                 fontSize: '12px',
               }}
@@ -380,23 +380,23 @@ export function TransformControls({
           )}
 
           {/* Group Pivot */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a1a1aa' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-dim)' }}>
             <span>Group Pivot:</span>
-            <span style={{ fontFamily: 'monospace', color: '#fafafa' }}>{groupPivotDisplay}</span>
+            <span style={{ fontFamily: 'monospace', color: 'var(--text)' }}>{groupPivotDisplay}</span>
           </div>
 
           {/* Step Size Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#a1a1aa' }}>Nudge Step:</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Nudge Step:</span>
             <button
               type="button"
               onClick={() => setNudgeStep(1)}
               style={{
                 padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid #3f3f46',
-                background: nudgeStep === 1 ? '#3b82f6' : '#27272a',
-                color: '#fff',
+                border: '1px solid var(--line-strong)',
+                background: nudgeStep === 1 ? 'var(--signal)' : 'var(--ink-700)',
+                color: 'var(--text)',
                 cursor: 'pointer',
                 fontSize: '12px',
               }}
@@ -409,9 +409,9 @@ export function TransformControls({
               style={{
                 padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid #3f3f46',
-                background: nudgeStep === 16 ? '#3b82f6' : '#27272a',
-                color: '#fff',
+                border: '1px solid var(--line-strong)',
+                background: nudgeStep === 16 ? 'var(--signal)' : 'var(--ink-700)',
+                color: 'var(--text)',
                 cursor: 'pointer',
                 fontSize: '12px',
               }}
@@ -474,7 +474,7 @@ export function TransformControls({
 
           {/* Group Rotate & Mirror */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <span style={{ fontSize: '12px', color: '#a1a1aa' }}>Rotate & Mirror Group:</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Rotate & Mirror Group:</span>
             <div style={{ display: 'flex', gap: '6px' }}>
               <button
                 type="button"
@@ -531,27 +531,27 @@ export function TransformControls({
               justifyContent: 'space-between',
               alignItems: 'center',
               fontSize: '12px',
-              color: '#a1a1aa',
+              color: 'var(--text-dim)',
             }}
           >
             <span>Translation:</span>
-            <span style={{ fontFamily: 'monospace', color: '#fafafa' }}>
+            <span style={{ fontFamily: 'monospace', color: 'var(--text)' }}>
               [{currentPlacement?.transform.translation.join(', ')}]
             </span>
           </div>
 
           {/* Step Size Selector */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '12px', color: '#a1a1aa' }}>Nudge Step:</span>
+            <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Nudge Step:</span>
             <button
               type="button"
               onClick={() => setNudgeStep(1)}
               style={{
                 padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid #3f3f46',
-                background: nudgeStep === 1 ? '#3b82f6' : '#27272a',
-                color: '#fff',
+                border: '1px solid var(--line-strong)',
+                background: nudgeStep === 1 ? 'var(--signal)' : 'var(--ink-700)',
+                color: 'var(--text)',
                 cursor: 'pointer',
                 fontSize: '12px',
               }}
@@ -564,9 +564,9 @@ export function TransformControls({
               style={{
                 padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid #3f3f46',
-                background: nudgeStep === 16 ? '#3b82f6' : '#27272a',
-                color: '#fff',
+                border: '1px solid var(--line-strong)',
+                background: nudgeStep === 16 ? 'var(--signal)' : 'var(--ink-700)',
+                color: 'var(--text)',
                 cursor: 'pointer',
                 fontSize: '12px',
               }}
@@ -636,7 +636,7 @@ export function TransformControls({
           {/* Quick Rotate & Mirror */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px' }}>
-              <span style={{ color: '#a1a1aa' }}>Rotation:</span>
+              <span style={{ color: 'var(--text-dim)' }}>Rotation:</span>
               <span style={{ fontWeight: 600 }}>{currentPlacement?.transform.rotationY ?? 0}°</span>
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
@@ -670,7 +670,7 @@ export function TransformControls({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginTop: '4px' }}>
-              <span style={{ color: '#a1a1aa' }}>Mirror:</span>
+              <span style={{ color: 'var(--text-dim)' }}>Mirror:</span>
               <span style={{ fontWeight: 600, textTransform: 'capitalize' }}>
                 {currentPlacement?.transform.mirror ?? 'none'}
               </span>
@@ -684,7 +684,7 @@ export function TransformControls({
                 style={buttonStyle(
                   isLocked,
                   currentPlacement?.transform.mirror === 'none'
-                    ? { flex: 1, borderColor: '#3b82f6', color: '#60a5fa' }
+                    ? { flex: 1, borderColor: 'var(--signal)', color: 'var(--signal)' }
                     : { flex: 1 }
                 )}
               >
@@ -698,7 +698,7 @@ export function TransformControls({
                 style={buttonStyle(
                   isLocked,
                   currentPlacement?.transform.mirror === 'x'
-                    ? { flex: 1, borderColor: '#3b82f6', color: '#60a5fa' }
+                    ? { flex: 1, borderColor: 'var(--signal)', color: 'var(--signal)' }
                     : { flex: 1 }
                 )}
               >
@@ -712,7 +712,7 @@ export function TransformControls({
                 style={buttonStyle(
                   isLocked,
                   currentPlacement?.transform.mirror === 'z'
-                    ? { flex: 1, borderColor: '#3b82f6', color: '#60a5fa' }
+                    ? { flex: 1, borderColor: 'var(--signal)', color: 'var(--signal)' }
                     : { flex: 1 }
                 )}
               >
@@ -728,11 +728,11 @@ export function TransformControls({
               flexDirection: 'column',
               gap: '6px',
               paddingTop: '8px',
-              borderTop: '1px solid #27272a',
+              borderTop: '1px solid var(--line)',
             }}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: '#a1a1aa' }}>Origin Pivot (Local):</span>
+              <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Origin Pivot (Local):</span>
               <button
                 type="button"
                 data-testid="center-origin"
@@ -740,8 +740,8 @@ export function TransformControls({
                 onClick={handleCenterOrigin}
                 style={{
                   background: 'transparent',
-                  border: '1px solid #3f3f46',
-                  color: isLocked ? '#52525b' : '#38bdf8',
+                  border: '1px solid var(--line-strong)',
+                  color: isLocked ? 'var(--text-faint)' : 'var(--signal)',
                   padding: '1px 6px',
                   borderRadius: '3px',
                   fontSize: '11px',
@@ -754,7 +754,7 @@ export function TransformControls({
 
             <div style={{ display: 'flex', gap: '6px' }}>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10px', color: '#71717a' }}>X</label>
+                <label style={{ fontSize: '10px', color: 'var(--text-faint)' }}>X</label>
                 <input
                   type="number"
                   step="0.5"
@@ -766,7 +766,7 @@ export function TransformControls({
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10px', color: '#71717a' }}>Y</label>
+                <label style={{ fontSize: '10px', color: 'var(--text-faint)' }}>Y</label>
                 <input
                   type="number"
                   step="0.5"
@@ -778,7 +778,7 @@ export function TransformControls({
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label style={{ fontSize: '10px', color: '#71717a' }}>Z</label>
+                <label style={{ fontSize: '10px', color: 'var(--text-faint)' }}>Z</label>
                 <input
                   type="number"
                   step="0.5"
@@ -807,7 +807,7 @@ export function TransformControls({
                 alignItems: 'center',
                 gap: '6px',
                 fontSize: '11px',
-                color: '#a1a1aa',
+                color: 'var(--text-dim)',
                 cursor: 'pointer',
                 marginTop: '2px',
               }}
@@ -825,11 +825,11 @@ export function TransformControls({
               <div
                 style={{
                   fontSize: '11px',
-                  color: '#f87171',
-                  background: 'rgba(239, 68, 68, 0.1)',
+                  color: 'var(--danger)',
+                  background: 'color-mix(in srgb, var(--danger) 10%, transparent)',
                   padding: '4px 8px',
                   borderRadius: '4px',
-                  border: '1px solid #ef4444',
+                  border: '1px solid var(--danger)',
                 }}
               >
                 {originError}
@@ -847,7 +847,7 @@ export function TransformControls({
             gridTemplateColumns: 'repeat(4, 1fr)',
             gap: '6px',
             paddingTop: '10px',
-            borderTop: '1px solid #27272a',
+            borderTop: '1px solid var(--line)',
           }}
         >
           <button
@@ -856,8 +856,8 @@ export function TransformControls({
             onClick={() => controller.setPlacementLocked(currentPlacement.id, !currentPlacement.locked)}
             style={{
               ...buttonStyle(false),
-              color: currentPlacement.locked ? '#f87171' : '#a1a1aa',
-              borderColor: currentPlacement.locked ? '#ef4444' : '#3f3f46',
+              color: currentPlacement.locked ? 'var(--danger)' : 'var(--text-dim)',
+              borderColor: currentPlacement.locked ? 'var(--danger)' : 'var(--line-strong)',
             }}
           >
             {currentPlacement.locked ? 'Unlock' : 'Lock'}
@@ -868,7 +868,7 @@ export function TransformControls({
             onClick={() => controller.setPlacementHidden(currentPlacement.id, currentPlacement.visible)}
             style={{
               ...buttonStyle(false),
-              color: !currentPlacement.visible ? '#fbbf24' : '#a1a1aa',
+              color: !currentPlacement.visible ? 'var(--warn)' : 'var(--text-dim)',
             }}
           >
             {currentPlacement.visible ? 'Hide' : 'Show'}
@@ -892,8 +892,8 @@ export function TransformControls({
             onClick={() => controller.deletePlacement(currentPlacement.id)}
             style={{
               ...buttonStyle(isLocked),
-              color: isLocked ? '#52525b' : '#ef4444',
-              borderColor: isLocked ? '#27272a' : '#ef4444',
+              color: isLocked ? 'var(--text-faint)' : 'var(--danger)',
+              borderColor: isLocked ? 'var(--ink-700)' : 'var(--danger)',
             }}
           >
             Delete
@@ -908,9 +908,9 @@ function buttonStyle(disabled: boolean, extra?: React.CSSProperties): React.CSSP
   return {
     padding: '6px 8px',
     borderRadius: '4px',
-    border: '1px solid #3f3f46',
-    background: '#27272a',
-    color: disabled ? '#52525b' : '#fafafa',
+    border: '1px solid var(--line-strong)',
+    background: 'var(--ink-700)',
+    color: disabled ? 'var(--text-faint)' : 'var(--text)',
     cursor: disabled ? 'not-allowed' : 'pointer',
     fontSize: '12px',
     fontWeight: 500,
@@ -927,9 +927,9 @@ function inputStyle(disabled: boolean): React.CSSProperties {
     boxSizing: 'border-box',
     padding: '4px 6px',
     borderRadius: '4px',
-    border: '1px solid #3f3f46',
-    background: '#18181b',
-    color: disabled ? '#52525b' : '#fafafa',
+    border: '1px solid var(--line-strong)',
+    background: 'var(--ink-850)',
+    color: disabled ? 'var(--text-faint)' : 'var(--text)',
     fontSize: '12px',
     fontFamily: 'monospace',
   };
