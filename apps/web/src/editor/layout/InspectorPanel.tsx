@@ -1,11 +1,12 @@
 // apps/web/src/editor/layout/InspectorPanel.tsx
 // Right dock panel: selected placement transform, origin editor, rotation/mirror controls, stats.
-// S&box style adhering to SUBSPEC-G §6.3, G3.
+// Precision-instrument styling; logic adheres to SUBSPEC-G section 6.3, G3.
 
 import React, { useState, useEffect } from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
 import type { Rotation, MirrorAxis } from '@easyschemedit/ui';
+import { Icon } from '../ui/index.ts';
 
 export interface InspectorPanelProps {
   store: EditorSessionStore;
@@ -46,25 +47,25 @@ export function InspectorPanel({
       >
         {!hideHeader && (
           <div style={panelHeaderStyle}>
-            <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
+            <span style={panelTitleStyle}>INSPECTOR</span>
             {onCollapse && (
               <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
-                ▶
+                <Icon name="chevronRight" size={16} />
               </button>
             )}
           </div>
         )}
         <div
           style={{
-            padding: '32px 16px',
+            padding: '24px 12px',
             textAlign: 'center',
-            color: 'var(--color-text-secondary, #888888)',
+            color: 'var(--text-dim)',
             fontSize: '12px',
           }}
         >
           No placement selected.
           <br />
-          <span style={{ fontSize: '11px', marginTop: '6px', display: 'block', color: 'var(--color-text-muted, #666666)' }}>
+          <span style={{ fontSize: '11px', marginTop: '8px', display: 'block', color: 'var(--text-faint)' }}>
             Click a placement in the outliner or viewport to inspect and transform.
           </span>
         </div>
@@ -234,10 +235,10 @@ export function InspectorPanel({
       {/* Header */}
       {!hideHeader && (
         <div style={panelHeaderStyle}>
-          <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>INSPECTOR</span>
+          <span style={panelTitleStyle}>INSPECTOR</span>
           {onCollapse && (
             <button type="button" onClick={onCollapse} title="Collapse Inspector" style={iconButtonStyle}>
-              ▶
+              <Icon name="chevronRight" size={16} />
             </button>
           )}
         </div>
@@ -245,7 +246,7 @@ export function InspectorPanel({
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px' }}>
         {/* Placement Name */}
-        <div style={{ marginBottom: '14px' }}>
+        <div style={{ marginBottom: '12px' }}>
           <label style={labelStyle}>Placement Name</label>
           <input
             type="text"
@@ -261,12 +262,12 @@ export function InspectorPanel({
         </div>
 
         {/* Position (World block coordinates) */}
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <label style={labelStyle}>Position (X, Y, Z)</label>
-            <span style={{ fontSize: '10px', color: 'var(--color-text-secondary, #888888)' }}>Blocks</span>
+            <span style={unitStyle}>Blocks</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
             <NumericField
               label="X"
               value={tx}
@@ -290,35 +291,34 @@ export function InspectorPanel({
             />
           </div>
 
-          {/* Quick Nudge (±1 / ±16) Row */}
+          {/* Quick Nudge (1 / 16) Row */}
           <div
             style={{
-              marginTop: '6px',
+              marginTop: '8px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
               gap: '4px',
-              backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-              padding: '4px 6px',
-              border: '1px solid #282828',
+              backgroundColor: 'var(--ink-900)',
+              padding: '4px 8px',
+              border: '1px solid var(--line)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-              <span style={{ fontSize: '10px', color: 'var(--color-text-secondary, #888888)', marginRight: '2px' }}>
-                Nudge
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={unitStyle}>Nudge</span>
               <button
                 type="button"
                 onClick={() => setNudgeStep(1)}
                 title="Nudge step: 1 block"
                 style={{
                   ...nudgeStepBtnStyle,
-                  backgroundColor: nudgeStep === 1 ? 'var(--color-accent, #4a9eff)' : '#1e1e26',
-                  color: nudgeStep === 1 ? '#ffffff' : '#888888',
-                  borderColor: nudgeStep === 1 ? 'var(--color-accent, #4a9eff)' : '#333333',
+                  backgroundColor: nudgeStep === 1 ? 'var(--signal-wash)' : 'var(--ink-800)',
+                  color: nudgeStep === 1 ? 'var(--signal)' : 'var(--text-dim)',
+                  borderColor: nudgeStep === 1 ? 'var(--signal)' : 'var(--line)',
+                  fontWeight: nudgeStep === 1 ? 600 : 400,
                 }}
               >
-                ±1
+                1
               </button>
               <button
                 type="button"
@@ -326,18 +326,19 @@ export function InspectorPanel({
                 title="Nudge step: 16 blocks (Chunk)"
                 style={{
                   ...nudgeStepBtnStyle,
-                  backgroundColor: nudgeStep === 16 ? 'var(--color-accent, #4a9eff)' : '#1e1e26',
-                  color: nudgeStep === 16 ? '#ffffff' : '#888888',
-                  borderColor: nudgeStep === 16 ? 'var(--color-accent, #4a9eff)' : '#333333',
+                  backgroundColor: nudgeStep === 16 ? 'var(--signal-wash)' : 'var(--ink-800)',
+                  color: nudgeStep === 16 ? 'var(--signal)' : 'var(--text-dim)',
+                  borderColor: nudgeStep === 16 ? 'var(--signal)' : 'var(--line)',
+                  fontWeight: nudgeStep === 16 ? 600 : 400,
                 }}
               >
-                ±16
+                16
               </button>
             </div>
 
-            <div style={{ display: 'flex', gap: '2px' }}>
+            <div style={{ display: 'flex', gap: '4px' }}>
               {(['x', 'y', 'z'] as const).map((axis) => (
-                <div key={axis} style={{ display: 'flex', gap: '1px' }}>
+                <div key={axis} style={{ display: 'flex', gap: '2px' }}>
                   <button
                     type="button"
                     disabled={placement.locked}
@@ -373,12 +374,12 @@ export function InspectorPanel({
         </div>
 
         {/* Origin / Pivot */}
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
             <label style={labelStyle}>Origin / Pivot</label>
-            <span style={{ fontSize: '10px', color: 'var(--color-text-secondary, #888888)' }}>Half-blocks allowed</span>
+            <span style={unitStyle}>Half-blocks allowed</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px' }}>
             <NumericField
               label="X"
               value={ox}
@@ -405,10 +406,10 @@ export function InspectorPanel({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '8px',
               fontSize: '11px',
-              color: 'var(--color-text-secondary, #a8a8a8)',
-              marginTop: '6px',
+              color: 'var(--text-dim)',
+              marginTop: '8px',
               cursor: 'pointer',
             }}
           >
@@ -423,8 +424,11 @@ export function InspectorPanel({
         </div>
 
         {/* Rotation */}
-        <div style={{ marginBottom: '16px' }}>
-          <label style={labelStyle}>Rotation Y</label>
+        <div style={{ marginBottom: '12px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+            <label style={labelStyle}>Rotation Y</label>
+            <span style={unitStyle}>degrees</span>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
             {([0, 90, 180, 270] as const).map((r) => {
               const isActive = rot === r;
@@ -434,19 +438,18 @@ export function InspectorPanel({
                   type="button"
                   onClick={() => handleSetRotation(r)}
                   disabled={placement.locked}
+                  title={`${r} degrees`}
                   style={{
-                    padding: '5px 0',
-                    fontSize: '11px',
+                    ...numericSegmentStyle,
+                    height: '28px',
+                    backgroundColor: isActive ? 'var(--signal-wash)' : 'var(--ink-900)',
+                    color: isActive ? 'var(--signal)' : 'var(--text)',
+                    borderColor: isActive ? 'var(--signal)' : 'var(--line)',
                     fontWeight: isActive ? 600 : 400,
-                    background: isActive ? 'var(--color-accent, #4a9eff)' : 'var(--color-bg-primary, #0d0d0d)',
-                    color: isActive ? '#ffffff' : 'var(--color-text-primary, #eaeaea)',
-                    border: '1px solid',
-                    borderColor: isActive ? 'var(--color-accent, #4a9eff)' : '#333333',
-                    borderRadius: '0px',
                     cursor: placement.locked ? 'default' : 'pointer',
                   }}
                 >
-                  {r}°
+                  {r}
                 </button>
               );
             })}
@@ -454,7 +457,7 @@ export function InspectorPanel({
         </div>
 
         {/* Mirror */}
-        <div style={{ marginBottom: '16px' }}>
+        <div style={{ marginBottom: '12px' }}>
           <label style={labelStyle}>Mirror</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
             {(['none', 'x', 'z'] as const).map((m) => {
@@ -467,14 +470,12 @@ export function InspectorPanel({
                   onClick={() => handleSetMirror(m)}
                   disabled={placement.locked}
                   style={{
-                    padding: '5px 0',
-                    fontSize: '11px',
+                    ...numericSegmentStyle,
+                    height: '28px',
+                    backgroundColor: isActive ? 'var(--signal-wash)' : 'var(--ink-900)',
+                    color: isActive ? 'var(--signal)' : 'var(--text)',
+                    borderColor: isActive ? 'var(--signal)' : 'var(--line)',
                     fontWeight: isActive ? 600 : 400,
-                    background: isActive ? 'var(--color-accent, #4a9eff)' : 'var(--color-bg-primary, #0d0d0d)',
-                    color: isActive ? '#ffffff' : 'var(--color-text-primary, #eaeaea)',
-                    border: '1px solid',
-                    borderColor: isActive ? 'var(--color-accent, #4a9eff)' : '#333333',
-                    borderRadius: '0px',
                     cursor: placement.locked ? 'default' : 'pointer',
                   }}
                 >
@@ -485,25 +486,25 @@ export function InspectorPanel({
           </div>
         </div>
 
-        <div style={{ height: '1px', backgroundColor: '#2a2a2a', margin: '14px 0' }} />
+        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: '12px 0' }} />
 
         {/* Placement Info / Stats */}
         <div>
-          <label style={{ ...labelStyle, marginBottom: '6px' }}>Metadata & Dimensions</label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11px' }}>
-            <StatRow label="Size (W×H×D)" value={`${w} × ${h} × ${d}`} />
+          <label style={{ ...labelStyle, marginBottom: '8px' }}>Metadata & Dimensions</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11px' }}>
+            <StatRow label="Size (W x H x D)" value={`${w} x ${h} x ${d}`} />
             <StatRow label="Non-Air Blocks" value={nonAirCount.toLocaleString()} />
             <StatRow label="Chunks" value={chunksCount.toString()} />
             <StatRow label="State" value={placement.locked ? 'Locked' : 'Unlocked'} />
           </div>
         </div>
 
-        <div style={{ height: '1px', backgroundColor: '#2a2a2a', margin: '14px 0' }} />
+        <div style={{ height: '1px', backgroundColor: 'var(--line)', margin: '12px 0' }} />
 
         {/* Placement Actions: Duplicate Side-by-Side, Lock, Delete */}
-        <div style={{ marginBottom: '14px' }}>
-          <label style={{ ...labelStyle, marginBottom: '6px' }}>Actions</label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <div style={{ marginBottom: '12px' }}>
+          <label style={{ ...labelStyle, marginBottom: '8px' }}>Actions</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <button
               type="button"
               onClick={handleDuplicatePlacement}
@@ -512,18 +513,17 @@ export function InspectorPanel({
               aria-label="Duplicate Side-by-Side (Ctrl+D)"
               style={{
                 ...actionButtonStyle,
-                padding: '6px 10px',
-                backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-                border: '1px solid #3b82f660',
-                color: '#93c5fd',
-                fontWeight: 500,
+                padding: '8px',
+                backgroundColor: 'var(--ink-900)',
+                border: '1px solid var(--line)',
+                color: 'var(--text)',
                 cursor: placement.locked ? 'not-allowed' : 'pointer',
                 opacity: placement.locked ? 0.4 : 1,
               }}
             >
-              ⎘ Duplicate Side-by-Side
+              <Icon name="duplicate" size={16} /> Duplicate Side-by-Side
             </button>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
               <button
                 type="button"
                 onClick={handleToggleLock}
@@ -531,14 +531,14 @@ export function InspectorPanel({
                 aria-label={placement.locked ? 'Unlock Placement' : 'Lock Placement'}
                 style={{
                   ...actionButtonStyle,
-                  padding: '5px 8px',
-                  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-                  border: '1px solid #333333',
-                  color: placement.locked ? '#eab308' : '#eaeaea',
+                  padding: '4px 8px',
+                  backgroundColor: 'var(--ink-900)',
+                  border: '1px solid var(--line)',
+                  color: placement.locked ? 'var(--warn)' : 'var(--text)',
                   cursor: 'pointer',
                 }}
               >
-                {placement.locked ? '🔒 Unlock' : '🔓 Lock'}
+                <Icon name={placement.locked ? 'unlock' : 'lock'} size={16} /> {placement.locked ? 'Unlock' : 'Lock'}
               </button>
               <button
                 type="button"
@@ -548,15 +548,15 @@ export function InspectorPanel({
                 aria-label="Delete Placement"
                 style={{
                   ...actionButtonStyle,
-                  padding: '5px 8px',
-                  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-                  border: '1px solid #ef444440',
-                  color: '#ef4444',
+                  padding: '4px 8px',
+                  backgroundColor: 'var(--ink-900)',
+                  border: '1px solid var(--line)',
+                  color: 'var(--danger)',
                   cursor: placement.locked ? 'not-allowed' : 'pointer',
                   opacity: placement.locked ? 0.4 : 1,
                 }}
               >
-                ✕ Delete
+                <Icon name="trash" size={16} /> Delete
               </button>
             </div>
           </div>
@@ -584,16 +584,16 @@ function NumericField({
       style={{
         display: 'flex',
         alignItems: 'center',
-        background: 'var(--color-bg-primary, #0d0d0d)',
-        border: '1px solid #333333',
-        height: '26px',
+        background: 'var(--ink-900)',
+        border: '1px solid var(--line)',
+        height: '28px',
       }}
     >
       <span
         style={{
-          padding: '0 5px',
-          fontSize: '10px',
-          color: 'var(--color-text-secondary, #888888)',
+          padding: '0 4px',
+          fontSize: '11px',
+          color: 'var(--text-faint)',
           userSelect: 'none',
         }}
       >
@@ -609,33 +609,33 @@ function NumericField({
           if (!isNaN(num)) onChange(num);
         }}
         style={{
+          ...numericStyle,
           width: '100%',
           height: '100%',
           background: 'transparent',
           border: 'none',
-          color: '#eaeaea',
-          fontSize: '11px',
-          outline: 'none',
           textAlign: 'right',
           paddingRight: '4px',
         }}
       />
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid #333333' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderLeft: '1px solid var(--line)' }}>
         <button
           type="button"
           disabled={disabled}
           onClick={() => onChange(value + step)}
           style={stepperButtonStyle}
+          aria-label="Step up"
         >
-          ▲
+          <Icon name="chevronUp" size={12} />
         </button>
         <button
           type="button"
           disabled={disabled}
           onClick={() => onChange(value - step)}
           style={stepperButtonStyle}
+          aria-label="Step down"
         >
-          ▼
+          <Icon name="chevronDown" size={12} />
         </button>
       </div>
     </div>
@@ -646,25 +646,32 @@ function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div
       style={{
-        padding: '4px 6px',
-        background: 'var(--color-bg-primary, #0d0d0d)',
-        border: '1px solid #262626',
+        padding: '4px 8px',
+        background: 'var(--ink-900)',
+        border: '1px solid var(--line)',
       }}
     >
-      <div style={{ fontSize: '10px', color: 'var(--color-text-secondary, #888888)' }}>{label}</div>
-      <div style={{ fontWeight: 600, color: 'var(--color-text-primary, #eaeaea)' }}>{value}</div>
+      <div style={{ fontSize: '11px', color: 'var(--text-faint)' }}>{label}</div>
+      <div style={{ ...numericStyle, fontWeight: 600 }}>{value}</div>
     </div>
   );
 }
+
+const numericStyle: React.CSSProperties = {
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: '12px',
+  color: 'var(--text)',
+};
 
 const panelContainerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   width: '100%',
   height: '100%',
-  backgroundColor: 'var(--color-bg-secondary, #1a1a1a)',
-  borderLeft: '1px solid var(--color-border-subtle, #333333)',
-  color: 'var(--color-text-primary, #eaeaea)',
+  backgroundColor: 'var(--ink-850)',
+  borderLeft: '1px solid var(--line)',
+  color: 'var(--text)',
   fontSize: '12px',
   overflow: 'hidden',
   userSelect: 'none',
@@ -674,31 +681,50 @@ const panelHeaderStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  height: '34px',
-  padding: '0 10px',
-  borderBottom: '1px solid #2a2a2a',
-  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+  height: '32px',
+  padding: '0 12px',
+  borderBottom: '1px solid var(--line)',
+  backgroundColor: 'var(--ink-900)',
   flexShrink: 0,
+};
+
+const panelTitleStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'var(--text-faint)',
 };
 
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '11px',
   fontWeight: 500,
-  color: 'var(--color-text-secondary, #a8a8a8)',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'var(--text-faint)',
   marginBottom: '4px',
+};
+
+const unitStyle: React.CSSProperties = {
+  fontSize: '11px',
+  color: 'var(--text-faint)',
 };
 
 const textInputStyle: React.CSSProperties = {
   width: '100%',
-  height: '26px',
-  padding: '2px 8px',
-  backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-  border: '1px solid #333333',
-  color: 'var(--color-text-primary, #eaeaea)',
+  height: '28px',
+  padding: '0 8px',
+  backgroundColor: 'var(--ink-900)',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
   fontSize: '12px',
-  borderRadius: '0px',
-  outline: 'none',
+};
+
+const numericSegmentStyle: React.CSSProperties = {
+  ...numericStyle,
+  border: '1px solid',
+  cursor: 'pointer',
 };
 
 const stepperButtonStyle: React.CSSProperties = {
@@ -707,8 +733,7 @@ const stepperButtonStyle: React.CSSProperties = {
   width: '14px',
   background: 'transparent',
   border: 'none',
-  color: '#888888',
-  fontSize: '7px',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
@@ -725,30 +750,26 @@ const iconButtonStyle: React.CSSProperties = {
   padding: 0,
   background: 'transparent',
   border: 'none',
-  borderRadius: '0px',
-  color: 'var(--color-text-secondary, #a8a8a8)',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
-  fontSize: '12px',
 };
 
 const nudgeStepBtnStyle: React.CSSProperties = {
-  padding: '2px 5px',
-  fontSize: '10px',
-  fontWeight: 600,
+  padding: '4px 8px',
+  fontSize: '12px',
   border: '1px solid',
   cursor: 'pointer',
-  borderRadius: '0px',
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
 };
 
 const nudgeAxisBtnStyle: React.CSSProperties = {
-  padding: '2px 4px',
-  fontSize: '9px',
-  fontFamily: 'monospace',
-  backgroundColor: '#1e1e26',
-  border: '1px solid #333333',
-  color: '#cbd5e1',
-  borderRadius: '0px',
-  minWidth: '22px',
+  ...numericStyle,
+  padding: '4px',
+  backgroundColor: 'var(--ink-800)',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
+  minWidth: '28px',
   cursor: 'pointer',
 };
 
@@ -756,7 +777,7 @@ const actionButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: '11px',
-  borderRadius: '0px',
+  gap: '8px',
+  fontSize: '12px',
   textAlign: 'center',
 };

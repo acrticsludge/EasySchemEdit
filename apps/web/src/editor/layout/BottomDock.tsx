@@ -1,6 +1,6 @@
 // apps/web/src/editor/layout/BottomDock.tsx
 // Collapsible bottom dock panel with tab switching: Assets, Materials, Conflicts, History, Agent Log.
-// S&box style adhering to SUBSPEC-G §6.4, G1.
+// Precision-instrument chrome (SPEC.ui-precision-instrument.md §4).
 
 import React, { useState, useEffect } from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
@@ -8,6 +8,7 @@ import type { WorkspaceControllers } from './layout-bridge.ts';
 import type { BottomTabId } from '@easyschemedit/ui';
 import type { HistoryQueryResult } from '@easyschemedit/operations';
 import type { ConflictsPanelController, MaterialListController } from '../panels/panels-controller.ts';
+import { Icon, type IconName } from '../ui/index.ts';
 
 export interface BottomDockProps {
   store: EditorSessionStore;
@@ -22,15 +23,15 @@ export interface BottomDockProps {
 interface TabItem {
   id: BottomTabId;
   label: string;
-  icon: string;
+  icon: IconName;
 }
 
 const TABS: TabItem[] = [
-  { id: 'assets', label: 'Assets', icon: '📦' },
-  { id: 'materials', label: 'Materials', icon: '🧱' },
-  { id: 'conflicts', label: 'Conflicts', icon: '⚠' },
-  { id: 'history', label: 'History', icon: '⏱' },
-  { id: 'agent-log', label: 'AI / MCP', icon: '🤖' },
+  { id: 'assets', label: 'Assets', icon: 'box' },
+  { id: 'materials', label: 'Materials', icon: 'layers' },
+  { id: 'conflicts', label: 'Conflicts', icon: 'conflict' },
+  { id: 'history', label: 'History', icon: 'history' },
+  { id: 'agent-log', label: 'AI / MCP', icon: 'agent' },
 ];
 
 export function BottomDock({
@@ -90,9 +91,9 @@ export function BottomDock({
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: 'var(--color-bg-secondary, #1a1a1a)',
-        borderTop: '1px solid var(--color-border-subtle, #333333)',
-        color: 'var(--color-text-primary, #eaeaea)',
+        backgroundColor: 'var(--ink-850)',
+        borderTop: '1px solid var(--line-strong)',
+        color: 'var(--text)',
         fontSize: '12px',
         overflow: 'hidden',
         userSelect: 'none',
@@ -107,8 +108,8 @@ export function BottomDock({
           justifyContent: 'space-between',
           height: '28px',
           padding: '0 8px',
-          backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-          borderBottom: '1px solid #2a2a2a',
+          backgroundColor: 'var(--ink-900)',
+          borderBottom: '1px solid var(--line)',
           flexShrink: 0,
         }}
       >
@@ -125,21 +126,21 @@ export function BottomDock({
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '4px',
                   height: '100%',
                   padding: '0 12px',
-                  background: isActive ? 'var(--color-bg-secondary, #1a1a1a)' : 'transparent',
+                  background: 'transparent',
                   border: 'none',
-                  borderBottom: isActive ? '2px solid var(--color-accent, #4a9eff)' : '2px solid transparent',
-                  color: isActive ? '#ffffff' : 'var(--color-text-secondary, #a8a8a8)',
+                  borderBottom: isActive ? '2px solid var(--signal)' : '2px solid transparent',
+                  color: isActive ? 'var(--text)' : 'var(--text-dim)',
                   fontSize: '11px',
                   fontWeight: isActive ? 600 : 400,
                   cursor: 'pointer',
-                  borderRadius: '0px',
-                  transition: 'color 0.1s, background-color 0.1s',
+                  borderRadius: '0',
+                  transition: 'color 0.12s ease-out, border-color 0.12s ease-out',
                 }}
               >
-                <span>{tab.icon}</span>
+                <Icon name={tab.icon} size={14} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -154,7 +155,7 @@ export function BottomDock({
             aria-label="Collapse Bottom Dock"
             style={iconButtonStyle}
           >
-            ▼
+            <Icon name="chevronDown" size={14} />
           </button>
         )}
       </div>
@@ -166,7 +167,7 @@ export function BottomDock({
           flex: 1,
           overflow: 'auto',
           padding: '8px 12px',
-          backgroundColor: 'var(--color-bg-secondary, #1a1a1a)',
+          backgroundColor: 'var(--ink-850)',
         }}
       >
         {tabSlots[activeTab] ? (
@@ -204,7 +205,8 @@ function DefaultTabContent({
                 opacity: snapshot.canUndo ? 1 : 0.5,
               }}
             >
-              ↺ Undo (Ctrl+Z)
+              <Icon name="undo" size={14} />
+              Undo (Ctrl+Z)
             </button>
             <button
               type="button"
@@ -215,9 +217,10 @@ function DefaultTabContent({
                 opacity: snapshot.canRedo ? 1 : 0.5,
               }}
             >
-              ↻ Redo (Ctrl+Y)
+              <Icon name="redo" size={14} />
+              Redo (Ctrl+Y)
             </button>
-            <span style={{ fontSize: '11px', color: 'var(--color-text-secondary, #888888)', marginLeft: 'auto' }}>
+            <span style={{ fontSize: '11px', color: 'var(--text-dim)', marginLeft: 'auto' }}>
               Current Revision: #{snapshot.revision}
             </span>
           </div>
@@ -226,9 +229,9 @@ function DefaultTabContent({
             style={{
               flex: 1,
               overflowY: 'auto',
-              border: '1px solid #2a2a2a',
-              backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-              padding: '6px',
+              border: '1px solid var(--line)',
+              backgroundColor: 'var(--ink-900)',
+              padding: '8px',
             }}
           >
             {historyData && historyData.undoStack.length > 0 ? (
@@ -244,22 +247,22 @@ function DefaultTabContent({
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         padding: '4px 8px',
-                        background: '#151515',
-                        borderLeft: '2px solid var(--color-accent, #4a9eff)',
+                        background: 'var(--ink-800)',
+                        borderLeft: '2px solid var(--line-strong)',
                         fontSize: '11px',
                       }}
                     >
-                      <span style={{ fontWeight: 500, color: '#eaeaea' }}>
-                        {entry.type.toUpperCase()}: Revision {entry.beforeRevision} → {entry.afterRevision}
+                      <span style={{ fontWeight: 500, color: 'var(--text)' }}>
+                        {entry.type.toUpperCase()}: Revision {entry.beforeRevision} to {entry.afterRevision}
                       </span>
-                      <span style={{ color: '#888888', fontSize: '10px' }}>
+                      <span style={{ color: 'var(--text-dim)', fontSize: '10px' }}>
                         {new Date(entry.timestamp).toLocaleTimeString()}
                       </span>
                     </div>
                   ))}
               </div>
             ) : (
-              <div style={{ padding: '16px', textAlign: 'center', color: '#666666' }}>
+              <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-faint)' }}>
                 No undo history recorded yet.
               </div>
             )}
@@ -269,10 +272,10 @@ function DefaultTabContent({
 
     case 'materials':
       return (
-        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
-          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>Project Materials Breakdown</div>
+        <div style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+          <div style={{ marginBottom: '8px', fontWeight: 600, color: 'var(--text)' }}>Project Materials Breakdown</div>
           <div>Total non-air blocks in project: {snapshot.project.placements.reduce((acc, p) => acc + (p.volume?.nonAirCount ?? 0), 0).toLocaleString()}</div>
-          <div style={{ marginTop: '4px', fontSize: '11px', color: '#888888' }}>
+          <div style={{ marginTop: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
             Palette cardinality: {snapshot.project.placements.reduce((acc, p) => acc + (p.volume?.paletteCardinality ?? 0), 0)} unique block states
           </div>
         </div>
@@ -280,23 +283,24 @@ function DefaultTabContent({
 
     case 'conflicts':
       return (
-        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
-          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>Multi-Placement Conflicts</div>
+        <div style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+          <div style={{ marginBottom: '8px', fontWeight: 600, color: 'var(--text)' }}>Multi-Placement Conflicts</div>
           <p style={{ margin: 0 }}>
             Overlap Policy: <strong>{snapshot.project.overlapPolicy ?? 'top-wins'}</strong>
           </p>
-          <div style={{ marginTop: '8px', fontSize: '11px', color: '#22c55e' }}>
-            ✓ No blocking volumetric conflicts detected.
+          <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--ok)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Icon name="check" size={12} />
+            No blocking volumetric conflicts detected.
           </div>
         </div>
       );
 
     case 'assets':
       return (
-        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
-          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>Resource Packs & Textures</div>
+        <div style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+          <div style={{ marginBottom: '8px', fontWeight: 600, color: 'var(--text)' }}>Resource Packs & Textures</div>
           <div>Target: Minecraft Java 1.21.11</div>
-          <div style={{ fontSize: '11px', marginTop: '4px', color: '#888888' }}>
+          <div style={{ fontSize: '11px', marginTop: '4px', color: 'var(--text-dim)' }}>
             Default vanilla textures active. Drop a .zip resource pack into the viewport to layer overrides.
           </div>
         </div>
@@ -304,8 +308,8 @@ function DefaultTabContent({
 
     case 'agent-log':
       return (
-        <div style={{ color: 'var(--color-text-secondary, #a8a8a8)', fontSize: '12px' }}>
-          <div style={{ marginBottom: '6px', fontWeight: 600, color: '#eaeaea' }}>AI & MCP Companion Bridge</div>
+        <div style={{ color: 'var(--text-dim)', fontSize: '12px' }}>
+          <div style={{ marginBottom: '8px', fontWeight: 600, color: 'var(--text)' }}>AI & MCP Companion Bridge</div>
           <p style={{ margin: 0 }}>
             Connect Claude, Cursor, Antigravity or Windsurf via the MCP companion bridge or Account API Key.
           </p>
@@ -319,13 +323,16 @@ function DefaultTabContent({
 }
 
 const smallButtonStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
   padding: '3px 8px',
-  background: 'var(--color-bg-primary, #0d0d0d)',
-  border: '1px solid #333333',
-  color: 'var(--color-text-primary, #eaeaea)',
+  background: 'var(--ink-900)',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
   fontSize: '11px',
   cursor: 'pointer',
-  borderRadius: '0px',
+  borderRadius: '0',
 };
 
 const iconButtonStyle: React.CSSProperties = {
@@ -337,8 +344,7 @@ const iconButtonStyle: React.CSSProperties = {
   padding: 0,
   background: 'transparent',
   border: 'none',
-  borderRadius: '0px',
-  color: 'var(--color-text-secondary, #a8a8a8)',
+  borderRadius: '0',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
-  fontSize: '10px',
 };

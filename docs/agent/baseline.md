@@ -76,4 +76,22 @@ Reference Plan: `docs/plans/e2e-rebuild/index.md`
 - `tools/call inspect_region` against `https://easyschemedit.pages.dev/api/mcp` returned Cloudflare **Error 1102** (Worker exceeded CPU/memory), non-retryable.
 - Client sent `maxBlocks: 200000`; `apps/web/src/server/mcp-server.ts` uses the value without a cap, and the same path accepts uncapped `maxStructures` and render `width`/`height`.
 
+---
+
+# 2026-11-18 Precision-Instrument UI Baseline
+
+Recorded: 2026-11-18, before any UI code edit.
+Reference critique: `docs/audits/ui-critique-2026-11-18.md`.
+
+## Git state
+- **Branch**: `master`
+- **Commit**: `ed3ae24`
+- **Untracked paths before work**: `.agents/` (Impeccable skill install), `docs/audits/ui-critique-2026-11-18.md` (this run's audit).
+- No tracked files modified.
+
+## Baseline verification (observed, before edit)
+- `pnpm typecheck`: exit 0, no errors (all 10 workspace packages).
+- `pnpm --filter @easyschemedit/web build`: exit 0, 3 pages built in 11.19s. One pre-existing Vite warning: `EditorIsland.*.js` chunk is 1,258.71 kB (gzip 326.89 kB) over the 500 kB limit. Not a failure.
+- `pnpm test`: 105/105 test files PASS in 30.09s.
+
 

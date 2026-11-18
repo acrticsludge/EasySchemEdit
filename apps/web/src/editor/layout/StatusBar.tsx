@@ -1,10 +1,11 @@
 // apps/web/src/editor/layout/StatusBar.tsx
 // Bottom status bar footer: cursor world coordinates, tool mode, revision, save status, FPS.
-// S&box style adhering to SUBSPEC-G §6.5, G6.
+// Precision-instrument chrome (SPEC.ui-precision-instrument.md §4).
 
 import React from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
+import { Icon } from '../ui/index.ts';
 
 export interface StatusBarProps {
   store: EditorSessionStore;
@@ -12,6 +13,7 @@ export interface StatusBarProps {
   fps?: number;
   hoveredBlockName?: string | null;
   cursorCoordinates?: { x: number; y: number; z: number } | null;
+  isDirty?: boolean;
   className?: string;
 }
 
@@ -21,6 +23,7 @@ export function StatusBar({
   fps = 60,
   hoveredBlockName = null,
   cursorCoordinates = null,
+  isDirty = false,
   className = '',
 }: StatusBarProps) {
   const snapshot = store.getSnapshot();
@@ -43,11 +46,11 @@ export function StatusBar({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: '24px',
-        padding: '0 10px',
-        backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-        borderTop: '1px solid var(--color-border-subtle, #333333)',
-        color: 'var(--color-text-secondary, #a8a8a8)',
-        fontSize: '11px',
+        padding: '0 12px',
+        backgroundColor: 'var(--ink-850)',
+        borderTop: '1px solid var(--line)',
+        color: 'var(--text)',
+        fontSize: '12px',
         userSelect: 'none',
         flexShrink: 0,
       }}
@@ -55,27 +58,27 @@ export function StatusBar({
       {/* Left: Coordinates & Tool & Hovered Block */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', minWidth: '130px' }}>
-          <span style={{ color: 'var(--color-text-muted, #666666)' }}>POS:</span>
-          <span style={{ color: coords ? 'var(--color-text-primary, #eaeaea)' : '#666666', fontFamily: 'monospace' }}>
-            {coords ? `${coords.x}, ${coords.y}, ${coords.z}` : '—'}
+          <span style={labelStyle}>POS:</span>
+          <span style={coords ? monoStyle : { ...monoStyle, color: 'var(--text-faint)' }}>
+            {coords ? `${coords.x}, ${coords.y}, ${coords.z}` : 'n/a'}
           </span>
         </div>
 
-        <div style={{ width: '1px', height: '12px', backgroundColor: '#2a2a2a' }} />
+        <div style={dividerStyle} />
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <span style={{ color: 'var(--color-text-muted, #666666)' }}>TOOL:</span>
-          <span style={{ color: 'var(--color-text-primary, #eaeaea)', textTransform: 'capitalize' }}>
+          <span style={labelStyle}>TOOL:</span>
+          <span style={{ color: 'var(--text)', textTransform: 'capitalize' }}>
             {toolMode}
           </span>
         </div>
 
         {hoveredBlockName && (
           <>
-            <div style={{ width: '1px', height: '12px', backgroundColor: '#2a2a2a' }} />
+            <div style={dividerStyle} />
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <span style={{ color: 'var(--color-text-muted, #666666)' }}>BLOCK:</span>
-              <span style={{ color: 'var(--color-accent, #4a9eff)' }}>{hoveredBlockName}</span>
+              <span style={labelStyle}>BLOCK:</span>
+              <span style={{ color: 'var(--text)' }}>{hoveredBlockName}</span>
             </div>
           </>
         )}
@@ -90,7 +93,7 @@ export function StatusBar({
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap',
           padding: '0 12px',
-          color: statusMessage ? 'var(--color-accent-hover, #6ab0ff)' : '#555555',
+          color: statusMessage ? 'var(--text)' : 'var(--text-faint)',
         }}
       >
         {statusMessage || ''}
@@ -99,40 +102,55 @@ export function StatusBar({
       {/* Right: Revision, Placements, Save Status, FPS */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <span>
-          {placementCount} {placementCount === 1 ? 'placement' : 'placements'}
+          <span style={monoStyle}>{placementCount}</span> {placementCount === 1 ? 'placement' : 'placements'}
         </span>
 
-        <div style={{ width: '1px', height: '12px', backgroundColor: '#2a2a2a' }} />
+        <div style={dividerStyle} />
 
-        <span style={{ fontFamily: 'monospace' }}>r{revision}</span>
+        <span style={monoStyle}>r{revision}</span>
 
-        <div style={{ width: '1px', height: '12px', backgroundColor: '#2a2a2a' }} />
+        <div style={dividerStyle} />
 
-        {/* Save indicator */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              backgroundColor: '#22c55e',
-            }}
-          />
-          <span>Saved</span>
-        </div>
-
-        <div style={{ width: '1px', height: '12px', backgroundColor: '#2a2a2a' }} />
-
-        {/* FPS */}
-        <span
+        {/* Save indicator reflects the real dirty state */}
+        <div
           style={{
-            fontFamily: 'monospace',
-            color: fps < 30 ? '#ef4444' : 'var(--color-text-secondary, #888888)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            color: isDirty ? 'var(--warn)' : 'var(--ok)',
           }}
         >
+          <Icon name={isDirty ? 'warning' : 'check'} size={12} />
+          <span>{isDirty ? 'Unsaved changes' : 'Saved'}</span>
+        </div>
+
+        <div style={dividerStyle} />
+
+        {/* FPS */}
+        <span style={{ ...monoStyle, color: fps < 30 ? 'var(--danger)' : 'var(--text)' }}>
           {Math.round(fps)} FPS
         </span>
       </div>
     </footer>
   );
 }
+
+const labelStyle: React.CSSProperties = {
+  color: 'var(--text-faint)',
+  fontSize: '11px',
+  letterSpacing: '0.08em',
+};
+
+const monoStyle: React.CSSProperties = {
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: '12px',
+  color: 'var(--text)',
+};
+
+const dividerStyle: React.CSSProperties = {
+  width: '1px',
+  height: '12px',
+  backgroundColor: 'var(--line)',
+  flexShrink: 0,
+};

@@ -1,11 +1,12 @@
 // apps/web/src/editor/viewport/SelectedPlacementBar.tsx
-// Sleek floating action bar for the selected placement at the bottom-center of the 3D viewport.
-// Quick access to Move Gizmo (W), Rotate 90° (E), Nudge (±1/±16 on X/Y/Z), Duplicate Side-by-Side (Ctrl+D), and Delete (Del).
+// Floating action bar for the selected placement at the bottom-center of the 3D viewport.
+// Quick access to Move (W), Rotate 90 degrees (E), Nudge (1/16 on X/Y/Z), Duplicate (Ctrl+D), Delete (Del).
 
 import React, { useState, useEffect, useCallback } from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import { useEditorSession } from '../session-store.ts';
 import type { Placement } from '@easyschemedit/domain';
+import { Icon } from '../ui/index.ts';
 
 export interface SelectedPlacementBarProps {
   store: EditorSessionStore;
@@ -222,29 +223,35 @@ export function SelectedPlacementBar({
         zIndex: 20,
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
-        padding: '5px 10px',
-        backgroundColor: '#1e1e26f0',
+        gap: '8px',
+        padding: '8px 12px',
+        backgroundColor: 'var(--ink-800)',
         backdropFilter: 'blur(8px)',
-        border: '1px solid #2a2a38',
-        borderRadius: '4px',
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4)',
-        color: '#eaeaea',
-        fontSize: '11px',
+        border: '1px solid var(--line)',
+        maxWidth: 'calc(100% - 24px)',
+        overflowX: 'auto',
+        color: 'var(--text)',
+        fontSize: '12px',
         userSelect: 'none',
         pointerEvents: 'auto',
         whiteSpace: 'nowrap',
       }}
     >
+      <style>{`
+        @media (max-width: 1279px) {
+          .selected-placement-bar .spb-label { display: none; }
+        }
+      `}</style>
+
       {/* Placement Name + Coordinates Badge */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '4px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '4px' }}>
         <span
           style={{
             fontWeight: 600,
             maxWidth: '120px',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            color: '#ffffff',
+            color: 'var(--text)',
           }}
           title={placement.name}
         >
@@ -266,13 +273,11 @@ export function SelectedPlacementBar({
                 : undefined
             }
             style={{
-              fontFamily: 'monospace',
-              fontSize: '10px',
-              backgroundColor: '#2a2a38',
-              color: '#93c5fd',
-              padding: '2px 5px',
-              borderRadius: '2px',
-              border: '1px solid #3b82f640',
+              ...numericStyle,
+              backgroundColor: 'var(--ink-900)',
+              color: 'var(--text)',
+              padding: '4px 8px',
+              border: '1px solid var(--line)',
               cursor: placement.locked ? 'default' : 'pointer',
               userSelect: 'none',
             }}
@@ -281,8 +286,8 @@ export function SelectedPlacementBar({
             ({tx}, {ty}, {tz})
           </span>
         ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
               X
               <input
                 type="number"
@@ -293,7 +298,7 @@ export function SelectedPlacementBar({
                 style={coordInputStyle}
               />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
               Y
               <input
                 type="number"
@@ -303,7 +308,7 @@ export function SelectedPlacementBar({
                 style={coordInputStyle}
               />
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '2px', fontSize: '10px', color: '#93c5fd' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: 'var(--text-dim)' }}>
               Z
               <input
                 type="number"
@@ -318,24 +323,24 @@ export function SelectedPlacementBar({
               onClick={() => void commitEditingCoords()}
               title="Apply coordinates (Enter)"
               aria-label="Apply coordinates"
-              style={coordBtnStyle}
+              style={{ ...coordBtnStyle, color: 'var(--ok)' }}
             >
-              ✓
+              <Icon name="check" size={14} />
             </button>
             <button
               type="button"
               onClick={cancelEditingCoords}
               title="Cancel (Esc)"
               aria-label="Cancel coordinates edit"
-              style={{ ...coordBtnStyle, color: '#f87171' }}
+              style={{ ...coordBtnStyle, color: 'var(--danger)' }}
             >
-              ✕
+              <Icon name="close" size={14} />
             </button>
           </div>
         )}
         {placement.locked && (
-          <span style={{ fontSize: '10px', color: '#eab308' }} title="Placement is locked">
-            🔒
+          <span style={{ color: 'var(--warn)', display: 'inline-flex' }} title="Placement is locked">
+            <Icon name="lock" size={14} />
           </span>
         )}
       </div>
@@ -346,17 +351,17 @@ export function SelectedPlacementBar({
       <button
         type="button"
         onClick={handleSelectMove}
-        title={isMoveActive ? 'Exit Move Gizmo (W)' : 'Move Gizmo (W)'}
+        title="Move (W)"
         aria-label={isMoveActive ? 'Exit Move Gizmo (W)' : 'Move Gizmo (W)'}
         style={{
           ...actionButtonStyle,
-          backgroundColor: isMoveActive ? '#3b82f6' : '#2a2a38',
-          color: isMoveActive ? '#ffffff' : '#eaeaea',
-          borderColor: isMoveActive ? '#60a5fa' : '#3a3a4c',
+          backgroundColor: isMoveActive ? 'var(--signal-wash)' : 'var(--ink-700)',
+          color: isMoveActive ? 'var(--signal)' : 'var(--text)',
+          borderColor: isMoveActive ? 'var(--signal)' : 'var(--line)',
           fontWeight: isMoveActive ? 600 : 400,
         }}
       >
-        ✥ Move (W)
+        <Icon name="move" size={16} /> <span className="spb-label">Move</span>
       </button>
 
       {/* Rotate +90 Button */}
@@ -364,15 +369,15 @@ export function SelectedPlacementBar({
         type="button"
         onClick={handleRotate}
         disabled={placement.locked}
-        title="Rotate +90° (E)"
-        aria-label="Rotate +90° (E)"
+        title="Rotate (E)"
+        aria-label="Rotate (E)"
         style={{
           ...actionButtonStyle,
           opacity: placement.locked ? 0.4 : 1,
           cursor: placement.locked ? 'not-allowed' : 'pointer',
         }}
       >
-        ↻ Rotate 90° (E)
+        <Icon name="rotate" size={16} /> <span className="spb-label">Rotate</span>
       </button>
 
       {/* Mirror X / Flip X */}
@@ -384,15 +389,15 @@ export function SelectedPlacementBar({
         aria-label="Mirror X"
         style={{
           ...actionButtonStyle,
-          backgroundColor: isMirrorX ? '#3b82f6' : '#2a2a38',
-          color: isMirrorX ? '#ffffff' : '#eaeaea',
-          borderColor: isMirrorX ? '#60a5fa' : '#3a3a4c',
+          backgroundColor: isMirrorX ? 'var(--signal-wash)' : 'var(--ink-700)',
+          color: isMirrorX ? 'var(--signal)' : 'var(--text)',
+          borderColor: isMirrorX ? 'var(--signal)' : 'var(--line)',
           fontWeight: isMirrorX ? 600 : 400,
           opacity: placement.locked ? 0.4 : 1,
           cursor: placement.locked ? 'not-allowed' : 'pointer',
         }}
       >
-        Flip X
+        <Icon name="flip" size={16} /> <span className="spb-label">Flip </span>X
       </button>
 
       {/* Mirror Z / Flip Z */}
@@ -404,30 +409,33 @@ export function SelectedPlacementBar({
         aria-label="Mirror Z"
         style={{
           ...actionButtonStyle,
-          backgroundColor: isMirrorZ ? '#3b82f6' : '#2a2a38',
-          color: isMirrorZ ? '#ffffff' : '#eaeaea',
-          borderColor: isMirrorZ ? '#60a5fa' : '#3a3a4c',
+          backgroundColor: isMirrorZ ? 'var(--signal-wash)' : 'var(--ink-700)',
+          color: isMirrorZ ? 'var(--signal)' : 'var(--text)',
+          borderColor: isMirrorZ ? 'var(--signal)' : 'var(--line)',
           fontWeight: isMirrorZ ? 600 : 400,
           opacity: placement.locked ? 0.4 : 1,
           cursor: placement.locked ? 'not-allowed' : 'pointer',
         }}
       >
-        Flip Z
+        <Icon name="flip" size={16} /> <span className="spb-label">Flip </span>Z
       </button>
 
       <div style={dividerStyle} />
 
       {/* Step Toggle & Nudge Buttons */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-        <div style={{ display: 'flex', border: '1px solid #3a3a4c', borderRadius: '2px', overflow: 'hidden' }}>
+        <span className="spb-label" style={{ fontSize: '11px', color: 'var(--text-faint)' }}>Step</span>
+        <div style={{ display: 'flex', border: '1px solid var(--line)' }}>
           <button
             type="button"
             onClick={() => handleStepChange(1)}
             title="Step: 1 block"
             style={{
               ...toggleStepButtonStyle,
-              backgroundColor: step === 1 ? '#3b82f6' : '#1e1e26',
-              color: step === 1 ? '#ffffff' : '#888899',
+              backgroundColor: step === 1 ? 'var(--signal-wash)' : 'transparent',
+              color: step === 1 ? 'var(--signal)' : 'var(--text-dim)',
+              borderColor: step === 1 ? 'var(--signal)' : 'transparent',
+              fontWeight: step === 1 ? 600 : 400,
             }}
           >
             1
@@ -438,8 +446,10 @@ export function SelectedPlacementBar({
             title="Step: 16 blocks (Chunk)"
             style={{
               ...toggleStepButtonStyle,
-              backgroundColor: step === 16 ? '#3b82f6' : '#1e1e26',
-              color: step === 16 ? '#ffffff' : '#888899',
+              backgroundColor: step === 16 ? 'var(--signal-wash)' : 'transparent',
+              color: step === 16 ? 'var(--signal)' : 'var(--text-dim)',
+              borderColor: step === 16 ? 'var(--signal)' : 'transparent',
+              fontWeight: step === 16 ? 600 : 400,
             }}
           >
             16
@@ -449,7 +459,7 @@ export function SelectedPlacementBar({
         {/* Nudge Buttons on X, Y, Z */}
         <div style={{ display: 'flex', gap: '2px' }}>
           {(['x', 'y', 'z'] as const).map((axis) => (
-            <div key={axis} style={{ display: 'flex', gap: '1px' }}>
+            <div key={axis} style={{ display: 'flex', gap: '2px' }}>
               <button
                 type="button"
                 disabled={placement.locked}
@@ -462,7 +472,7 @@ export function SelectedPlacementBar({
                   cursor: placement.locked ? 'not-allowed' : 'pointer',
                 }}
               >
-                -{axis.toUpperCase()}
+                <Icon name="chevronLeft" size={12} /><span className="spb-label">{axis.toUpperCase()}</span>
               </button>
               <button
                 type="button"
@@ -476,7 +486,7 @@ export function SelectedPlacementBar({
                   cursor: placement.locked ? 'not-allowed' : 'pointer',
                 }}
               >
-                +{axis.toUpperCase()}
+                <span className="spb-label">{axis.toUpperCase()}</span><Icon name="chevronRight" size={12} />
               </button>
             </div>
           ))}
@@ -491,13 +501,13 @@ export function SelectedPlacementBar({
           aria-label="Snap to Chunk"
           style={{
             ...actionButtonStyle,
-            padding: '0 6px',
-            fontSize: '10px',
+            padding: '0 8px',
+            fontSize: '11px',
             opacity: placement.locked ? 0.4 : 1,
             cursor: placement.locked ? 'not-allowed' : 'pointer',
           }}
         >
-          ⊞ Chunk
+          <Icon name="grid" size={16} /> <span className="spb-label">Chunk</span>
         </button>
       </div>
 
@@ -508,7 +518,7 @@ export function SelectedPlacementBar({
         type="button"
         onClick={handleDuplicate}
         disabled={placement.locked}
-        title="Duplicate Side-by-Side (Ctrl+D)"
+        title="Duplicate (Ctrl+D)"
         aria-label="Duplicate Side-by-Side (Ctrl+D)"
         style={{
           ...actionButtonStyle,
@@ -516,7 +526,7 @@ export function SelectedPlacementBar({
           cursor: placement.locked ? 'not-allowed' : 'pointer',
         }}
       >
-        ⎘ Duplicate Side-by-Side (Ctrl+D)
+        <Icon name="duplicate" size={16} /> <span className="spb-label">Duplicate</span>
       </button>
 
       {/* Delete Button */}
@@ -524,27 +534,34 @@ export function SelectedPlacementBar({
         type="button"
         onClick={handleDelete}
         disabled={placement.locked}
-        title="Delete Placement (Del)"
+        title="Delete (Del)"
         aria-label="Delete Placement (Del)"
         style={{
           ...actionButtonStyle,
-          color: '#ef4444',
-          borderColor: '#ef444440',
+          color: 'var(--danger)',
           opacity: placement.locked ? 0.4 : 1,
           cursor: placement.locked ? 'not-allowed' : 'pointer',
         }}
       >
-        ✕ Delete
+        <Icon name="trash" size={16} /> <span className="spb-label">Delete</span>
       </button>
     </div>
   );
 }
 
+const numericStyle: React.CSSProperties = {
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: '12px',
+  color: 'var(--text)',
+};
+
 const dividerStyle: React.CSSProperties = {
   width: '1px',
   height: '16px',
-  backgroundColor: '#2a2a38',
-  margin: '0 2px',
+  backgroundColor: 'var(--line)',
+  margin: '0 4px',
+  flexShrink: 0,
 };
 
 const actionButtonStyle: React.CSSProperties = {
@@ -554,24 +571,24 @@ const actionButtonStyle: React.CSSProperties = {
   gap: '4px',
   height: '24px',
   padding: '0 8px',
-  backgroundColor: '#2a2a38',
-  border: '1px solid #3a3a4c',
-  borderRadius: '3px',
-  color: '#eaeaea',
-  fontSize: '11px',
+  backgroundColor: 'var(--ink-700)',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
+  fontSize: '12px',
   cursor: 'pointer',
-  transition: 'background-color 0.1s, border-color 0.1s',
+  flexShrink: 0,
 };
 
 const toggleStepButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  height: '22px',
-  padding: '0 6px',
-  border: 'none',
-  fontSize: '10px',
-  fontWeight: 600,
+  height: '24px',
+  padding: '0 8px',
+  border: '1px solid',
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: '12px',
   cursor: 'pointer',
 };
 
@@ -579,42 +596,35 @@ const nudgeButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
+  gap: '2px',
   height: '24px',
-  padding: '0 5px',
-  backgroundColor: '#2a2a38',
-  border: '1px solid #3a3a4c',
-  borderRadius: '2px',
-  color: '#cbd5e1',
-  fontSize: '10px',
-  fontFamily: 'monospace',
+  padding: '0 4px',
+  backgroundColor: 'var(--ink-700)',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
+  ...numericStyle,
   cursor: 'pointer',
 };
 
 const coordInputStyle: React.CSSProperties = {
-  width: '42px',
-  height: '20px',
-  backgroundColor: '#14141c',
-  color: '#ffffff',
-  border: '1px solid #3b82f6',
-  borderRadius: '2px',
-  padding: '0 3px',
-  fontSize: '10px',
-  fontFamily: 'monospace',
+  width: '48px',
+  height: '24px',
+  backgroundColor: 'var(--ink-900)',
+  color: 'var(--text)',
+  border: '1px solid var(--line)',
+  padding: '0 4px',
+  ...numericStyle,
   textAlign: 'center',
-  outline: 'none',
 };
 
 const coordBtnStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  height: '20px',
-  minWidth: '20px',
+  height: '24px',
+  minWidth: '24px',
   padding: '0 4px',
-  backgroundColor: '#2a2a38',
-  border: '1px solid #3a3a4c',
-  borderRadius: '2px',
-  color: '#4ade80',
-  fontSize: '10px',
+  backgroundColor: 'var(--ink-700)',
+  border: '1px solid var(--line)',
   cursor: 'pointer',
 };

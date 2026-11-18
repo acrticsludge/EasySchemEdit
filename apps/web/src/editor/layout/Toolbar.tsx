@@ -1,11 +1,12 @@
 // apps/web/src/editor/layout/Toolbar.tsx
 // Top workspace toolbar: tool selector, undo/redo, file operations, and viewport overlay toggles.
-// S&box dark aesthetic adhering to SUBSPEC-G §6.1, §1.5 design tokens.
+// Precision-instrument chrome (SPEC.ui-precision-instrument.md §4).
 
-import React from 'react';
+import React, { useState } from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
 import type { AuthUser } from '../../client/auth-client.ts';
+import { Icon, type IconName } from '../ui/index.ts';
 
 export interface ToolbarProps {
   store: EditorSessionStore;
@@ -36,13 +37,13 @@ interface ToolDefinition {
   id: string;
   label: string;
   shortcut?: string;
-  icon: string;
+  icon: IconName;
   category: 'pointer' | 'region';
 }
 
 const TOOLS: ToolDefinition[] = [
-  { id: 'select', label: 'Select Placement', shortcut: '1', icon: '⬚', category: 'pointer' },
-  { id: 'move', label: 'Move Placement', shortcut: 'W', icon: '✥', category: 'pointer' },
+  { id: 'select', label: 'Select', shortcut: '1', icon: 'select', category: 'pointer' },
+  { id: 'move', label: 'Move', shortcut: 'W', icon: 'move', category: 'pointer' },
 ];
 
 export function Toolbar({
@@ -94,24 +95,59 @@ export function Toolbar({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: '40px',
-        padding: '0 12px',
-        backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-        borderBottom: '1px solid var(--color-border-subtle, #333333)',
-        color: 'var(--color-text-primary, #eaeaea)',
+        backgroundColor: 'var(--ink-850)',
+        borderBottom: '1px solid var(--line-strong)',
+        color: 'var(--text)',
         fontSize: '12px',
         userSelect: 'none',
-        gap: '12px',
         flexShrink: 0,
       }}
     >
+      <style>{`
+        .editor-toolbar { gap: 12px; padding: 0 12px; }
+        .editor-toolbar .etb-group,
+        .editor-toolbar .etb-brand,
+        .editor-toolbar .etb-auth { gap: 8px; }
+        .editor-toolbar .etb-brand { margin-right: 4px; }
+        .editor-toolbar .etb-tools { gap: 4px; padding: 4px; }
+        .editor-toolbar .etb-tool-button { padding: 4px 8px; }
+        .editor-toolbar .etb-separator {
+          width: 1px;
+          height: 18px;
+          background-color: var(--line-strong);
+          margin: 0 4px;
+          flex-shrink: 0;
+        }
+        .editor-toolbar .etb-file-icon { display: none; }
+        .editor-toolbar .etb-overlays-label {
+          font-size: 11px;
+          color: var(--text-faint);
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        @media (max-width: 1279px) {
+          .editor-toolbar { gap: 4px; padding: 0 8px; }
+          .editor-toolbar .etb-group,
+          .editor-toolbar .etb-brand,
+          .editor-toolbar .etb-auth { gap: 4px; }
+          .editor-toolbar .etb-brand { margin-right: 0; }
+          .editor-toolbar .etb-tools { gap: 2px; padding: 2px; }
+          .editor-toolbar .etb-separator { margin: 0; }
+          .editor-toolbar .etb-file-icon { display: inline-flex; }
+          .editor-toolbar .etb-label,
+          .editor-toolbar .etb-overlays-label { display: none; }
+          .editor-toolbar .etb-tool-button { padding: 4px; }
+        }
+      `}</style>
+
       {/* Left: Brand / Project Title & File Operations */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginRight: '6px' }}>
+      <div className="etb-group etb-group-left" style={{ display: 'flex', alignItems: 'center' }}>
+        <div className="etb-brand" style={{ display: 'flex', alignItems: 'center' }}>
           <span
             style={{
-              fontWeight: 700,
-              letterSpacing: '0.5px',
-              color: 'var(--color-accent, #4a9eff)',
+              fontWeight: 600,
+              letterSpacing: '0.02em',
+              color: 'var(--text)',
               fontSize: '13px',
             }}
           >
@@ -119,7 +155,7 @@ export function Toolbar({
           </span>
           <span
             style={{
-              color: 'var(--color-text-secondary, #a8a8a8)',
+              color: 'var(--text-dim)',
               maxWidth: '160px',
               whiteSpace: 'nowrap',
               overflow: 'hidden',
@@ -131,10 +167,10 @@ export function Toolbar({
           </span>
         </div>
 
-        <div style={{ width: '1px', height: '18px', backgroundColor: '#333333', margin: '0 4px' }} />
+        <div className="etb-separator" />
 
         {/* Undo / Redo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <button
             type="button"
             onClick={handleUndo}
@@ -142,19 +178,12 @@ export function Toolbar({
             title="Undo (Ctrl+Z)"
             aria-label="Undo"
             style={{
-              padding: '4px 8px',
-              background: 'transparent',
-              border: '1px solid transparent',
-              borderRadius: '0px',
-              color: canUndo ? 'var(--color-text-primary, #eaeaea)' : 'var(--color-text-muted, #666666)',
+              ...iconButtonStyle,
+              color: canUndo ? 'var(--text)' : 'var(--text-faint)',
               cursor: canUndo ? 'pointer' : 'default',
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              lineHeight: 1,
             }}
           >
-            ↺
+            <Icon name="undo" size={16} />
           </button>
           <button
             type="button"
@@ -163,87 +192,53 @@ export function Toolbar({
             title="Redo (Ctrl+Y / Ctrl+Shift+Z)"
             aria-label="Redo"
             style={{
-              padding: '4px 8px',
-              background: 'transparent',
-              border: '1px solid transparent',
-              borderRadius: '0px',
-              color: canRedo ? 'var(--color-text-primary, #eaeaea)' : 'var(--color-text-muted, #666666)',
+              ...iconButtonStyle,
+              color: canRedo ? 'var(--text)' : 'var(--text-faint)',
               cursor: canRedo ? 'pointer' : 'default',
-              fontSize: '13px',
-              display: 'flex',
-              alignItems: 'center',
-              lineHeight: 1,
             }}
           >
-            ↻
+            <Icon name="redo" size={16} />
           </button>
         </div>
 
-        <div style={{ width: '1px', height: '18px', backgroundColor: '#333333', margin: '0 4px' }} />
+        <div className="etb-separator" />
 
-        {/* File actions */}
+        {/* File actions share a neutral style with a clear --ink-700 hover */}
         {onImport && (
-          <button
-            type="button"
-            onClick={onImport}
-            style={actionButtonStyle}
-            title="Import Schematic (.schem / .litematic)"
-          >
+          <FileActionButton icon="import" onClick={onImport} aria-label="Import Schematic" title="Import Schematic (.schem / .litematic)">
             Import
-          </button>
+          </FileActionButton>
         )}
         {onExport && (
-          <button
-            type="button"
-            onClick={onExport}
-            style={actionButtonStyle}
-            title="Export Schematic (Ctrl+E)"
-          >
+          <FileActionButton icon="export" onClick={onExport} aria-label="Export Schematic" title="Export Schematic (Ctrl+E)">
             Export
-          </button>
+          </FileActionButton>
         )}
         {onBake && (
-          <button
-            type="button"
-            onClick={onBake}
-            style={actionButtonStyle}
-            title="Bake Placements into World"
-          >
+          <FileActionButton icon="bake" onClick={onBake} aria-label="Bake Placements into World" title="Bake Placements into World">
             Bake
-          </button>
+          </FileActionButton>
         )}
         {onSave && (
-          <button
-            type="button"
-            onClick={onSave}
-            disabled={isSaving}
-            style={actionButtonStyle}
-            title="Save Project (Ctrl+S)"
-          >
+          <FileActionButton icon="save" onClick={onSave} disabled={isSaving} aria-label="Save Project" title="Save Project (Ctrl+S)">
             {isSaving ? 'Saving...' : 'Save'}
-          </button>
+          </FileActionButton>
         )}
         {onOpenProjects && (
-          <button
-            type="button"
-            onClick={onOpenProjects}
-            style={actionButtonStyle}
-            title="Saved Cloud Projects"
-          >
+          <FileActionButton icon="projects" onClick={onOpenProjects} aria-label="Saved Cloud Projects" title="Saved Cloud Projects">
             Projects
-          </button>
+          </FileActionButton>
         )}
       </div>
 
       {/* Center: Tools Selector */}
       <div
+        className="etb-tools"
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '2px',
-          background: 'var(--color-bg-secondary, #1a1a1a)',
-          padding: '2px 4px',
-          border: '1px solid #2a2a2a',
+          backgroundColor: 'var(--ink-900)',
+          border: '1px solid var(--line-strong)',
         }}
       >
         {TOOLS.map((tool) => {
@@ -253,34 +248,36 @@ export function Toolbar({
               key={tool.id}
               type="button"
               onClick={() => handleSelectTool(tool.id)}
-              title={`${tool.label}${tool.shortcut ? ` (${tool.shortcut})` : ''}`}
+              className="etb-tool-button"
+              aria-label={`${tool.label} Placement`}
+              title={`${tool.label} Placement${tool.shortcut ? ` (${tool.shortcut})` : ''}`}
               aria-pressed={isActive}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
-                padding: '4px 8px',
-                background: isActive ? 'var(--color-bg-tertiary, #252525)' : 'transparent',
+                gap: '4px',
+                height: '24px',
+                background: isActive ? 'var(--signal-wash)' : 'transparent',
                 border: '1px solid',
-                borderColor: isActive ? 'var(--color-accent, #4a9eff)' : 'transparent',
-                color: isActive ? '#ffffff' : 'var(--color-text-secondary, #a8a8a8)',
+                borderColor: isActive ? 'var(--signal)' : 'transparent',
+                color: isActive ? 'var(--signal)' : 'var(--text-dim)',
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: isActive ? 600 : 400,
-                borderRadius: '0px',
-                transition: 'background 0.1s, border-color 0.1s',
+                borderRadius: '0',
+                transition: 'background-color 0.12s ease-out, border-color 0.12s ease-out, color 0.12s ease-out',
               }}
             >
-              <span style={{ fontSize: '13px' }}>{tool.icon}</span>
-              <span>{tool.label}</span>
+              <Icon name={tool.icon} size={16} />
+              <span className="etb-label">{tool.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Right: Viewport Overlays Toggles */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ fontSize: '11px', color: 'var(--color-text-secondary, #a8a8a8)' }}>Overlays:</span>
+      {/* Right: Viewport Overlays Toggles, MCP bridge, auth */}
+      <div className="etb-group etb-group-right" style={{ display: 'flex', alignItems: 'center' }}>
+        <span className="etb-overlays-label">Overlays:</span>
         <OverlayToggle
           label="Chunk"
           active={Boolean(activeOverlays.chunk)}
@@ -300,7 +297,7 @@ export function Toolbar({
           label="Conflicts"
           active={Boolean(activeOverlays.conflicts)}
           onClick={() => onToggleOverlay?.('conflicts')}
-          color="#ef4444"
+          marker="danger"
         />
 
         {onOpenMcpHub && (
@@ -309,43 +306,41 @@ export function Toolbar({
             onClick={onOpenMcpHub}
             aria-label="AI and MCP Hub"
             style={{
-              ...actionButtonStyle,
+              ...neutralButtonStyle,
               display: 'flex',
               alignItems: 'center',
-              gap: '6px',
+              gap: '4px',
               padding: '3px 8px',
               fontSize: '11px',
-              background: mcpLiveSyncActive ? 'rgba(34, 197, 94, 0.12)' : 'var(--color-bg-secondary, #1a1a1a)',
-              borderColor: mcpLiveSyncActive ? '#22c55e' : '#444444',
-              color: mcpLiveSyncActive ? '#86efac' : 'var(--color-text-primary, #eaeaea)',
             }}
             title="Account MCP Hub & AI Builder (Cursor, Claude, Antigravity, Windsurf)"
           >
-            <span>🤖 AI / MCP</span>
+            <Icon name="agent" size={14} />
+            <span>AI / MCP</span>
             {mcpLiveSyncActive && (
               <span
+                title="Live sync active"
                 style={{
                   display: 'inline-block',
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  backgroundColor: '#22c55e',
-                  boxShadow: '0 0 6px #22c55e',
+                  backgroundColor: 'var(--ok)',
                 }}
               />
             )}
           </button>
         )}
 
-        <div style={{ width: '1px', height: '18px', backgroundColor: '#333333', margin: '0 4px' }} />
+        <div className="etb-separator" />
 
         {/* User Auth Info / Actions */}
         {authUser ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="etb-auth" style={{ display: 'flex', alignItems: 'center' }}>
             <span
               style={{
                 fontSize: '11px',
-                color: 'var(--color-text-secondary, #a8a8a8)',
+                color: 'var(--text-dim)',
                 maxWidth: '120px',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -353,18 +348,13 @@ export function Toolbar({
               }}
               title={`Logged in as ${authUser.username}`}
             >
-              👤 {authUser.username}
+              {authUser.username}
             </span>
             {onSignOut && (
               <button
                 type="button"
                 onClick={onSignOut}
-                style={{
-                  ...actionButtonStyle,
-                  padding: '3px 7px',
-                  fontSize: '11px',
-                  color: 'var(--color-text-muted, #888888)',
-                }}
+                style={{ ...neutralButtonStyle, padding: '3px 7px', fontSize: '11px', color: 'var(--text-dim)' }}
                 title="Sign Out"
               >
                 Sign Out
@@ -376,13 +366,7 @@ export function Toolbar({
             <button
               type="button"
               onClick={onSignIn}
-              style={{
-                ...actionButtonStyle,
-                padding: '3px 8px',
-                fontSize: '11px',
-                color: 'var(--color-accent, #4a9eff)',
-                borderColor: 'var(--color-accent, #4a9eff)',
-              }}
+              style={{ ...neutralButtonStyle, padding: '3px 8px', fontSize: '11px' }}
               title="Sign in to save and open cloud projects"
             >
               Sign In
@@ -394,18 +378,43 @@ export function Toolbar({
   );
 }
 
+function FileActionButton({
+  children,
+  icon,
+  style,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { icon: IconName }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      {...rest}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        ...fileActionStyle,
+        backgroundColor: hovered ? 'var(--ink-700)' : 'transparent',
+        ...style,
+      }}
+    >
+      <span className="etb-file-icon"><Icon name={icon} size={14} /></span>
+      <span className="etb-label">{children}</span>
+    </button>
+  );
+}
+
 function OverlayToggle({
   label,
   active,
   onClick,
-  color,
+  marker = 'signal',
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
-  color?: string;
+  marker?: 'signal' | 'danger';
 }) {
-  const activeColor = color ?? 'var(--color-accent, #4a9eff)';
+  const activeColor = marker === 'danger' ? 'var(--danger)' : 'var(--signal)';
   return (
     <button
       type="button"
@@ -414,12 +423,13 @@ function OverlayToggle({
       style={{
         padding: '3px 7px',
         fontSize: '11px',
-        background: active ? 'rgba(74, 158, 255, 0.15)' : 'transparent',
+        background: active && marker === 'signal' ? 'var(--signal-wash)' : 'transparent',
         border: '1px solid',
-        borderColor: active ? activeColor : '#444444',
-        color: active ? '#ffffff' : 'var(--color-text-muted, #888888)',
+        borderColor: active ? activeColor : 'var(--line)',
+        color: active ? activeColor : 'var(--text-dim)',
         cursor: 'pointer',
-        borderRadius: '0px',
+        borderRadius: '0',
+        transition: 'color 0.12s ease-out, border-color 0.12s ease-out, background-color 0.12s ease-out',
       }}
     >
       {label}
@@ -427,12 +437,35 @@ function OverlayToggle({
   );
 }
 
-const actionButtonStyle: React.CSSProperties = {
-  padding: '4px 9px',
-  background: 'var(--color-bg-secondary, #1a1a1a)',
-  border: '1px solid #444444',
-  color: 'var(--color-text-primary, #eaeaea)',
+const iconButtonStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '24px',
+  height: '24px',
+  padding: 0,
+  background: 'transparent',
+  border: '1px solid transparent',
+  color: 'var(--text)',
+  cursor: 'pointer',
+  borderRadius: '0',
+};
+
+const fileActionStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '4px 8px',
+  border: '1px solid var(--line)',
+  color: 'var(--text)',
   fontSize: '12px',
   cursor: 'pointer',
-  borderRadius: '0px',
+  borderRadius: '0',
+  transition: 'background-color 0.12s ease-out',
+};
+
+const neutralButtonStyle: React.CSSProperties = {
+  ...fileActionStyle,
+  backgroundColor: 'var(--ink-800)',
+  borderColor: 'var(--line-strong)',
 };

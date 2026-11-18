@@ -15,6 +15,7 @@ import { OutlinerPanel } from './OutlinerPanel.tsx';
 import { BottomDock } from './BottomDock.tsx';
 import { StatusBar } from './StatusBar.tsx';
 import { SelectedPlacementBar } from '../viewport/SelectedPlacementBar.tsx';
+import { Icon } from '../ui/index.ts';
 import type { BottomTabId, KeyDescriptor } from '@easyschemedit/ui';
 import type { ConflictsPanelController, MaterialListController } from '../panels/panels-controller.ts';
 
@@ -248,8 +249,8 @@ export function WorkspaceShell({
         height: '100%',
         minWidth: 0,
         minHeight: 0,
-        backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-        color: 'var(--color-text-primary, #eaeaea)',
+        backgroundColor: 'var(--ink-900)',
+        color: 'var(--text)',
         overflow: 'hidden',
         position: 'relative',
         userSelect: activeResizing ? 'none' : 'auto',
@@ -336,10 +337,10 @@ export function WorkspaceShell({
               width: '4px',
               height: '100%',
               cursor: 'col-resize',
-              backgroundColor: activeResizing === 'left' ? 'var(--color-accent, #4a9eff)' : 'transparent',
+              backgroundColor: activeResizing === 'left' ? 'var(--signal)' : 'var(--line)',
               zIndex: 10,
               flexShrink: 0,
-              transition: 'background-color 0.1s',
+              transition: 'background-color 0.12s ease-out',
             }}
           />
         )}
@@ -353,7 +354,7 @@ export function WorkspaceShell({
             height: '100%',
             position: 'relative',
             overflow: 'hidden',
-            backgroundColor: '#050505',
+            backgroundColor: 'var(--ink-900)',
           }}
         >
           {viewportSlot}
@@ -380,10 +381,10 @@ export function WorkspaceShell({
             height: '4px',
             width: '100%',
             cursor: 'row-resize',
-            backgroundColor: activeResizing === 'bottom' ? 'var(--color-accent, #4a9eff)' : 'transparent',
+            backgroundColor: activeResizing === 'bottom' ? 'var(--signal)' : 'var(--line)',
             zIndex: 10,
             flexShrink: 0,
-            transition: 'background-color 0.1s',
+            transition: 'background-color 0.12s ease-out',
           }}
         />
       )}
@@ -430,6 +431,7 @@ export function WorkspaceShell({
         fps={fps}
         hoveredBlockName={hoveredBlockName}
         cursorCoordinates={cursorCoordinates}
+        isDirty={isDirty}
       />
     </div>
   );
@@ -447,21 +449,24 @@ function CollapsedBar({ label, onClick }: { label: string; onClick: () => void }
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
+        gap: '8px',
         width: '28px',
         height: '100%',
-        backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-        borderRight: '1px solid #2a2a2a',
-        borderLeft: '1px solid #2a2a2a',
+        backgroundColor: 'var(--ink-850)',
+        borderRight: '1px solid var(--line)',
+        borderLeft: '1px solid var(--line)',
         cursor: 'pointer',
+        color: 'var(--text-faint)',
       }}
     >
+      <Icon name="chevronRight" size={12} />
       <span
         style={{
           writingMode: 'vertical-rl',
           transform: 'rotate(180deg)',
-          fontSize: '10px',
-          letterSpacing: '1px',
-          color: 'var(--color-text-secondary, #888888)',
+          fontSize: '11px',
+          letterSpacing: '0.08em',
+          color: 'var(--text-faint)',
           fontWeight: 600,
         }}
       >
@@ -485,15 +490,19 @@ function CollapsedHorizontalBar({ label, onClick }: { label: string; onClick: ()
         width: '100%',
         height: '28px',
         padding: '0 12px',
-        backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-        borderTop: '1px solid #2a2a2a',
+        backgroundColor: 'var(--ink-850)',
+        borderTop: '1px solid var(--line)',
         cursor: 'pointer',
         fontSize: '11px',
-        color: 'var(--color-text-secondary, #888888)',
+        color: 'var(--text-faint)',
+        letterSpacing: '0.08em',
       }}
     >
-      <span style={{ fontWeight: 600, letterSpacing: '0.5px' }}>{label}</span>
-      <span style={{ fontSize: '10px' }}>▲ Expand</span>
+      <span style={{ fontWeight: 600 }}>{label}</span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <Icon name="chevronUp" size={12} />
+        Expand
+      </span>
     </div>
   );
 }

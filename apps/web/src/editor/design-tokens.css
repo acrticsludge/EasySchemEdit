@@ -1,48 +1,64 @@
 /* apps/web/src/editor/design-tokens.css */
-/* Design tokens matching @easyschemedit/ui (SUBSPEC-G §1.5) and base reset styles. */
+/* Precision-instrument tokens (SPEC.ui-precision-instrument.md §4) and base reset. */
 
 :root {
   color-scheme: dark;
-  /* Surface colors */
-  --color-bg-primary: #0d0d0d;
-  --color-bg-secondary: #1a1a1a;
-  --color-bg-tertiary: #252525;
 
-  /* Semantic surface aliases */
-  --color-bg-canvas: var(--color-bg-primary);
-  --color-bg-panel: var(--color-bg-secondary);
-  --color-bg-elevated: var(--color-bg-tertiary);
+  /* Palette — the only color source */
+  --ink-900: #0B0D0E;
+  --ink-850: #111417;
+  --ink-800: #171B1F;
+  --ink-700: #20262B;
+  --line: #2B3338;
+  --line-strong: #3A444B;
+  --text: #E8ECEA;
+  --text-dim: #9AA5A6;
+  --text-faint: #667276;
+  --signal: #F2B14A;
+  --signal-wash: rgba(242,177,74,.12);
+  --ok: #5BD1A0;
+  --warn: #E8C15A;
+  --danger: #F2685E;
 
-  /* Borders */
-  --color-border: #999999;
-  --color-border-hover: #b3b3b3;
-  --color-border-subtle: #444444;
+  /* Spacing scale: 4 / 8 / 12 / 24 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 24px;
 
-  /* Text colors */
-  --color-text-primary: #eaeaea;
-  --color-text-secondary: #a8a8a8;
-  --color-text-muted: #b3b3b3;
+  /* Legacy aliases — keep untouched consumers rendering */
+  --color-bg-primary: var(--ink-900);
+  --color-bg-secondary: var(--ink-850);
+  --color-bg-tertiary: var(--ink-800);
+  --color-bg-canvas: var(--ink-900);
+  --color-bg-panel: var(--ink-850);
+  --color-bg-elevated: var(--ink-800);
 
-  /* Accent colors */
-  --color-accent: #4a9eff;
-  --color-accent-hover: #6ab0ff;
-  --color-accent-primary: var(--color-accent);
+  --color-border: var(--line);
+  --color-border-hover: var(--line-strong);
+  --color-border-subtle: var(--line);
 
-  /* Feedback & alerts */
-  --color-error: #ef4444;
-  --color-error-text: #f94e4e;
-  --color-warning: #eab308;
-  --color-success: #22c55e;
+  --color-text-primary: var(--text);
+  --color-text-secondary: var(--text-dim);
+  --color-text-muted: var(--text-faint);
 
-  /* Conflict overlay states */
-  --color-conflict-clean: #22c55e;
-  --color-conflict-same-state: #eab308;
-  --color-conflict-state: #ef4444;
+  --color-accent: var(--signal);
+  --color-accent-hover: var(--signal);
+  --color-accent-primary: var(--signal);
 
-  /* Spacing tokens */
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 12px;
+  --color-error: var(--danger);
+  --color-error-text: var(--danger);
+  --color-warning: var(--warn);
+  --color-success: var(--ok);
+
+  --color-conflict-clean: var(--ok);
+  --color-conflict-same-state: var(--warn);
+  --color-conflict-state: var(--danger);
+
+  --spacing-xs: var(--space-1);
+  --spacing-sm: var(--space-2);
+  --spacing-md: var(--space-3);
+  /* Legacy compatibility aliases — original values, not the new scale */
   --spacing-lg: 16px;
   --spacing-xl: 24px;
   --spacing-xxl: 32px;
@@ -52,20 +68,37 @@
 .editor-workspace {
   color-scheme: dark;
 }
+
+.editor-workspace :focus-visible {
+  outline: 2px solid var(--signal);
+  outline-offset: 2px;
+}
+
 .editor-workspace ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 .editor-workspace ::-webkit-scrollbar-track {
-  background: #141414;
+  background: var(--ink-900);
 }
 .editor-workspace ::-webkit-scrollbar-thumb {
-  background: #333333;
+  background: var(--line);
   border-radius: 3px;
 }
 .editor-workspace ::-webkit-scrollbar-thumb:hover {
-  background: #4a4a4a;
+  background: var(--line-strong);
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-workspace,
+  .editor-workspace *,
+  .editor-workspace *::before,
+  .editor-workspace *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 .editor-workspace {
   position: relative;
   display: flex;

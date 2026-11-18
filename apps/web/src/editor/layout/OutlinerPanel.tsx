@@ -1,11 +1,12 @@
 // apps/web/src/editor/layout/OutlinerPanel.tsx
-// Left outliner dock panel: import groups, placement list, visibility/lock toggles, precedence hierarchy.
-// S&box style adhering to SUBSPEC-G §6.2, G2.
+// Left outliner dock panel: import groups, placement list, visibility/lock/duplicate/delete toggles.
+// Precision-instrument styling; logic adheres to SUBSPEC-G section 6.2, G2.
 
 import React, { useState, useMemo } from 'react';
 import type { EditorSessionStore } from '../session-store.ts';
 import type { WorkspaceControllers } from './layout-bridge.ts';
 import type { Placement } from '@easyschemedit/domain';
+import { Icon } from '../ui/index.ts';
 
 export interface OutlinerPanelProps {
   store: EditorSessionStore;
@@ -129,9 +130,9 @@ export function OutlinerPanel({
         flexDirection: 'column',
         width: '100%',
         height: '100%',
-        backgroundColor: 'var(--color-bg-secondary, #1a1a1a)',
-        borderRight: '1px solid var(--color-border-subtle, #333333)',
-        color: 'var(--color-text-primary, #eaeaea)',
+        backgroundColor: 'var(--ink-850)',
+        borderRight: '1px solid var(--line)',
+        color: 'var(--text)',
         fontSize: '12px',
         overflow: 'hidden',
         userSelect: 'none',
@@ -143,21 +144,21 @@ export function OutlinerPanel({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          height: '34px',
-          padding: '0 10px',
-          borderBottom: '1px solid #2a2a2a',
-          backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+          height: '32px',
+          padding: '0 12px',
+          borderBottom: '1px solid var(--line)',
+          backgroundColor: 'var(--ink-900)',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <span style={{ fontWeight: 600, fontSize: '12px', letterSpacing: '0.3px' }}>OUTLINER</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={panelTitleStyle}>OUTLINER</span>
           <span
             style={{
-              fontSize: '10px',
-              padding: '1px 5px',
-              backgroundColor: '#2a2a2a',
-              color: 'var(--color-text-secondary, #a8a8a8)',
-              borderRadius: '0px',
+              fontSize: '11px',
+              padding: '2px 8px',
+              backgroundColor: 'var(--ink-800)',
+              border: '1px solid var(--line)',
+              color: 'var(--text-dim)',
             }}
             title="Precedence: top placements override lower placements when overlapping"
           >
@@ -174,29 +175,27 @@ export function OutlinerPanel({
               aria-label="Collapse Outliner"
               style={iconButtonStyle}
             >
-              ◀
+              <Icon name="chevronLeft" size={16} />
             </button>
           )}
         </div>
       </div>
 
       {/* Search / Filter Box */}
-      <div style={{ padding: '6px 8px', borderBottom: '1px solid #282828' }}>
+      <div style={{ padding: '8px', borderBottom: '1px solid var(--line)' }}>
         <input
           type="text"
           value={filterText}
           onChange={(e) => setFilterText(e.target.value)}
-          placeholder="Filter placements…"
+          placeholder="Filter placements..."
           style={{
             width: '100%',
-            height: '24px',
-            padding: '2px 8px',
-            backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
-            border: '1px solid #3a3a3a',
-            color: 'var(--color-text-primary, #eaeaea)',
+            height: '28px',
+            padding: '0 8px',
+            backgroundColor: 'var(--ink-900)',
+            border: '1px solid var(--line)',
+            color: 'var(--text)',
             fontSize: '12px',
-            borderRadius: '0px',
-            outline: 'none',
           }}
         />
       </div>
@@ -214,9 +213,9 @@ export function OutlinerPanel({
         {filteredPlacements.length === 0 ? (
           <div
             style={{
-              padding: '24px 16px',
+              padding: '24px 12px',
               textAlign: 'center',
-              color: 'var(--color-text-secondary, #a8a8a8)',
+              color: 'var(--text-dim)',
             }}
           >
             {placements.length === 0
@@ -243,24 +242,20 @@ export function OutlinerPanel({
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   minHeight: '28px',
-                  padding: '2px 8px',
-                  backgroundColor: isSelected
-                    ? 'rgba(74, 158, 255, 0.2)'
-                    : index % 2 === 0
-                    ? 'transparent'
-                    : 'rgba(255, 255, 255, 0.015)',
-                  borderLeft: isSelected ? '3px solid var(--color-accent, #4a9eff)' : '3px solid transparent',
-                  borderBottom: '1px solid #222222',
+                  padding: '0 8px',
+                  backgroundColor: isSelected ? 'var(--signal-wash)' : 'transparent',
+                  borderLeft: isSelected ? '3px solid var(--signal)' : '3px solid transparent',
+                  borderBottom: '1px solid var(--line)',
                   cursor: 'pointer',
                   opacity: placement.visible ? 1 : 0.5,
                 }}
               >
                 {/* Left: Precedence Index, Visibility, Lock, Name */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0, flex: 1 }}>
                   <span
                     style={{
-                      fontSize: '10px',
-                      color: 'var(--color-text-muted, #666666)',
+                      ...numericStyle,
+                      color: 'var(--text-faint)',
                       width: '16px',
                       textAlign: 'right',
                     }}
@@ -276,10 +271,10 @@ export function OutlinerPanel({
                     aria-label={placement.visible ? 'Hide Placement' : 'Show Placement'}
                     style={{
                       ...iconButtonStyle,
-                      color: placement.visible ? '#eaeaea' : '#666666',
+                      color: placement.visible ? 'var(--text-dim)' : 'var(--text-faint)',
                     }}
                   >
-                    {placement.visible ? '👁' : '—'}
+                    <Icon name={placement.visible ? 'eye' : 'eyeOff'} size={16} />
                   </button>
 
                   {/* Lock Button */}
@@ -290,10 +285,10 @@ export function OutlinerPanel({
                     aria-label={placement.locked ? 'Unlock Placement' : 'Lock Placement'}
                     style={{
                       ...iconButtonStyle,
-                      color: placement.locked ? '#eab308' : '#666666',
+                      color: placement.locked ? 'var(--warn)' : 'var(--text-faint)',
                     }}
                   >
-                    {placement.locked ? '🔒' : '🔓'}
+                    <Icon name={placement.locked ? 'lock' : 'unlock'} size={16} />
                   </button>
 
                   {/* Placement Name */}
@@ -303,7 +298,7 @@ export function OutlinerPanel({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       fontWeight: isSelected ? 600 : 400,
-                      color: isSelected ? '#ffffff' : 'var(--color-text-primary, #eaeaea)',
+                      color: 'var(--text)',
                     }}
                     title={placement.name}
                   >
@@ -315,12 +310,12 @@ export function OutlinerPanel({
                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
                   <span
                     style={{
-                      fontSize: '10px',
-                      color: 'var(--color-text-secondary, #888888)',
-                      marginRight: '2px',
+                      ...numericStyle,
+                      color: 'var(--text-dim)',
+                      marginRight: '4px',
                     }}
                   >
-                    {w}×{h}×{d}
+                    {w} x {h} x {d}
                   </span>
 
                   <button
@@ -331,10 +326,11 @@ export function OutlinerPanel({
                     disabled={placement.locked}
                     style={{
                       ...iconButtonStyle,
+                      color: 'var(--text-dim)',
                       opacity: placement.locked ? 0.3 : 0.7,
                     }}
                   >
-                    ⎘
+                    <Icon name="duplicate" size={16} />
                   </button>
 
                   <button
@@ -345,11 +341,11 @@ export function OutlinerPanel({
                     disabled={placement.locked}
                     style={{
                       ...iconButtonStyle,
-                      color: '#ef4444',
+                      color: 'var(--danger)',
                       opacity: placement.locked ? 0.3 : 0.7,
                     }}
                   >
-                    ✕
+                    <Icon name="trash" size={16} />
                   </button>
                 </div>
               </div>
@@ -366,20 +362,35 @@ export function OutlinerPanel({
           justifyContent: 'space-between',
           height: '24px',
           padding: '0 8px',
-          borderTop: '1px solid #282828',
+          borderTop: '1px solid var(--line)',
           fontSize: '11px',
-          color: 'var(--color-text-secondary, #888888)',
-          backgroundColor: 'var(--color-bg-primary, #0d0d0d)',
+          color: 'var(--text-faint)',
+          backgroundColor: 'var(--ink-900)',
         }}
       >
         <span>
-          {placements.length} {placements.length === 1 ? 'placement' : 'placements'}
+          <span style={numericStyle}>{placements.length}</span> {placements.length === 1 ? 'placement' : 'placements'}
         </span>
-        {selectedPlacementId && <span>1 selected</span>}
+        {selectedPlacementId && <span><span style={numericStyle}>1</span> selected</span>}
       </div>
     </aside>
   );
 }
+
+const numericStyle: React.CSSProperties = {
+  fontFamily: "ui-monospace, 'SF Mono', 'Cascadia Code', 'Roboto Mono', monospace",
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: '12px',
+  color: 'var(--text)',
+};
+
+const panelTitleStyle: React.CSSProperties = {
+  fontSize: '11px',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'var(--text-faint)',
+};
 
 const iconButtonStyle: React.CSSProperties = {
   display: 'inline-flex',
@@ -390,8 +401,6 @@ const iconButtonStyle: React.CSSProperties = {
   padding: 0,
   background: 'transparent',
   border: 'none',
-  borderRadius: '0px',
-  color: 'var(--color-text-secondary, #a8a8a8)',
+  color: 'var(--text-dim)',
   cursor: 'pointer',
-  fontSize: '12px',
 };
